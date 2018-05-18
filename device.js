@@ -158,27 +158,39 @@ function isValidPubKey(b64_pubkey){
 // logging in to hub
 
 
-function handleChallenge(ws, challenge){
-	log.consoleLog('handleChallenge');
-	if (ws.bLoggingIn)
-		sendLoginCommand(ws, challenge);
-	else // save for future login
+function handleChallenge( ws, challenge )
+{
+	log.consoleLog( 'handleChallenge' );
+
+	if ( ws.bLoggingIn )
+	{
+		sendLoginCommand( ws, challenge );
+	}
+	else
+	{
+		//	save for future login
 		ws.received_challenge = challenge;
+	}
 }
+
 
 function loginToHub()
 {
 	if ( ! objMyPermanentDeviceKey )
-		return log.consoleLog( "objMyPermanentDeviceKey not set yet, can't log in" );
-
+	{
+		return log.consoleLog( "# objMyPermanentDeviceKey not set yet, can't log in" );
+	}
 	if ( ! objMyTempDeviceKey )
-		return log.consoleLog( "objMyTempDeviceKey not set yet, can't log in" );
-
+	{
+		return log.consoleLog( "# objMyTempDeviceKey not set yet, can't log in" );
+	}
 	if ( ! my_device_hub )
-		return log.consoleLog( "my_device_hub not set yet, can't log in" );
+	{
+		return log.consoleLog( "# my_device_hub not set yet, can't log in" );
+	}
 
 	//	...
-	log.consoleLog( "logging in to hub " + my_device_hub );
+	log.consoleLog( "logging in to hub " + my_device_hub + ", call network.findOutboundPeerOrConnect" );
 
 	network.findOutboundPeerOrConnect
 	(
@@ -186,142 +198,240 @@ function loginToHub()
 		function onLocatedHubForLogin( err, ws )
 		{
 			if ( err )
+			{
+				log.consoleLog( "# network.findOutboundPeerOrConnect :: err" );
 				return;
+			}
 
-			if (ws.bLoggedIn)
+			if ( ws.bLoggedIn )
+			{
+				log.consoleLog( "# network.findOutboundPeerOrConnect :: ws.bLoggedIn is true" );
 				return;
-			if (ws.received_challenge)
-				sendLoginCommand(ws, ws.received_challenge);
+			}
+
+			if ( ws.received_challenge )
+			{
+				log.consoleLog( "# network.findOutboundPeerOrConnect :: ws.received_challenge is true" );
+				sendLoginCommand( ws, ws.received_challenge );
+			}
 			else
+			{
+				log.consoleLog( "# network.findOutboundPeerOrConnect :: ws.bLoggingIn = true;" );
 				ws.bLoggingIn = true;
+			}
 
-			log.consoleLog('done loginToHub');
+			//	...
+			log.consoleLog( 'done loginToHub, successfully!' );
 		}
 	);
 }
 
 
-
-
-
-
-
-function sendLoginCommand(ws, challenge){
-	var objLogin = {challenge: challenge, pubkey: objMyPermanentDeviceKey.pub_b64};
-	objLogin.signature = ecdsaSig.sign(objectHash.getDeviceMessageHashToSign(objLogin), objMyPermanentDeviceKey.priv);
-	network.sendJustsaying(ws, 'hub/login', objLogin);
-	ws.bLoggedIn = true;
-	sendTempPubkey(ws, objMyTempDeviceKey.pub_b64);
-	network.initWitnessesIfNecessary(ws);
-	resendStalledMessages(1);
-}
-
-function sendTempPubkey(ws, temp_pubkey, callbacks){
-	if (!callbacks)
-		callbacks = {ifOk: function(){}, ifError: function(){}};
-	network.sendRequest(ws, 'hub/temp_pubkey', createTempPubkeyPackage(temp_pubkey), false, function(ws, request, response){
-		if (response === 'updated')
-			return callbacks.ifOk();
-		var error = response.error || ("unrecognized response: "+JSON.stringify(response));
-		callbacks.ifError(error);
-	});
-}
-
-function createTempPubkeyPackage(temp_pubkey){
-	var objTempPubkey = {
-		temp_pubkey: temp_pubkey, 
-		pubkey: objMyPermanentDeviceKey.pub_b64
+/**
+ *	login
+ *	@param ws
+ *	@param challenge
+ */
+function sendLoginCommand( ws, challenge )
+{
+	var objLogin		=
+	{
+		challenge	: challenge,
+		pubkey		: objMyPermanentDeviceKey.pub_b64
 	};
-	objTempPubkey.signature = ecdsaSig.sign(objectHash.getDeviceMessageHashToSign(objTempPubkey), objMyPermanentDeviceKey.priv);
+	objLogin.signature	= ecdsaSig.sign
+	(
+		objectHash.getDeviceMessageHashToSign( objLogin ),
+		objMyPermanentDeviceKey.priv
+	);
+	network.sendJustsaying( ws, 'hub/login', objLogin );
+	ws.bLoggedIn	= true;
+	sendTempPubkey( ws, objMyTempDeviceKey.pub_b64 );
+
+	/**
+	 *	initialize database
+	 */
+	network.initWitnessesIfNecessary( ws );
+
+	//	...
+	resendStalledMessages( 1 );
+}
+
+
+function sendTempPubkey( ws, temp_pubkey, callbacks )
+{
+	if ( ! callbacks )
+	{
+		callbacks = { ifOk: function(){}, ifError: function(){} };
+	}
+
+	//	...
+	network.sendRequest
+	(
+		ws,
+		'hub/temp_pubkey',
+		createTempPubkeyPackage( temp_pubkey ),
+		false,
+		function( ws, request, response )
+		{
+			if ( response === 'updated' )
+				return callbacks.ifOk();
+
+			var error = response.error || ( "unrecognized response: " + JSON.stringify( response ) );
+			callbacks.ifError( error );
+		}
+	);
+}
+
+
+function createTempPubkeyPackage( temp_pubkey )
+{
+	var objTempPubkey =
+	{
+		temp_pubkey	: temp_pubkey,
+		pubkey		: objMyPermanentDeviceKey.pub_b64
+	};
+
+	objTempPubkey.signature = ecdsaSig.sign
+	(
+		objectHash.getDeviceMessageHashToSign( objTempPubkey ), objMyPermanentDeviceKey.priv
+	);
+
 	return objTempPubkey;
 }
+
 
 
 // ------------------------------
 // rotation of temp keys
 
-
-function genPrivKey(){
+function genPrivKey()
+{
 	var privKey;
-	do {
-		log.consoleLog("generating new priv key");
-		privKey = crypto.randomBytes(32);
+	do
+	{
+		log.consoleLog( "generating new priv key" );
+		privKey = crypto.randomBytes( 32 );
 	}
-	while (!ecdsa.privateKeyVerify(privKey));
+	while ( ! ecdsa.privateKeyVerify( privKey ) );
 	return privKey;
 }
 
+
+
 var last_rotate_wake_ts = Date.now();
 
-function rotateTempDeviceKeyIfCouldBeAlreadyUsed(){
-	var actual_interval = Date.now() - last_rotate_wake_ts;
-	last_rotate_wake_ts = Date.now();
-	if (actual_interval > TEMP_DEVICE_KEY_ROTATION_PERIOD + 1000)
+function rotateTempDeviceKeyIfCouldBeAlreadyUsed()
+{
+	var actual_interval	= Date.now() - last_rotate_wake_ts;
+	last_rotate_wake_ts	= Date.now();
+
+	if ( actual_interval > TEMP_DEVICE_KEY_ROTATION_PERIOD + 1000 )
 		return log.consoleLog("woke up after sleep or high load, will skip rotation");
-	if (objMyTempDeviceKey.use_count === 0) // new key that was never used yet
+
+	//	new key that was never used yet
+	if ( objMyTempDeviceKey.use_count === 0 )
 		return log.consoleLog("the current temp key was not used yet, will not rotate");
-	// if use_count === null, the key was set at start up, it could've been used before
+
+	//	if use_count === null, the key was set at start up, it could've been used before
 	rotateTempDeviceKey();
 }
 
-function rotateTempDeviceKey(){
-	if (!saveTempKeys)
+function rotateTempDeviceKey()
+{
+	if ( ! saveTempKeys )
 		return log.consoleLog("no saving function");
+
 	log.consoleLog("will rotate temp device key");
-	network.findOutboundPeerOrConnect(conf.WS_PROTOCOL+my_device_hub, function onLocatedHubForRotation(err, ws){
-		if (err)
-			return log.consoleLog('will not rotate because: '+err);
-		if (ws.readyState !== ws.OPEN)
-			return log.consoleLog('will not rotate because connection is not open');
-		if (!ws.bLoggedIn)
-			return log.consoleLog('will not rotate because not logged in'); // reconnected and not logged in yet
-		var new_priv_key = genPrivKey();
-		var objNewMyTempDeviceKey = {
-			use_count: 0,
-			priv: new_priv_key,
-			pub_b64: ecdsa.publicKeyCreate(new_priv_key, true).toString('base64')
-		};
-		saveTempKeys(new_priv_key, objMyTempDeviceKey.priv, function(err){
-			if (err){
-				log.consoleLog('failed to save new temp keys, canceling: '+err);
-				return;
-			}
-			objMyPrevTempDeviceKey = objMyTempDeviceKey;
-			objMyTempDeviceKey = objNewMyTempDeviceKey;
-			breadcrumbs.add('rotated temp device key');
-			sendTempPubkey(ws, objMyTempDeviceKey.pub_b64);
-		});
-	});
+
+	network.findOutboundPeerOrConnect
+	(
+		conf.WS_PROTOCOL + my_device_hub,
+		function onLocatedHubForRotation( err, ws )
+		{
+			if (err)
+				return log.consoleLog('will not rotate because: '+err);
+
+			if (ws.readyState !== ws.OPEN)
+				return log.consoleLog('will not rotate because connection is not open');
+
+			if ( ! ws.bLoggedIn)
+				return log.consoleLog('will not rotate because not logged in'); // reconnected and not logged in yet
+
+			var new_priv_key = genPrivKey();
+			var objNewMyTempDeviceKey =
+			{
+				use_count: 0,
+				priv: new_priv_key,
+				pub_b64: ecdsa.publicKeyCreate(new_priv_key, true).toString('base64')
+			};
+
+			saveTempKeys( new_priv_key, objMyTempDeviceKey.priv, function( err )
+			{
+				if ( err )
+				{
+					log.consoleLog('failed to save new temp keys, canceling: '+err);
+					return;
+				}
+
+				//	...
+				objMyPrevTempDeviceKey	= objMyTempDeviceKey;
+				objMyTempDeviceKey	= objNewMyTempDeviceKey;
+				breadcrumbs.add( 'rotated temp device key' );
+				sendTempPubkey( ws, objMyTempDeviceKey.pub_b64 );
+			});
+		}
+	);
 }
 
-function scheduleTempDeviceKeyRotation(){
+
+function scheduleTempDeviceKeyRotation()
+{
 	if (bScheduledTempDeviceKeyRotation)
 		return;
+
 	bScheduledTempDeviceKeyRotation = true;
 	log.consoleLog('will schedule rotation in 1 minute');
-	setTimeout(function(){
-		// due to timeout, we are probably last to request (and receive) this lock
-		mutex.lock(["from_hub"], function(unlock){
-			log.consoleLog("will schedule rotation");
-			rotateTempDeviceKeyIfCouldBeAlreadyUsed();
-			last_rotate_wake_ts = Date.now();
-			setInterval(rotateTempDeviceKeyIfCouldBeAlreadyUsed, TEMP_DEVICE_KEY_ROTATION_PERIOD);
-			unlock();
-		});
-	}, 60*1000);
+
+	setTimeout
+	(
+		function()
+		{
+			//	due to timeout, we are probably last to request (and receive) this lock
+			mutex.lock
+			(
+				[ "from_hub" ],
+				function( unlock )
+				{
+					log.consoleLog( "will schedule rotation" );
+					rotateTempDeviceKeyIfCouldBeAlreadyUsed();
+					last_rotate_wake_ts = Date.now();
+					setInterval
+					(
+						rotateTempDeviceKeyIfCouldBeAlreadyUsed,
+						TEMP_DEVICE_KEY_ROTATION_PERIOD
+					);
+					unlock();
+				}
+			);
+		},
+		60 * 1000
+	);
 }
 
 
 // ---------------------------
 // sending/receiving messages
 
-function deriveSharedSecret(ecdh, peer_b64_pubkey){
+function deriveSharedSecret( ecdh, peer_b64_pubkey )
+{
 	var shared_secret_src = ecdh.computeSecret(peer_b64_pubkey, "base64");
 	var shared_secret = crypto.createHash("sha256").update(shared_secret_src).digest().slice(0, 16);
 	return shared_secret;
 }
 
-function decryptPackage(objEncryptedPackage){
+function decryptPackage(objEncryptedPackage)
+{
 	var priv_key;
 	if (objEncryptedPackage.dh.recipient_ephemeral_pubkey === objMyTempDeviceKey.pub_b64){
 		priv_key = objMyTempDeviceKey.priv;

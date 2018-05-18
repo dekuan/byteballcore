@@ -44,16 +44,18 @@ function readMyWitnesses( handleWitnesses, actionIfEmpty )
 			if ( arrWitnesses.length === 0 )
 			{
 				if ( actionIfEmpty === 'ignore' )
-					return handleWitnesses([]);
+				{
+					return handleWitnesses( [] );
+				}
 
 				if ( actionIfEmpty === 'wait' )
 				{
-					log.consoleLog('no witnesses yet, will retry later');
+					log.consoleLog( 'no witnesses yet, will retry later' );
 					setTimeout
 					(
 						function()
 						{
-							readMyWitnesses(handleWitnesses, actionIfEmpty);
+							readMyWitnesses( handleWitnesses, actionIfEmpty );
 						},
 						1000
 					);
@@ -63,7 +65,7 @@ function readMyWitnesses( handleWitnesses, actionIfEmpty )
 
 			if ( arrWitnesses.length !== constants.COUNT_WITNESSES )
 			{
-				throw Error("wrong number of my witnesses: "+arrWitnesses.length);
+				throw Error( "wrong number of my witnesses: "+arrWitnesses.length );
 			}
 
 			//	...

@@ -1,259 +1,404 @@
 /*jslint node: true */
 "use strict";
-var WebSocket = process.browser ? global.WebSocket : require('ws');
-var socks = process.browser ? null : require('socks'+'');
-var WebSocketServer = WebSocket.Server;
+
+
+var WebSocket		= process.browser ? global.WebSocket : require('ws');
+var socks		= process.browser ? null : require('socks'+'');
+var WebSocketServer	= WebSocket.Server;
 
 var log			= require( './log.js' );
-var crypto = require('crypto');
-var _ = require('lodash');
-var async = require('async');
-var db = require('./db.js');
-var constants = require('./constants.js');
-var storage = require('./storage.js');
-var myWitnesses = require('./my_witnesses.js');
-var joint_storage = require('./joint_storage.js');
-var validation = require('./validation.js');
-var ValidationUtils = require("./validation_utils.js");
-var writer = require('./writer.js');
-var conf = require('./conf.js');
-var mutex = require('./mutex.js');
-var catchup = require('./catchup.js');
-var privatePayment = require('./private_payment.js');
-var objectHash = require('./object_hash.js');
-var ecdsaSig = require('./signature.js');
-var eventBus = require('./event_bus.js');
-var light = require('./light.js');
-var breadcrumbs = require('./breadcrumbs.js');
-var mail = process.browser ? null : require('./mail.js'+'');
+var crypto		= require('crypto');
+var _			= require('lodash');
+var async		= require('async');
+var db			= require('./db.js');
+var constants		= require('./constants.js');
+var storage		= require('./storage.js');
+var myWitnesses		= require('./my_witnesses.js');
+var joint_storage	= require('./joint_storage.js');
+var validation		= require('./validation.js');
+var ValidationUtils	= require("./validation_utils.js");
+var writer		= require('./writer.js');
+var conf		= require('./conf.js');
+var mutex		= require('./mutex.js');
+var catchup		= require('./catchup.js');
+var privatePayment	= require('./private_payment.js');
+var objectHash		= require('./object_hash.js');
+var ecdsaSig		= require('./signature.js');
+var eventBus		= require('./event_bus.js');
+var light		= require('./light.js');
+var breadcrumbs		= require('./breadcrumbs.js');
+var mail		= process.browser ? null : require( './mail.js' + '' );
 
-var FORWARDING_TIMEOUT = 10*1000; // don't forward if the joint was received more than FORWARDING_TIMEOUT ms ago
-var STALLED_TIMEOUT = 5000; // a request is treated as stalled if no response received within STALLED_TIMEOUT ms
-var RESPONSE_TIMEOUT = 300*1000; // after this timeout, the request is abandoned
-var HEARTBEAT_TIMEOUT = conf.HEARTBEAT_TIMEOUT || 10*1000;
-var HEARTBEAT_RESPONSE_TIMEOUT = 60*1000;
-var PAUSE_TIMEOUT = 2*HEARTBEAT_TIMEOUT;
+var FORWARDING_TIMEOUT		= 10 * 1000; // don't forward if the joint was received more than FORWARDING_TIMEOUT ms ago
+var STALLED_TIMEOUT		= 5000; // a request is treated as stalled if no response received within STALLED_TIMEOUT ms
+var RESPONSE_TIMEOUT		= 300 * 1000; // after this timeout, the request is abandoned
+var HEARTBEAT_TIMEOUT		= conf.HEARTBEAT_TIMEOUT || 10 * 1000;
+var HEARTBEAT_RESPONSE_TIMEOUT	= 60 * 1000;
+var PAUSE_TIMEOUT		= 2 * HEARTBEAT_TIMEOUT;
 
 var wss;
-var arrOutboundPeers = [];
-var assocConnectingOutboundWebsockets = {};
-var assocUnitsInWork = {};
-var assocRequestedUnits = {};
-var bCatchingUp = false;
-var bWaitingForCatchupChain = false;
-var bWaitingTillIdle = false;
-var coming_online_time = Date.now();
-var assocReroutedConnectionsByTag = {};
-var arrWatchedAddresses = []; // does not include my addresses, therefore always empty
-var last_hearbeat_wake_ts = Date.now();
-var peer_events_buffer = [];
-var assocKnownPeers = {};
-var exchangeRates = {};
+var arrOutboundPeers			= [];
+var assocConnectingOutboundWebsockets	= {};
+var assocUnitsInWork			= {};
+var assocRequestedUnits			= {};
+var bCatchingUp				= false;
+var bWaitingForCatchupChain		= false;
+var bWaitingTillIdle			= false;
+var coming_online_time			= Date.now();
+var assocReroutedConnectionsByTag	= {};
+var arrWatchedAddresses			= []; // does not include my addresses, therefore always empty
+var last_hearbeat_wake_ts		= Date.now();
+var peer_events_buffer			= [];
+var assocKnownPeers			= {};
+var exchangeRates			= {};
 
-if (process.browser){ // browser
-	log.consoleLog("defining .on() on ws");
-	WebSocket.prototype.on = function(event, callback) {
+
+if ( process.browser )
+{
+	//	browser
+	log.consoleLog( "defining .on() on ws" );
+
+	WebSocket.prototype.on = function( event, callback )
+	{
 		var self = this;
-		if (event === 'message'){
-			this['on'+event] = function(event){
-				callback.call(self, event.data);
+		if ( event === 'message' )
+		{
+			this[ 'on' + event ] = function( event )
+			{
+				callback.call( self, event.data );
 			};
 			return;
 		}
-		if (event !== 'open'){
-			this['on'+event] = callback;
+
+		if ( event !== 'open' )
+		{
+			this[ 'on' + event ] = callback;
 			return;
 		}
-		// allow several handlers for 'open' event
-		if (!this['open_handlers'])
+
+		//	allow several handlers for 'open' event
+		if ( ! this[ 'open_handlers' ] )
 			this['open_handlers'] = [];
-		this['open_handlers'].push(callback);
-		this['on'+event] = function(){
-			self['open_handlers'].forEach(function(cb){
-				cb();
-			});
+
+		this[ 'open_handlers' ].push( callback );
+		this[ 'on' + event ] = function()
+		{
+			self[ 'open_handlers' ].forEach
+			(
+				function( cb )
+				{
+					cb();
+				}
+			);
 		};
 	};
-	WebSocket.prototype.once = WebSocket.prototype.on;
-	WebSocket.prototype.setMaxListeners = function(){};
+
+	//	...
+	WebSocket.prototype.once		= WebSocket.prototype.on;
+	WebSocket.prototype.setMaxListeners	= function(){};
 }
 
-// if not using a hub and accepting messages directly (be your own hub)
+
+
+
+/**
+ *	if not using a hub and accepting messages directly (be your own hub)
+ */
 var my_device_address;
 var objMyTempPubkeyPackage;
 
-function setMyDeviceProps(device_address, objTempPubkey){
-	my_device_address = device_address;
-	objMyTempPubkeyPackage = objTempPubkey;
+function setMyDeviceProps( device_address, objTempPubkey )
+{
+	my_device_address	= device_address;
+	objMyTempPubkeyPackage	= objTempPubkey;
 }
+
+
 
 exports.light_vendor_url = null;
 
+
+
+
+
+
 // general network functions
 
-function sendMessage(ws, type, content) {
-	var message = JSON.stringify([type, content]);
-	if (ws.readyState !== ws.OPEN)
-		return log.consoleLog("readyState="+ws.readyState+' on peer '+ws.peer+', will not send '+message);
-	log.consoleLog("SENDING "+message+" to "+ws.peer);
-	ws.send(message);
+function sendMessage( ws, type, content )
+{
+	var message	= JSON.stringify( [ type, content ] );
+
+	if ( ws.readyState !== ws.OPEN )
+		return log.consoleLog( "readyState=" + ws.readyState + ' on peer ' + ws.peer + ', will not send ' + message );
+
+	log.consoleLog( "SENDING " + message + " to " + ws.peer );
+	ws.send( message );
 }
 
-function sendJustsaying(ws, subject, body){
-	sendMessage(ws, 'justsaying', {subject: subject, body: body});
+
+function sendJustsaying( ws, subject, body )
+{
+	sendMessage( ws, 'justsaying', { subject: subject, body: body } );
 }
 
-function sendAllInboundJustsaying(subject, body){
-	wss.clients.forEach(function(ws){
-		sendMessage(ws, 'justsaying', {subject: subject, body: body});
-	});
+
+function sendAllInboundJustsaying( subject, body )
+{
+	wss.clients.forEach
+	(
+		function( ws )
+		{
+			sendMessage( ws, 'justsaying', { subject: subject, body: body } );
+		}
+	);
 }
 
-function sendError(ws, error) {
-	sendJustsaying(ws, 'error', error);
+
+function sendError( ws, error )
+{
+	sendJustsaying( ws, 'error', error );
 }
 
-function sendInfo(ws, content) {
-	sendJustsaying(ws, 'info', content);
+
+function sendInfo( ws, content )
+{
+	sendJustsaying( ws, 'info', content );
 }
 
-function sendResult(ws, content) {
-	sendJustsaying(ws, 'result', content);
+
+function sendResult( ws, content )
+{
+	sendJustsaying( ws, 'result', content );
 }
 
-function sendErrorResult(ws, unit, error) {
-	sendResult(ws, {unit: unit, result: 'error', error: error});
+function sendErrorResult( ws, unit, error )
+{
+	sendResult( ws, { unit : unit, result : 'error', error : error } );
 }
 
-function sendVersion(ws){
-	var libraryPackageJson = require('./package.json');
-	sendJustsaying(ws, 'version', {
-		protocol_version: constants.version, 
-		alt: constants.alt, 
-		library: libraryPackageJson.name, 
-		library_version: libraryPackageJson.version, 
-		program: conf.program, 
-		program_version: conf.program_version
-	});
+function sendVersion( ws )
+{
+	var libraryPackageJson	= require( './package.json' );
+
+	sendJustsaying
+	(
+		ws,
+		'version',
+		{
+			protocol_version	: constants.version,
+			alt			: constants.alt,
+			library			: libraryPackageJson.name,
+			library_version		: libraryPackageJson.version,
+			program			: conf.program,
+			program_version		: conf.program_version
+		}
+	);
 }
 
-function sendResponse(ws, tag, response){
-	delete ws.assocInPreparingResponse[tag];
-	sendMessage(ws, 'response', {tag: tag, response: response});
+function sendResponse( ws, tag, response )
+{
+	delete ws.assocInPreparingResponse[ tag ];
+	sendMessage( ws, 'response', { tag: tag, response: response } );
 }
 
-function sendErrorResponse(ws, tag, error) {
-	sendResponse(ws, tag, {error: error});
+function sendErrorResponse( ws, tag, error )
+{
+	sendResponse( ws, tag, { error : error } );
 }
 
-// if a 2nd identical request is issued before we receive a response to the 1st request, then:
-// 1. its responseHandler will be called too but no second request will be sent to the wire
-// 2. bReroutable flag must be the same
-function sendRequest(ws, command, params, bReroutable, responseHandler){
+
+
+/**
+ *	if a 2nd identical request is issued before we receive a response to the 1st request, then:
+ *	1. its responseHandler will be called too but no second request will be sent to the wire
+ *	2. bReroutable flag must be the same
+ *
+ *	@param ws
+ *	@param command
+ *	@param params
+ *	@param bReroutable
+ *	@param responseHandler
+ */
+function sendRequest( ws, command, params, bReroutable, responseHandler )
+{
 	var request = {command: command};
-	if (params)
+
+	if ( params )
+	{
 		request.params = params;
+	}
+
 	var content = _.clone(request);
 	var tag = objectHash.getBase64Hash(request);
-	//if (ws.assocPendingRequests[tag]) // ignore duplicate requests while still waiting for response from the same peer
-	//    return log.consoleLog("will not send identical "+command+" request");
-	if (ws.assocPendingRequests[tag]){
-		log.consoleLog('already sent a '+command+' request to '+ws.peer+', will add one more response handler rather than sending a duplicate request to the wire');
-		ws.assocPendingRequests[tag].responseHandlers.push(responseHandler);
+
+	//	if (ws.assocPendingRequests[tag]) // ignore duplicate requests while still waiting for response from the same peer
+	//	return log.consoleLog("will not send identical "+command+" request");
+	if ( ws.assocPendingRequests[ tag ] )
+	{
+		log.consoleLog( 'already sent a '+command+' request to '+ws.peer+', will add one more response handler rather than sending a duplicate request to the wire' );
+		ws.assocPendingRequests[ tag ].responseHandlers.push( responseHandler );
 	}
-	else{
-		content.tag = tag;
-		// after STALLED_TIMEOUT, reroute the request to another peer
-		// it'll work correctly even if the current peer is already disconnected when the timeout fires
-		var reroute = !bReroutable ? null : function(){
-			log.consoleLog('will try to reroute a '+command+' request stalled at '+ws.peer);
-			if (!ws.assocPendingRequests[tag])
-				return log.consoleLog('will not reroute - the request was already handled by another peer');
-			ws.assocPendingRequests[tag].bRerouted = true;
-			findNextPeer(ws, function(next_ws){ // the callback may be called much later if findNextPeer has to wait for connection
-				if (!ws.assocPendingRequests[tag])
+	else
+	{
+		//	...
+		content.tag	= tag;
+
+		//	after STALLED_TIMEOUT, reroute the request to another peer
+		//	it'll work correctly even if the current peer is already disconnected when the timeout fires
+		var reroute = ! bReroutable ? null : function()
+		{
+			log.consoleLog( 'will try to reroute a '+command+' request stalled at '+ws.peer );
+
+			if ( ! ws.assocPendingRequests[ tag ] )
+				return log.consoleLog( 'will not reroute - the request was already handled by another peer' );
+
+			//	...
+			ws.assocPendingRequests[ tag ].bRerouted	= true;
+			findNextPeer( ws, function( next_ws )
+			{
+				//	the callback may be called much later if findNextPeer has to wait for connection
+				if ( ! ws.assocPendingRequests[ tag ] )
 					return log.consoleLog('will not reroute after findNextPeer - the request was already handled by another peer');
-				if (next_ws === ws || assocReroutedConnectionsByTag[tag] && assocReroutedConnectionsByTag[tag].indexOf(next_ws) >= 0){
-					log.consoleLog('will not reroute '+command+' to the same peer, will rather wait for a new connection');
-					eventBus.once('connected_to_source', function(){ // try again
-						log.consoleLog('got new connection, retrying reroute '+command);
-						reroute();
-					});
+
+				if ( next_ws === ws ||
+					assocReroutedConnectionsByTag[ tag ] && assocReroutedConnectionsByTag[ tag ].indexOf( next_ws ) >= 0 )
+				{
+					log.consoleLog( 'will not reroute '+command+' to the same peer, will rather wait for a new connection' );
+					eventBus.once
+					(
+						'connected_to_source',
+						function()
+						{
+							//	try again
+							log.consoleLog( 'got new connection, retrying reroute '+command );
+							reroute();
+						}
+					);
 					return;
 				}
-				log.consoleLog('rerouting '+command+' from '+ws.peer+' to '+next_ws.peer);
-				ws.assocPendingRequests[tag].responseHandlers.forEach(function(rh){
-					sendRequest(next_ws, command, params, bReroutable, rh);
+
+				log.consoleLog( 'rerouting ' + command + ' from ' + ws.peer+' to '+next_ws.peer );
+				ws.assocPendingRequests[ tag ].responseHandlers.forEach( function( rh )
+				{
+					sendRequest( next_ws, command, params, bReroutable, rh );
 				});
-				if (!assocReroutedConnectionsByTag[tag])
-					assocReroutedConnectionsByTag[tag] = [ws];
-				assocReroutedConnectionsByTag[tag].push(next_ws);
+
+				if ( ! assocReroutedConnectionsByTag[ tag ] )
+					assocReroutedConnectionsByTag[ tag ] = [ ws ];
+
+				assocReroutedConnectionsByTag[ tag ].push( next_ws );
 			});
 		};
-		var reroute_timer = !bReroutable ? null : setTimeout(reroute, STALLED_TIMEOUT);
-		var cancel_timer = bReroutable ? null : setTimeout(function(){
-			ws.assocPendingRequests[tag].responseHandlers.forEach(function(rh){
-				rh(ws, request, {error: "[internal] response timeout"});
-			});
-			delete ws.assocPendingRequests[tag];
-		}, RESPONSE_TIMEOUT);
-		ws.assocPendingRequests[tag] = {
-			request: request,
-			responseHandlers: [responseHandler], 
-			reroute: reroute,
-			reroute_timer: reroute_timer,
-			cancel_timer: cancel_timer
+
+		var reroute_timer	= ! bReroutable ? null : setTimeout( reroute, STALLED_TIMEOUT );
+		var cancel_timer	= bReroutable ? null : setTimeout
+		(
+			function()
+			{
+				ws.assocPendingRequests[ tag ].responseHandlers.forEach
+				(
+					function( rh )
+					{
+						rh( ws, request, { error: "[internal] response timeout" } );
+					}
+				);
+				delete ws.assocPendingRequests[ tag ];
+			},
+			RESPONSE_TIMEOUT
+		);
+
+		ws.assocPendingRequests[ tag ] =
+		{
+			request			: request,
+			responseHandlers	: [responseHandler],
+			reroute			: reroute,
+			reroute_timer		: reroute_timer,
+			cancel_timer		: cancel_timer
 		};
-		sendMessage(ws, 'request', content);
+		sendMessage( ws, 'request', content );
 	}
 }
 
-function handleResponse(ws, tag, response){
-	var pendingRequest = ws.assocPendingRequests[tag];
-	if (!pendingRequest) // was canceled due to timeout or rerouted and answered by another peer
-		//throw "no req by tag "+tag;
-		return log.consoleLog("no req by tag "+tag);
-	pendingRequest.responseHandlers.forEach(function(responseHandler){
-		process.nextTick(function(){
-			responseHandler(ws, pendingRequest.request, response);
-		});
-	});
-	
-	clearTimeout(pendingRequest.reroute_timer);
-	clearTimeout(pendingRequest.cancel_timer);
-	delete ws.assocPendingRequests[tag];
-	
-	// if the request was rerouted, cancel all other pending requests
-	if (assocReroutedConnectionsByTag[tag]){
-		assocReroutedConnectionsByTag[tag].forEach(function(client){
-			if (client.assocPendingRequests[tag]){
-				clearTimeout(client.assocPendingRequests[tag].reroute_timer);
-				clearTimeout(client.assocPendingRequests[tag].cancel_timer);
-				delete client.assocPendingRequests[tag];
+
+
+
+function handleResponse( ws, tag, response )
+{
+	var pendingRequest	= ws.assocPendingRequests[ tag ];
+
+	//	was canceled due to timeout or rerouted and answered by another peer
+	if ( ! pendingRequest )
+	{
+		//	throw "no req by tag "+tag;
+		return log.consoleLog( "no req by tag " + tag );
+	}
+
+	//	...
+	pendingRequest.responseHandlers.forEach
+	(
+		function( responseHandler )
+		{
+			process.nextTick( function()
+			{
+				responseHandler( ws, pendingRequest.request, response );
+			});
+		}
+	);
+
+	clearTimeout( pendingRequest.reroute_timer );
+	clearTimeout( pendingRequest.cancel_timer );
+	delete ws.assocPendingRequests[ tag ];
+
+	//	if the request was rerouted, cancel all other pending requests
+	if ( assocReroutedConnectionsByTag[ tag ] )
+	{
+		assocReroutedConnectionsByTag[ tag ].forEach
+		(
+			function( client )
+			{
+				if ( client.assocPendingRequests[ tag ] )
+				{
+					clearTimeout( client.assocPendingRequests[ tag ].reroute_timer );
+					clearTimeout( client.assocPendingRequests[ tag ].cancel_timer );
+					delete client.assocPendingRequests[ tag ];
+				}
 			}
-		});
-		delete assocReroutedConnectionsByTag[tag];
+		);
+		delete assocReroutedConnectionsByTag[ tag ];
 	}
 }
 
-function cancelRequestsOnClosedConnection(ws){
-	log.consoleLog("websocket closed, will complete all outstanding requests");
-	for (var tag in ws.assocPendingRequests){
-		var pendingRequest = ws.assocPendingRequests[tag];
-		clearTimeout(pendingRequest.reroute_timer);
-		clearTimeout(pendingRequest.cancel_timer);
-		if (pendingRequest.reroute){ // reroute immediately, not waiting for STALLED_TIMEOUT
-			if (!pendingRequest.bRerouted)
+
+function cancelRequestsOnClosedConnection( ws )
+{
+	log.consoleLog( "websocket closed, will complete all outstanding requests" );
+
+	for ( var tag in ws.assocPendingRequests )
+	{
+		var pendingRequest	= ws.assocPendingRequests[ tag ];
+
+		clearTimeout( pendingRequest.reroute_timer );
+		clearTimeout( pendingRequest.cancel_timer );
+
+		//	reroute immediately, not waiting for STALLED_TIMEOUT
+		if ( pendingRequest.reroute )
+		{
+			if ( ! pendingRequest.bRerouted )
+			{
 				pendingRequest.reroute();
-			// we still keep ws.assocPendingRequests[tag] because we'll need it when we find a peer to reroute to
+			}
+			//	we still keep ws.assocPendingRequests[tag] because we'll need it when we find a peer to reroute to
 		}
-		else{
-			pendingRequest.responseHandlers.forEach(function(rh){
-				rh(ws, pendingRequest.request, {error: "[internal] connection closed"});
+		else
+		{
+			pendingRequest.responseHandlers.forEach( function( rh )
+			{
+				rh( ws, pendingRequest.request, { error : "[internal] connection closed" } );
 			});
-			delete ws.assocPendingRequests[tag];
+			delete ws.assocPendingRequests[ tag ];
 		}
 	}
+
 	printConnectionStatus();
 }
 
@@ -261,213 +406,416 @@ function cancelRequestsOnClosedConnection(ws){
 
 // peers
 
-function findNextPeer(ws, handleNextPeer){
-	tryFindNextPeer(ws, function(next_ws){
-		if (next_ws)
-			return handleNextPeer(next_ws);
-		var peer = ws ? ws.peer : '[none]';
-		log.consoleLog('findNextPeer after '+peer+' found no appropriate peer, will wait for a new connection');
-		eventBus.once('connected_to_source', function(new_ws){
-			log.consoleLog('got new connection, retrying findNextPeer after '+peer);
-			findNextPeer(ws, handleNextPeer);
-		});
+function findNextPeer( ws, handleNextPeer )
+{
+	tryFindNextPeer
+	(
+		ws,
+		function( next_ws )
+		{
+			if ( next_ws )
+			{
+				return handleNextPeer(next_ws);
+			}
+
+			var peer = ws ? ws.peer : '[none]';
+			log.consoleLog( 'findNextPeer after ' + peer + ' found no appropriate peer, will wait for a new connection' );
+
+			eventBus.once
+			(
+				'connected_to_source',
+				function( new_ws )
+				{
+					log.consoleLog('got new connection, retrying findNextPeer after '+peer);
+					findNextPeer(ws, handleNextPeer);
+				}
+			);
 	});
 }
 
-function tryFindNextPeer(ws, handleNextPeer){
-	var arrOutboundSources = arrOutboundPeers.filter(function(outbound_ws){ return outbound_ws.bSource; });
+function tryFindNextPeer( ws, handleNextPeer )
+{
+	var arrOutboundSources	= arrOutboundPeers.filter
+	(
+		function( outbound_ws )
+		{
+			return outbound_ws.bSource;
+		}
+	);
+
 	var len = arrOutboundSources.length;
-	if (len > 0){
-		var peer_index = arrOutboundSources.indexOf(ws); // -1 if it is already disconnected by now, or if it is inbound peer, or if it is null
-		var next_peer_index = (peer_index === -1) ? getRandomInt(0, len-1) : ((peer_index+1)%len);
-		handleNextPeer(arrOutboundSources[next_peer_index]);
+	if ( len > 0 )
+	{
+		//	-1 if it is already disconnected by now, or if it is inbound peer, or if it is null
+		var peer_index		= arrOutboundSources.indexOf( ws );
+		var next_peer_index	= ( peer_index === -1 ) ? getRandomInt( 0, len - 1 ) : ( ( peer_index + 1 ) % len );
+		handleNextPeer( arrOutboundSources[ next_peer_index ] );
 	}
 	else
+	{
 		findRandomInboundPeer(handleNextPeer);
+	}
 }
 
-function getRandomInt(min, max) {
-	return Math.floor(Math.random() * (max+1 - min)) + min;
+function getRandomInt( min, max )
+{
+	return Math.floor( Math.random() * ( max + 1 - min ) ) + min;
 }
 
-function findRandomInboundPeer(handleInboundPeer){
-	var arrInboundSources = wss.clients.filter(function(inbound_ws){ return inbound_ws.bSource; });
-	if (arrInboundSources.length === 0)
+function findRandomInboundPeer( handleInboundPeer )
+{
+	var arrInboundSources	= wss.clients.filter
+	(
+		function( inbound_ws )
+		{
+			return inbound_ws.bSource;
+		}
+	);
+
+	if ( arrInboundSources.length === 0 )
+	{
 		return handleInboundPeer(null);
-	var arrInboundHosts = arrInboundSources.map(function(ws){ return ws.host; });
-	// filter only those inbound peers that are reversible
-	db.query(
+	}
+
+	var arrInboundHosts	= arrInboundSources.map
+	(
+		function( ws )
+		{
+			return ws.host;
+		}
+	);
+
+	//	filter only those inbound peers that are reversible
+	db.query
+	(
 		"SELECT peer_host FROM peer_host_urls JOIN peer_hosts USING(peer_host) \n\
 		WHERE is_active=1 AND peer_host IN(?) \n\
 			AND (count_invalid_joints/count_new_good_joints<? \n\
 			OR count_new_good_joints=0 AND count_nonserial_joints=0 AND count_invalid_joints=0) \n\
-		ORDER BY (count_new_good_joints=0), "+db.getRandom()+" LIMIT 1", 
-		[arrInboundHosts, conf.MAX_TOLERATED_INVALID_RATIO], 
-		function(rows){
-			log.consoleLog(rows.length+" inbound peers");
-			if (rows.length === 0)
+		ORDER BY (count_new_good_joints=0), " + db.getRandom() + " LIMIT 1",
+		[ arrInboundHosts, conf.MAX_TOLERATED_INVALID_RATIO ],
+		function( rows )
+		{
+			log.consoleLog( rows.length + " inbound peers" );
+
+			if ( rows.length === 0 )
 				return handleInboundPeer(null);
-			var host = rows[0].peer_host;
+
+			var host	= rows[ 0 ].peer_host;
+
 			log.consoleLog("selected inbound peer "+host);
-			var ws = arrInboundSources.filter(function(ws){ return (ws.host === host); })[0];
-			if (!ws)
-				throw Error("inbound ws not found");
-			handleInboundPeer(ws);
+			var ws	= arrInboundSources.filter
+			(
+				function( ws )
+				{
+					return ( ws.host === host );
+				}
+			)[ 0 ];
+
+			if ( ! ws )
+			{
+				throw Error( "inbound ws not found" );
+			}
+
+			//	...
+			handleInboundPeer( ws );
 		}
 	);
 }
 
-function checkIfHaveEnoughOutboundPeersAndAdd(){
-	var arrOutboundPeerUrls = arrOutboundPeers.map(function(ws){ return ws.peer; });
-	db.query(
+
+function checkIfHaveEnoughOutboundPeersAndAdd()
+{
+	var arrOutboundPeerUrls	= arrOutboundPeers.map
+	(
+		function( ws )
+		{
+			return ws.peer;
+		}
+	);
+
+	db.query
+	(
 		"SELECT peer FROM peers JOIN peer_hosts USING(peer_host) \n\
 		WHERE count_new_good_joints>0 AND count_invalid_joints/count_new_good_joints<? AND peer IN(?)", 
-		[conf.MAX_TOLERATED_INVALID_RATIO, (arrOutboundPeerUrls.length > 0) ? arrOutboundPeerUrls : null],
-		function(rows){
-			var count_good_peers = rows.length;
-			if (count_good_peers >= conf.MIN_COUNT_GOOD_PEERS)
+		[ conf.MAX_TOLERATED_INVALID_RATIO, ( arrOutboundPeerUrls.length > 0 ) ? arrOutboundPeerUrls : null ],
+		function( rows )
+		{
+			var count_good_peers	= rows.length;
+			if ( count_good_peers >= conf.MIN_COUNT_GOOD_PEERS )
+			{
 				return;
-			if (count_good_peers === 0) // nobody trusted enough to ask for new peers, can't do anything
+			}
+
+			//	nobody trusted enough to ask for new peers, can't do anything
+			if ( count_good_peers === 0 )
+			{
 				return;
-			var arrGoodPeerUrls = rows.map(function(row){ return row.peer; });
-			for (var i=0; i<arrOutboundPeers.length; i++){
-				var ws = arrOutboundPeers[i];
-				if (arrGoodPeerUrls.indexOf(ws.peer) !== -1)
-					requestPeers(ws);
+			}
+
+			var arrGoodPeerUrls	= rows.map
+			(
+				function( row )
+				{
+					return row.peer;
+				}
+			);
+
+			for ( var i = 0; i < arrOutboundPeers.length; i++ )
+			{
+				var ws	= arrOutboundPeers[ i ];
+				if ( arrGoodPeerUrls.indexOf( ws.peer ) !== -1 )
+				{
+					requestPeers( ws );
+				}
 			}
 		}
 	);
 }
 
-function connectToPeer(url, onOpen) {
-	addPeer(url);
-	var options = {};
-	if (socks && conf.socksHost && conf.socksPort) {
-		options.agent = new socks.Agent({
-			proxy: {
-				ipaddress: conf.socksHost,
-				port: conf.socksPort,
-				type: 5
-			}
-		}, /^wss/i.test(url));
-		log.consoleLog('Using proxy: ' + conf.socksHost + ':' + conf.socksPort);
+
+function connectToPeer( url, onOpen )
+{
+	addPeer( url );
+
+	var options	= {};
+
+	if ( socks && conf.socksHost && conf.socksPort )
+	{
+		options.agent	= new socks.Agent
+		(
+			{
+				proxy		:
+				{
+					ipaddress	: conf.socksHost,
+					port		: conf.socksPort,
+					type		: 5
+				}
+			},
+			/^wss/i.test( url )
+		);
+		log.consoleLog( 'Using proxy: ' + conf.socksHost + ':' + conf.socksPort );
 	}
-	var ws = options.agent ? new WebSocket(url,options) : new WebSocket(url);
-	assocConnectingOutboundWebsockets[url] = ws;
-	setTimeout(function(){
-		if (assocConnectingOutboundWebsockets[url]){
-			log.consoleLog('abandoning connection to '+url+' due to timeout');
-			delete assocConnectingOutboundWebsockets[url];
-			// after this, new connection attempts will be allowed to the wire, but this one can still succeed.  See the check for duplicates below.
+
+	//	...
+	var ws	= options.agent ? new WebSocket( url, options ) : new WebSocket( url );
+
+	assocConnectingOutboundWebsockets[ url ] = ws;
+	setTimeout
+	(
+		function()
+		{
+			if ( assocConnectingOutboundWebsockets[ url ] )
+			{
+				log.consoleLog( 'abandoning connection to ' + url + ' due to timeout' );
+				delete assocConnectingOutboundWebsockets[ url ];
+				//	after this, new connection attempts will be allowed to the wire, but this one can still succeed.  See the check for duplicates below.
+			}
+		},
+		5000
+	);
+
+	//	avoid warning
+	ws.setMaxListeners( 20 );
+	ws.once
+	(
+		'open',
+		function onWsOpen()
+		{
+			breadcrumbs.add( 'connected to ' + url );
+			delete assocConnectingOutboundWebsockets[ url ];
+
+			ws.assocPendingRequests		= {};
+			ws.assocInPreparingResponse	= {};
+
+			if ( ! ws.url )
+				throw Error("no url on ws");
+
+			// browser implementatin of Websocket might add "/"
+			if ( ws.url !== url && ws.url !== url + "/" )
+				throw Error("url is different: "+ws.url);
+
+			var another_ws_to_same_peer = getOutboundPeerWsByUrl(url);
+			if ( another_ws_to_same_peer )
+			{
+				//	duplicate connection.  May happen if we abondoned a connection attempt after timeout but it still succeeded while we opened another connection
+				log.consoleLog( 'already have a connection to ' + url + ', will keep the old one and close the duplicate' );
+				ws.close( 1000, 'duplicate connection' );
+
+				if ( onOpen )
+					onOpen( null, another_ws_to_same_peer );
+
+				return;
+			}
+
+			//	...
+			ws.peer		= url;
+			ws.host		= getHostByPeer( ws.peer );
+			ws.bOutbound	= true;
+			ws.last_ts	= Date.now();
+
+			log.consoleLog( 'connected to ' + url + ", host " + ws.host );
+			arrOutboundPeers.push( ws );
+			sendVersion( ws );
+
+			//	I can listen too, this is my url to connect to
+			if ( conf.myUrl )
+				sendJustsaying( ws, 'my_url', conf.myUrl );
+
+			if ( ! conf.bLight )
+				subscribe( ws );
+
+			if ( onOpen )
+				onOpen( null, ws );
+
+			eventBus.emit( 'connected', ws );
+			eventBus.emit( 'open-' + url );
 		}
-	}, 5000);
-	ws.setMaxListeners(20); // avoid warning
-	ws.once('open', function onWsOpen() {
-		breadcrumbs.add('connected to '+url);
-		delete assocConnectingOutboundWebsockets[url];
-		ws.assocPendingRequests = {};
-		ws.assocInPreparingResponse = {};
-		if (!ws.url)
-			throw Error("no url on ws");
-		if (ws.url !== url && ws.url !== url + "/") // browser implementatin of Websocket might add /
-			throw Error("url is different: "+ws.url);
-		var another_ws_to_same_peer = getOutboundPeerWsByUrl(url);
-		if (another_ws_to_same_peer){ // duplicate connection.  May happen if we abondoned a connection attempt after timeout but it still succeeded while we opened another connection
-			log.consoleLog('already have a connection to '+url+', will keep the old one and close the duplicate');
-			ws.close(1000, 'duplicate connection');
-			if (onOpen)
-				onOpen(null, another_ws_to_same_peer);
-			return;
+	);
+
+	ws.on
+	(
+		'close',
+		function onWsClose()
+		{
+			var i	= arrOutboundPeers.indexOf( ws );
+			log.consoleLog( 'close event, removing ' + i + ': ' + url );
+			if ( i !== -1 )
+				arrOutboundPeers.splice( i, 1 );
+
+			cancelRequestsOnClosedConnection( ws );
+
+			if ( options.agent && options.agent.destroy )
+				options.agent.destroy();
 		}
-		ws.peer = url;
-		ws.host = getHostByPeer(ws.peer);
-		ws.bOutbound = true;
-		ws.last_ts = Date.now();
-		log.consoleLog('connected to '+url+", host "+ws.host);
-		arrOutboundPeers.push(ws);
-		sendVersion(ws);
-		if (conf.myUrl) // I can listen too, this is my url to connect to
-			sendJustsaying(ws, 'my_url', conf.myUrl);
-		if (!conf.bLight)
-			subscribe(ws);
-		if (onOpen)
-			onOpen(null, ws);
-		eventBus.emit('connected', ws);
-		eventBus.emit('open-'+url);
-	});
-	ws.on('close', function onWsClose() {
-		var i = arrOutboundPeers.indexOf(ws);
-		log.consoleLog('close event, removing '+i+': '+url);
-		if (i !== -1)
-			arrOutboundPeers.splice(i, 1);
-		cancelRequestsOnClosedConnection(ws);
-		if (options.agent && options.agent.destroy)
-			options.agent.destroy();
-	});
-	ws.on('error', function onWsError(e){
-		delete assocConnectingOutboundWebsockets[url];
-		log.consoleLog("error from server "+url+": "+e);
-		var err = e.toString();
-		// !ws.bOutbound means not connected yet. This is to distinguish connection errors from later errors that occur on open connection
-		if (!ws.bOutbound && onOpen)
-			onOpen(err);
-		if (!ws.bOutbound)
-			eventBus.emit('open-'+url, err);
-	});
-	ws.on('message', onWebsocketMessage);
-	log.consoleLog('connectToPeer done');
+	);
+
+	ws.on
+	(
+		'error',
+		function onWsError( e )
+		{
+			delete assocConnectingOutboundWebsockets[ url ];
+			log.consoleLog( "error from server " + url + ": " + e );
+
+			var err	= e.toString();
+			//	!ws.bOutbound means not connected yet. This is to distinguish connection errors from later errors that occur on open connection
+
+			if ( ! ws.bOutbound && onOpen )
+				onOpen( err );
+
+			if ( ! ws.bOutbound )
+				eventBus.emit( 'open-' + url, err );
+		}
+	);
+
+	ws.on
+	(
+		'message',
+		onWebsocketMessage
+	);
+
+	//	...
+	log.consoleLog( 'connectToPeer done' );
 }
 
-function addOutboundPeers(multiplier){
-	if (!multiplier)
+
+function addOutboundPeers( multiplier )
+{
+	if ( ! multiplier )
 		multiplier = 1;
-	if (multiplier >= 32) // limit recursion
+
+	if ( multiplier >= 32 )	//	limit recursion
 		return;
-	var order_by = (multiplier <= 4) ? "count_new_good_joints DESC" : db.getRandom(); // don't stick to old peers with most accumulated good joints
-	var arrOutboundPeerUrls = arrOutboundPeers.map(function(ws){ return ws.peer; });
-	var arrInboundHosts = wss.clients.map(function(ws){ return ws.host; });
-	var max_new_outbound_peers = Math.min(conf.MAX_OUTBOUND_CONNECTIONS-arrOutboundPeerUrls.length, 5); // having too many connections being opened creates odd delays in db functions
-	if (max_new_outbound_peers <= 0)
+
+	//	don't stick to old peers with most accumulated good joints
+	var order_by			= ( multiplier <= 4 ) ? "count_new_good_joints DESC" : db.getRandom();
+	var arrOutboundPeerUrls		= arrOutboundPeers.map
+	(
+		function( ws )
+		{
+			return ws.peer;
+		}
+	);
+	var arrInboundHosts		= wss.clients.map
+	(
+		function( ws )
+		{
+			return ws.host;
+		}
+	);
+
+	//	having too many connections being opened creates odd delays in db functions
+	var max_new_outbound_peers	= Math.min
+	(
+		conf.MAX_OUTBOUND_CONNECTIONS - arrOutboundPeerUrls.length,
+		5
+	);
+
+	if ( max_new_outbound_peers <= 0 )
 		return;
-	db.query(
+
+	db.query
+	(
 		"SELECT peer \n\
 		FROM peers \n\
 		JOIN peer_hosts USING(peer_host) \n\
 		LEFT JOIN peer_host_urls ON peer=url AND is_active=1 \n\
 		WHERE (count_invalid_joints/count_new_good_joints<? \n\
 			OR count_new_good_joints=0 AND count_nonserial_joints=0 AND count_invalid_joints=0) \n\
-			"+((arrOutboundPeerUrls.length > 0) ? "AND peer NOT IN("+db.escape(arrOutboundPeerUrls)+") \n" : "")+"\n\
-			"+((arrInboundHosts.length > 0) ? "AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN("+db.escape(arrInboundHosts)+")) \n": "")+"\n\
+			" + ( ( arrOutboundPeerUrls.length > 0 ) ? "AND peer NOT IN(" + db.escape( arrOutboundPeerUrls ) + ") \n" : "" ) + "\n\
+			" + ( ( arrInboundHosts.length > 0 ) ? "AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN(" + db.escape( arrInboundHosts ) + ")) \n" : "" ) + "\n\
 			AND is_self=0 \n\
-		ORDER BY "+order_by+" LIMIT ?", 
-		[conf.MAX_TOLERATED_INVALID_RATIO*multiplier, max_new_outbound_peers], 
-		function(rows){
-			for (var i=0; i<rows.length; i++){
-				assocKnownPeers[rows[i].peer] = true;
-				findOutboundPeerOrConnect(rows[i].peer);
+		ORDER BY " + order_by + " LIMIT ?",
+		[ conf.MAX_TOLERATED_INVALID_RATIO * multiplier, max_new_outbound_peers ],
+		function( rows )
+		{
+			for ( var i = 0; i < rows.length; i ++ )
+			{
+				assocKnownPeers[ rows[ i ].peer ]	= true;
+				findOutboundPeerOrConnect( rows[ i ].peer );
 			}
-			if (arrOutboundPeerUrls.length === 0 && rows.length === 0) // if no outbound connections at all, get less strict
-				addOutboundPeers(multiplier*2);
+
+			//	if no outbound connections at all, get less strict
+			if ( arrOutboundPeerUrls.length === 0 && rows.length === 0 )
+			{
+				addOutboundPeers( multiplier * 2 );
+			}
 		}
 	);
 }
 
-function getHostByPeer(peer){
-	var matches = peer.match(/^wss?:\/\/(.*)$/i);
-	if (matches)
+function getHostByPeer( peer )
+{
+	var matches	= peer.match( /^wss?:\/\/(.*)$/i );
+	if ( matches )
+	{
 		peer = matches[1];
-	matches = peer.match(/^(.*?)[:\/]/);
+	}
+
+	matches	= peer.match( /^(.*?)[:\/]/ );
 	return matches ? matches[1] : peer;
 }
 
-function addPeerHost(host, onDone){
-	db.query("INSERT "+db.getIgnore()+" INTO peer_hosts (peer_host) VALUES (?)", [host], function(){
-		if (onDone)
-			onDone();
-	});
+function addPeerHost( host, onDone )
+{
+	db.query
+	(
+		"INSERT " + db.getIgnore() + " INTO peer_hosts (peer_host) VALUES (?)",
+		[ host ],
+		function()
+		{
+			if ( onDone )
+			{
+				onDone();
+			}
+		}
+	);
 }
 
-function addPeer(peer){
+
+function addPeer(peer)
+{
 	if (assocKnownPeers[peer])
 		return;
 	assocKnownPeers[peer] = true;
@@ -478,7 +826,8 @@ function addPeer(peer){
 	});
 }
 
-function getOutboundPeerWsByUrl(url){
+function getOutboundPeerWsByUrl(url)
+{
 	log.consoleLog("outbound peers: "+arrOutboundPeers.map(function(o){ return o.peer; }).join(", "));
 	for (var i=0; i<arrOutboundPeers.length; i++)
 		if (arrOutboundPeers[i].peer === url)
@@ -486,7 +835,8 @@ function getOutboundPeerWsByUrl(url){
 	return null;
 }
 
-function getPeerWebSocket(peer){
+function getPeerWebSocket(peer)
+{
 	for (var i=0; i<arrOutboundPeers.length; i++)
 		if (arrOutboundPeers[i].peer === peer)
 			return arrOutboundPeers[i];
@@ -496,7 +846,8 @@ function getPeerWebSocket(peer){
 	return null;
 }
 
-function findOutboundPeerOrConnect(url, onOpen){
+function findOutboundPeerOrConnect( url, onOpen )
+{
 	if (!url)
 		throw Error('no url');
 	if (!onOpen)
@@ -527,17 +878,26 @@ function findOutboundPeerOrConnect(url, onOpen){
 	connectToPeer(url, onOpen);
 }
 
-function purgePeerEvents(){
-    if (conf.storage !== 'sqlite') {
-        return;
-    }
-    log.consoleLog('will purge peer events');
-    db.query("DELETE FROM peer_events WHERE event_date <= datetime('now', '-3 day')", function() {
-        log.consoleLog("deleted some old peer_events");
-    });
+function purgePeerEvents()
+{
+	if (conf.storage !== 'sqlite')
+	{
+		return;
+	}
+
+	log.consoleLog('will purge peer events');
+	db.query
+	(
+		"DELETE FROM peer_events WHERE event_date <= datetime('now', '-3 day')",
+		function()
+		{
+        		log.consoleLog("deleted some old peer_events");
+		}
+	);
 }
 
-function purgeDeadPeers(){
+function purgeDeadPeers()
+{
 	if (conf.storage !== 'sqlite')
 		return;
 	log.consoleLog('will purge dead peers');
@@ -573,11 +933,13 @@ function purgeDeadPeers(){
 	});
 }
 
-function requestPeers(ws){
+function requestPeers(ws)
+{
 	sendRequest(ws, 'get_peers', null, false, handleNewPeers);
 }
 
-function handleNewPeers(ws, request, arrPeerUrls){
+function handleNewPeers(ws, request, arrPeerUrls)
+{
 	if (arrPeerUrls.error)
 		return log.consoleLog('get_peers failed: '+arrPeerUrls.error);
 	if (!Array.isArray(arrPeerUrls))
@@ -599,7 +961,8 @@ function handleNewPeers(ws, request, arrPeerUrls){
 	async.series(arrQueries);
 }
 
-function heartbeat(){
+function heartbeat()
+{
 	// just resumed after sleeping
 	var bJustResumed = (typeof window !== 'undefined' && window && window.cordova && Date.now() - last_hearbeat_wake_ts > 2*HEARTBEAT_TIMEOUT);
 	last_hearbeat_wake_ts = Date.now();
@@ -621,14 +984,16 @@ function heartbeat(){
 	});
 }
 
-function handleHeartbeatResponse(ws, request, response){
+function handleHeartbeatResponse(ws, request, response)
+{
 	delete ws.last_sent_heartbeat_ts;
 	if (response === 'sleep') // the peer doesn't want to be bothered with heartbeats any more, but still wants to keep the connection open
 		ws.bSleeping = true;
 	// as soon as the peer sends a heartbeat himself, we'll think he's woken up and resume our heartbeats too
 }
 
-function requestFromLightVendor(command, params, responseHandler){
+function requestFromLightVendor(command, params, responseHandler)
+{
 	if (!exports.light_vendor_url){
 		log.consoleLog("light_vendor_url not set yet");
 		return setTimeout(function(){
@@ -642,12 +1007,14 @@ function requestFromLightVendor(command, params, responseHandler){
 	});
 }
 
-function printConnectionStatus(){
+function printConnectionStatus()
+{
 	log.consoleLog(wss.clients.length+" incoming connections, "+arrOutboundPeers.length+" outgoing connections, "+
 		Object.keys(assocConnectingOutboundWebsockets).length+" outgoing connections being opened");
 }
 
-function subscribe(ws){
+function subscribe(ws)
+{
 	ws.subscription_id = crypto.randomBytes(30).toString("base64"); // this is to detect self-connect
 	storage.readLastMainChainIndex(function(last_mci){
 		sendRequest(ws, 'subscribe', {subscription_id: ws.subscription_id, last_mci: last_mci}, false, function(ws, request, response){
@@ -663,20 +1030,23 @@ function subscribe(ws){
 // joints
 
 // sent as justsaying or as response to a request
-function sendJoint(ws, objJoint, tag) {
+function sendJoint(ws, objJoint, tag)
+{
 	log.consoleLog('sending joint identified by unit ' + objJoint.unit.unit + ' to', ws.peer);
 	tag ? sendResponse(ws, tag, {joint: objJoint}) : sendJustsaying(ws, 'joint', objJoint);
 }
 
 // sent by light clients to their vendors
-function postJointToLightVendor(objJoint, handleResponse) {
+function postJointToLightVendor(objJoint, handleResponse)
+{
 	log.consoleLog('posing joint identified by unit ' + objJoint.unit.unit + ' to light vendor');
 	requestFromLightVendor('post_joint', objJoint, function(ws, request, response){
 		handleResponse(response);
 	});
 }
 
-function sendFreeJoints(ws) {
+function sendFreeJoints(ws)
+{
 	storage.readFreeJoints(function(objJoint){
 		sendJoint(ws, objJoint);
 	}, function(){
@@ -684,7 +1054,8 @@ function sendFreeJoints(ws) {
 	});
 }
 
-function sendJointsSinceMci(ws, mci) {
+function sendJointsSinceMci(ws, mci)
+{
 	joint_storage.readJointsSinceMci(
 		mci, 
 		function(objJoint){
@@ -696,18 +1067,21 @@ function sendJointsSinceMci(ws, mci) {
 	);
 }
 
-function requestFreeJointsFromAllOutboundPeers(){
+function requestFreeJointsFromAllOutboundPeers()
+{
 	for (var i=0; i<arrOutboundPeers.length; i++)
 		sendJustsaying(arrOutboundPeers[i], 'refresh', null);
 }
 
-function requestNewJoints(ws){
+function requestNewJoints(ws)
+{
 	storage.readLastMainChainIndex(function(last_mci){
 		sendJustsaying(ws, 'refresh', last_mci);
 	});
 }
 
-function rerequestLostJoints(){
+function rerequestLostJoints()
+{
 	//log.consoleLog("rerequestLostJoints");
 	if (bCatchingUp)
 		return;
@@ -722,7 +1096,8 @@ function rerequestLostJoints(){
 	});
 }
 
-function requestNewMissingJoints(ws, arrUnits){
+function requestNewMissingJoints(ws, arrUnits)
+{
 	var arrNewUnits = [];
 	async.eachSeries(
 		arrUnits,
@@ -755,7 +1130,8 @@ function requestNewMissingJoints(ws, arrUnits){
 	);
 }
 
-function requestJoints(ws, arrUnits) {
+function requestJoints(ws, arrUnits)
+{
 	if (arrUnits.length === 0)
 		return;
 	arrUnits.forEach(function(unit){
@@ -774,7 +1150,8 @@ function requestJoints(ws, arrUnits) {
 	});
 }
 
-function handleResponseToJointRequest(ws, request, response){
+function handleResponseToJointRequest(ws, request, response)
+{
 	delete assocRequestedUnits[request.params];
 	if (!response.joint){
 		var unit = request.params;
@@ -815,7 +1192,8 @@ function handleResponseToJointRequest(ws, request, response){
 	conf.bLight ? handleLightOnlineJoint(ws, objJoint) : handleOnlineJoint(ws, objJoint);
 }
 
-function havePendingRequest(command){
+function havePendingRequest(command)
+{
 	var arrPeers = wss.clients.concat(arrOutboundPeers);
 	for (var i=0; i<arrPeers.length; i++){
 		var assocPendingRequests = arrPeers[i].assocPendingRequests;
@@ -826,7 +1204,8 @@ function havePendingRequest(command){
 	return false;
 }
 
-function havePendingJointRequest(unit){
+function havePendingJointRequest(unit)
+{
 	var arrPeers = wss.clients.concat(arrOutboundPeers);
 	for (var i=0; i<arrPeers.length; i++){
 		var assocPendingRequests = arrPeers[i].assocPendingRequests;
@@ -840,7 +1219,8 @@ function havePendingJointRequest(unit){
 }
 
 // We may receive a reference to a nonexisting unit in parents. We are not going to keep the referencing joint forever.
-function purgeJunkUnhandledJoints(){
+function purgeJunkUnhandledJoints()
+{
 	if (bCatchingUp || Date.now() - coming_online_time < 3600*1000)
 		return;
 	db.query("DELETE FROM unhandled_joints WHERE creation_date < "+db.addTime("-1 HOUR"), function(){
@@ -848,7 +1228,8 @@ function purgeJunkUnhandledJoints(){
 	});
 }
 
-function purgeJointAndDependenciesAndNotifyPeers(objJoint, error, onDone){
+function purgeJointAndDependenciesAndNotifyPeers(objJoint, error, onDone)
+{
 	if (error.indexOf('is not stable in view of your parents') >= 0){ // give it a chance to be retried after adding other units
 		eventBus.emit('nonfatal_error', "error on unit "+objJoint.unit.unit+": "+error+"; "+JSON.stringify(objJoint), new Error());
 		return onDone();
@@ -866,7 +1247,8 @@ function purgeJointAndDependenciesAndNotifyPeers(objJoint, error, onDone){
 	);
 }
 
-function purgeDependenciesAndNotifyPeers(unit, error, onDone){
+function purgeDependenciesAndNotifyPeers(unit, error, onDone)
+{
 	joint_storage.purgeDependencies(
 		unit, 
 		error, 
@@ -880,14 +1262,16 @@ function purgeDependenciesAndNotifyPeers(unit, error, onDone){
 	);
 }
 
-function forwardJoint(ws, objJoint){
+function forwardJoint(ws, objJoint)
+{
 	wss.clients.concat(arrOutboundPeers).forEach(function(client) {
 		if (client != ws && client.bSubscribed)
 			sendJoint(client, objJoint);
 	});
 }
 
-function handleJoint(ws, objJoint, bSaved, callbacks){
+function handleJoint(ws, objJoint, bSaved, callbacks)
+{
 	var unit = objJoint.unit.unit;
 
 	if (assocUnitsInWork[unit])
@@ -978,7 +1362,8 @@ function handleJoint(ws, objJoint, bSaved, callbacks){
 }
 
 // handle joint posted to me by a light client
-function handlePostedJoint(ws, objJoint, onDone){
+function handlePostedJoint(ws, objJoint, onDone)
+{
 	
 	if (!objJoint || !objJoint.unit || !objJoint.unit.unit)
 		return onDone('no unit');
@@ -1032,7 +1417,8 @@ function handlePostedJoint(ws, objJoint, onDone){
 	});
 }
 
-function handleOnlineJoint(ws, objJoint, onDone){
+function handleOnlineJoint(ws, objJoint, onDone)
+{
 	if (!onDone)
 		onDone = function(){};
 	var unit = objJoint.unit.unit;
@@ -1103,7 +1489,8 @@ function handleOnlineJoint(ws, objJoint, onDone){
 }
 
 
-function handleSavedJoint(objJoint, creation_ts, peer){
+function handleSavedJoint(objJoint, creation_ts, peer)
+{
 	
 	var unit = objJoint.unit.unit;
 	var ws = getPeerWebSocket(peer);
@@ -1168,7 +1555,8 @@ function handleSavedJoint(objJoint, creation_ts, peer){
 	});
 }
 
-function handleLightOnlineJoint(ws, objJoint){
+function handleLightOnlineJoint(ws, objJoint)
+{
 	// the lock ensures that we do not overlap with history processing which might also write new joints
 	mutex.lock(["light_joints"], function(unlock){
 		breadcrumbs.add('got light_joints for handleLightOnlineJoint '+objJoint.unit.unit);
@@ -1179,16 +1567,19 @@ function handleLightOnlineJoint(ws, objJoint){
 	});
 }
 
-function setWatchedAddresses(_arrWatchedAddresses){
+function setWatchedAddresses(_arrWatchedAddresses)
+{
 	arrWatchedAddresses = _arrWatchedAddresses;
 }
 
-function addWatchedAddress(address){
+function addWatchedAddress(address)
+{
 	arrWatchedAddresses.push(address);
 }
 
 // if any of the watched addresses are affected, notifies:  1. own UI  2. light clients
-function notifyWatchers(objJoint, source_ws){
+function notifyWatchers(objJoint, source_ws)
+{
 	var objUnit = objJoint.unit;
 	var arrAddresses = objUnit.authors.map(function(author){ return author.address; });
 	if (!objUnit.messages) // voided unit
@@ -1237,9 +1628,9 @@ function notifyWatchers(objJoint, source_ws){
 	});
 }
 
-eventBus.on('mci_became_stable', notifyWatchersAboutStableJoints);
 
-function notifyWatchersAboutStableJoints(mci){
+function notifyWatchersAboutStableJoints(mci)
+{
 	// the event was emitted from inside mysql transaction, make sure it completes so that the changes are visible
 	// If the mci became stable in determineIfStableInLaterUnitsAndUpdateStableMcFlag (rare), write lock is released before the validation commits, 
 	// so we might not see this mci as stable yet. Hopefully, it'll complete before light/have_updates roundtrip
@@ -1883,20 +2274,45 @@ function updateLinkProofsOfPrivateChain(arrPrivateElements, unit, message_index,
 	});
 }
 
-function initWitnessesIfNecessary(ws, onDone){
+
+/**
+ *	initialize witnesses
+ *	@param ws
+ *	@param onDone
+ */
+function initWitnessesIfNecessary( ws, onDone )
+{
 	onDone = onDone || function(){};
-	myWitnesses.readMyWitnesses(function(arrWitnesses){
-		if (arrWitnesses.length > 0) // already have witnesses
+	myWitnesses.readMyWitnesses( function( arrWitnesses )
+	{
+		//	already have witnesses
+		if ( arrWitnesses.length > 0 )
+		{
 			return onDone();
-		sendRequest(ws, 'get_witnesses', null, false, function(ws, request, arrWitnesses){
-			if (arrWitnesses.error){
-				log.consoleLog('get_witnesses returned error: '+arrWitnesses.error);
-				return onDone();
+		}
+
+		sendRequest
+		(
+			ws,
+			'get_witnesses',
+			null,
+			false,
+			function( ws, request, arrWitnesses )
+			{
+				if ( arrWitnesses.error )
+				{
+					log.consoleLog( 'get_witnesses returned error: ' + arrWitnesses.error );
+					return onDone();
+				}
+
+				myWitnesses.insertWitnesses( arrWitnesses, onDone );
 			}
-			myWitnesses.insertWitnesses(arrWitnesses, onDone);
-		});
+		);
+
 	}, 'ignore');
 }
+
+
 
 
 // hub
@@ -2747,46 +3163,59 @@ function closeAllWsConnections() {
 	});
 }
 
-function isConnected(){
-	return (arrOutboundPeers.length + wss.clients.length);
+function isConnected()
+{
+	return ( arrOutboundPeers.length + wss.clients.length );
 }
 
 function isCatchingUp(){
 	return bCatchingUp;
 }
 
+
+
+
+
+
+eventBus.on( 'mci_became_stable', notifyWatchersAboutStableJoints );
+
+
+
+
+
 start();
 
-exports.start = start;
-exports.postJointToLightVendor = postJointToLightVendor;
-exports.broadcastJoint = broadcastJoint;
-exports.sendPrivatePayment = sendPrivatePayment;
 
-exports.sendJustsaying = sendJustsaying;
-exports.sendAllInboundJustsaying = sendAllInboundJustsaying;
-exports.sendError = sendError;
-exports.sendRequest = sendRequest;
-exports.findOutboundPeerOrConnect = findOutboundPeerOrConnect;
-exports.handleOnlineJoint = handleOnlineJoint;
+exports.start						= start;
+exports.postJointToLightVendor				= postJointToLightVendor;
+exports.broadcastJoint					= broadcastJoint;
+exports.sendPrivatePayment				= sendPrivatePayment;
 
-exports.handleOnlinePrivatePayment = handleOnlinePrivatePayment;
-exports.requestUnfinishedPastUnitsOfPrivateChains = requestUnfinishedPastUnitsOfPrivateChains;
-exports.requestProofsOfJointsIfNewOrUnstable = requestProofsOfJointsIfNewOrUnstable;
+exports.sendJustsaying					= sendJustsaying;
+exports.sendAllInboundJustsaying			= sendAllInboundJustsaying;
+exports.sendError					= sendError;
+exports.sendRequest					= sendRequest;
+exports.findOutboundPeerOrConnect			= findOutboundPeerOrConnect;
+exports.handleOnlineJoint				= handleOnlineJoint;
 
-exports.requestFromLightVendor = requestFromLightVendor;
+exports.handleOnlinePrivatePayment			= handleOnlinePrivatePayment;
+exports.requestUnfinishedPastUnitsOfPrivateChains	= requestUnfinishedPastUnitsOfPrivateChains;
+exports.requestProofsOfJointsIfNewOrUnstable		= requestProofsOfJointsIfNewOrUnstable;
 
-exports.addPeer = addPeer;
+exports.requestFromLightVendor				= requestFromLightVendor;
 
-exports.initWitnessesIfNecessary = initWitnessesIfNecessary;
+exports.addPeer						= addPeer;
 
-exports.setMyDeviceProps = setMyDeviceProps;
+exports.initWitnessesIfNecessary			= initWitnessesIfNecessary;
 
-exports.setWatchedAddresses = setWatchedAddresses;
-exports.addWatchedAddress = addWatchedAddress;
-exports.addLightWatchedAddress = addLightWatchedAddress;
+exports.setMyDeviceProps				= setMyDeviceProps;
 
-exports.closeAllWsConnections = closeAllWsConnections;
-exports.isConnected = isConnected;
-exports.isCatchingUp = isCatchingUp;
-exports.requestHistoryFor = requestHistoryFor;
-exports.exchangeRates = exchangeRates;
+exports.setWatchedAddresses				= setWatchedAddresses;
+exports.addWatchedAddress				= addWatchedAddress;
+exports.addLightWatchedAddress				= addLightWatchedAddress;
+
+exports.closeAllWsConnections				= closeAllWsConnections;
+exports.isConnected					= isConnected;
+exports.isCatchingUp					= isCatchingUp;
+exports.requestHistoryFor				= requestHistoryFor;
+exports.exchangeRates					= exchangeRates;
