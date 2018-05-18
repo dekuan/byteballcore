@@ -1,10 +1,6 @@
-/*jslint node: true */
-"use strict";
+'use strict';
 
 
-/**
- *	print log on console with current date time
- */
 function consoleLog()
 {
 	var sText;
@@ -28,8 +24,10 @@ function consoleLog()
 }
 
 
+function test_log()
+{
+	consoleLog( "111111" );
+}
 
-/**
- *
- */
-exports.consoleLog	= consoleLog;
+
+test_log();
