@@ -23,7 +23,7 @@ function consoleLog()
 
 	//	...
 	oDate	= new Date();
-	sText	= "[" + oDate.toLocaleString() + " - " + oDate.getTime() + "]\t";
+	sText	= "[" + oDate.toLocaleString() + "/" + oDate.getTime() + "]\t";
 	sText += arrArgs.join( ", " );
 
 	console.log( sText );
