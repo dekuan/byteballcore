@@ -1,6 +1,9 @@
 /*jslint node: true */
 "use strict";
 
+var log			= require( './log.js' );
+
+
 var count = 0;
 var times = {};
 var start_ts = 0;
