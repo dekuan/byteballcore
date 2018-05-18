@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var async = require('async');
 var _ = require('lodash');
 var conf = require('./conf.js');

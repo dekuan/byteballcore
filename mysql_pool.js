@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var mysql = require('mysql');
 
 module.exports = function(connection_or_pool){

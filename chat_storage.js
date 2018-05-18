@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var db = require('./db.js');
 
 function store(correspondent_address, message, is_incoming, type) {

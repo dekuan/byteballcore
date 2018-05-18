@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var ecdsa = require('secp256k1');
 
 exports.sign = function(hash, priv_key){

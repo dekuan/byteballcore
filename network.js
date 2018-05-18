@@ -3,6 +3,8 @@
 var WebSocket = process.browser ? global.WebSocket : require('ws');
 var socks = process.browser ? null : require('socks'+'');
 var WebSocketServer = WebSocket.Server;
+
+var log			= require( './log.js' );
 var crypto = require('crypto');
 var _ = require('lodash');
 var async = require('async');

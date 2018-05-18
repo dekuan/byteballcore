@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var _ = require('lodash');
 
 var PARENT_UNITS_SIZE = 2*44;

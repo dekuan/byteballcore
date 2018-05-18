@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var db = require('./db.js');
 var objectHash = require('./object_hash.js');
 var device = require('./device.js');

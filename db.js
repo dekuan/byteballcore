@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var conf = require('./conf.js');
 
 if (conf.storage === 'mysql'){

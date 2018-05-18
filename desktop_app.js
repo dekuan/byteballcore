@@ -1,5 +1,8 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
+
 var fs = require('fs'+'');
 var path = require('path'+''); // make browserify skip it
 

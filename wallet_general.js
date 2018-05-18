@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var async = require('async');
 var db = require('./db.js');
 var device = require('./device.js');

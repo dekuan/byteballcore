@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var _ = require('lodash');
 var db = require('./db.js');
 var constants = require("./constants.js");

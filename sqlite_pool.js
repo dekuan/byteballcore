@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var _ = require('lodash');
 var async = require('async');
 var sqlite_migrations = require('./sqlite_migrations');

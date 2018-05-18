@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var ValidationUtils = require("./validation_utils.js");
 var constants = require("./constants.js");
 var conf = require('./conf.js');

@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var async = require('async');
 var storage = require('./storage.js');
 var myWitnesses = require('./my_witnesses.js');

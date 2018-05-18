@@ -1,8 +1,11 @@
 /*jslint node: true */
 "use strict";
-var _ = require('lodash');
-var constants = require('./constants.js');
-var db = require('./db');
+
+var log			= require( './log.js' );
+var _ 			= require('lodash');
+var constants 		= require('./constants.js');
+var db 			= require('./db');
+
 
 function readBalance(wallet, handleBalance){
 	var walletIsAddress = typeof wallet === 'string' && wallet.length === 32; // ValidationUtils.isValidAddress

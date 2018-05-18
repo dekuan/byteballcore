@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var child_process = require('child_process');
 var conf = require('./conf.js');
 var mail = require('./mail.js');

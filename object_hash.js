@@ -1,5 +1,7 @@
 /*jslint node: true */
 "use strict";
+
+var log			= require( './log.js' );
 var crypto = require('crypto');
 var _ = require('lodash');
 var chash = require('./chash.js');

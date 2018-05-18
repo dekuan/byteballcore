@@ -1,6 +1,8 @@
 /*jslint node: true */
 "use strict";
-var db = require('./db.js');
+
+var log		= require( './log.js' );
+var db 		= require('./db.js');
 
 
 function generateQueriesToArchiveJoint(conn, objJoint, reason, arrQueries, cb){
