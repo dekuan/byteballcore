@@ -7,6 +7,7 @@
  */
 function consoleLog()
 {
+	var oDate;
 	var sText;
 	var arrArgs;
 
@@ -21,7 +22,8 @@ function consoleLog()
 	}
 
 	//	...
-	sText	= ( new Date() ).toString() + "\t";
+	oDate	= new Date();
+	sText	= "[" + oDate.toLocaleString() + " - " + oDate.getTime() + "]\t";
 	sText += arrArgs.join( ", " );
 
 	console.log( sText );
