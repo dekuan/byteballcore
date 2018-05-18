@@ -6,7 +6,7 @@ var mysql = require('mysql');
 
 module.exports = function(connection_or_pool){
 
-	console.log("constructor");
+	log.consoleLog("constructor");
 	var safe_connection = connection_or_pool;
 	safe_connection.original_query = safe_connection.query;
 	safe_connection.original_release = safe_connection.release;
@@ -34,9 +34,9 @@ module.exports = function(connection_or_pool){
 				/*
 				//console.error("code: "+(typeof err.code));
 				if (false && err.code === 'ER_LOCK_DEADLOCK'){
-					console.log("deadlock, will retry later");
+					log.consoleLog("deadlock, will retry later");
 					setTimeout(function(){
-						console.log("retrying deadlock query "+q.sql+" after timeout ...");
+						log.consoleLog("retrying deadlock query "+q.sql+" after timeout ...");
 						connection_or_pool.original_query.apply(connection_or_pool, new_args);
 					}, 100);
 					return;
@@ -45,9 +45,9 @@ module.exports = function(connection_or_pool){
 			}
 			last_arg(results, fields);
 		});
-		//console.log(new_args);
+		//log.consoleLog(new_args);
 		q = connection_or_pool.original_query.apply(connection_or_pool, new_args);
-		//console.log(q.sql);
+		//log.consoleLog(q.sql);
 		return q;
 	};
 
@@ -56,7 +56,7 @@ module.exports = function(connection_or_pool){
 	};
 	
 	safe_connection.release = function(){
-		//console.log("releasing connection");
+		//log.consoleLog("releasing connection");
 		connection_or_pool.original_release();
 	};
 
@@ -83,7 +83,7 @@ module.exports = function(connection_or_pool){
 		connection_or_pool.getConnection(function(err, new_connection) {
 			if (err)
 				throw err;
-			console.log("got connection from pool");
+			log.consoleLog("got connection from pool");
 			handleConnection(new_connection.original_query ? new_connection : module.exports(new_connection));
 		});
 	};

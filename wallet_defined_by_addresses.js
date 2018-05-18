@@ -204,7 +204,7 @@ function addNewSharedAddress(address, arrDefinition, assocSignersByPath, bForwar
 					[address, signerInfo.address, signing_path, signerInfo.member_signing_path, signerInfo.device_address]);
 			}
 			async.series(arrQueries, function(){
-				console.log('added new shared address '+address);
+				log.consoleLog('added new shared address '+address);
 				eventBus.emit("new_address-"+address);
 				if (conf.bLight)
 					network.addLightWatchedAddress(address);
@@ -424,7 +424,7 @@ function forwardPrivateChainsToOtherMembersOfAddresses(arrChains, arrAddresses, 
 		"SELECT device_address FROM shared_address_signing_paths WHERE shared_address IN(?) AND device_address!=?", 
 		[arrAddresses, device.getMyDeviceAddress()], 
 		function(rows){
-			console.log("shared address devices: "+rows.length);
+			log.consoleLog("shared address devices: "+rows.length);
 			var arrDeviceAddresses = rows.map(function(row){ return row.device_address; });
 			walletGeneral.forwardPrivateChainsToDevices(arrDeviceAddresses, arrChains, true, conn, onSaved);
 		}

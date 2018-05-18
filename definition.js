@@ -254,7 +254,7 @@ function validateDefinition(conn, arrDefinition, objUnit, objValidationState, ar
 					return cb("invalid address");
 				storage.readDefinitionByAddress(conn, other_address, objValidationState.last_ball_mci, {
 					ifFound: function(arrInnerAddressDefinition){
-						console.log("inner address:", arrInnerAddressDefinition);
+						log.consoleLog("inner address:", arrInnerAddressDefinition);
 						needToEvaluateNestedAddress(path) ? evaluate(arrInnerAddressDefinition, path, bInNegation, cb) : cb(null, true);
 					},
 					ifDefinitionNotFound: function(definition_chash){
@@ -300,7 +300,7 @@ function validateDefinition(conn, arrDefinition, objUnit, objValidationState, ar
 						var arrTemplate = JSON.parse(template);
 						try{
 							var arrFilledTemplate = replaceInTemplate(arrTemplate, params);
-							console.log(require('util').inspect(arrFilledTemplate, {depth: null}));
+							log.consoleLog(require('util').inspect(arrFilledTemplate, {depth: null}));
 						}
 						catch(e){
 							if (e instanceof NoVarException)
@@ -637,7 +637,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 				
 			case 'sig':
 				// ['sig', {algo: 'secp256k1', pubkey: 'base64'}]
-				//console.log(op, path);
+				//log.consoleLog(op, path);
 				var signature = assocAuthentifiers[path];
 				if (!signature)
 					return cb2(false);
@@ -787,7 +787,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 				// ['cosigned by', 'BASE32']
 				var cosigner_address = args;
 				var arrAuthorAddresses = objUnit.authors.map(function(author){ return author.address; });
-				console.log(op+" "+arrAuthorAddresses.indexOf(cosigner_address));
+				log.consoleLog(op+" "+arrAuthorAddresses.indexOf(cosigner_address));
 				cb2(arrAuthorAddresses.indexOf(cosigner_address) >= 0);
 				break;
 				
@@ -835,7 +835,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 						AND main_chain_index<=? AND main_chain_index>=? AND sequence='good' AND is_stable=1 LIMIT 1",
 					params,
 					function(rows){
-						console.log(op+" "+feed_name+" "+rows.length);
+						log.consoleLog(op+" "+feed_name+" "+rows.length);
 						cb2(rows.length > 0);
 					}
 				);
@@ -910,7 +910,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 						[arrSrcUnits, objValidationState.last_ball_mci - age, objValidationState.last_ball_mci],
 						function(rows){
 							var bSatisfies = (rows.length === arrSrcUnits.length);
-							console.log(op+" "+bSatisfies);
+							log.consoleLog(op+" "+bSatisfies);
 							cb2(bSatisfies);
 						}
 					);
@@ -922,7 +922,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 				// ['has', {what: 'input', asset: 'asset or base', type: 'transfer'|'issue', own_funds: true, amount_at_least: 123, amount_at_most: 123, amount: 123, address: 'BASE32'}]
 				// when an address is included (referenced from another address), own_funds refers to outer address' funds
 				augmentMessagesAndEvaluateFilter(op, args, function(res){
-					console.log(op+" "+res, args);
+					log.consoleLog(op+" "+res, args);
 					cb2(res);
 				});
 				break;
@@ -959,7 +959,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 					if (res)
 						for (var i=0; i<arrFoundObjects.length; i++)
 							sum += arrFoundObjects[i].amount;
-					console.log("sum="+sum);
+					log.consoleLog("sum="+sum);
 					if (typeof args.equals === "number" && sum === args.equals)
 						return cb2(true);
 					if (typeof args.at_least === "number" && sum >= args.at_least)
@@ -1003,7 +1003,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 	
 	function augmentMessagesAndEvaluateFilter(op, filter, handleResult){
 		function doEvaluateFilter(){
-			//console.log("augmented: ", objValidationState.arrAugmentedMessages[0].payload);
+			//log.consoleLog("augmented: ", objValidationState.arrAugmentedMessages[0].payload);
 			evaluateFilter(op, filter, handleResult);
 		}
 		if (!objValidationState.arrAugmentedMessages && filter.what === "input" && (filter.address || "own_funds" in filter || typeof filter.amount === "number" || typeof filter.amount_at_least === "number" || typeof filter.amount_at_most === "number"))
@@ -1088,7 +1088,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 
 	
 	function augmentMessages(onDone){
-		console.log("augmenting");
+		log.consoleLog("augmenting");
 		var arrAuthorAddresses = objUnit.authors.map(function(author){ return author.address; });
 		objValidationState.arrAugmentedMessages = _.cloneDeep(objUnit.messages);
 		async.eachSeries(
@@ -1099,11 +1099,11 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 				var payload = message.payload;
 				if (!payload.inputs) // skip now, will choke when checking the message
 					return cb3();
-				console.log("augmenting inputs");
+				log.consoleLog("augmenting inputs");
 				async.eachSeries(
 					payload.inputs,
 					function(input, cb4){
-						console.log("input", input);
+						log.consoleLog("input", input);
 						if (input.type === "issue"){
 							if (!input.address)
 								input.address = arrAuthorAddresses[0];
@@ -1116,12 +1116,12 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 								[input.unit, input.message_index, input.output_index],
 								function(rows){
 									if (rows.length === 1){
-										console.log("src", rows[0]);
+										log.consoleLog("src", rows[0]);
 										input.amount = rows[0].amount;
 										input.address = rows[0].address;
 									} // else will choke when checking the message
 									else
-										console.log(rows.length+" src outputs found");
+										log.consoleLog(rows.length+" src outputs found");
 									cb4();
 								}
 							);
@@ -1150,7 +1150,7 @@ function validateAuthentifiers(conn, address, this_asset, arrDefinition, objUnit
 	validateDefinition(conn, arrDefinition, objUnit, objValidationState, Object.keys(assocAuthentifiers), bAssetCondition, function(err){
 		if (err)
 			return cb(err);
-		//console.log("eval def");
+		//log.consoleLog("eval def");
 		evaluate(arrDefinition, 'r', function(res){
 			if (fatal_error)
 				return cb(fatal_error);

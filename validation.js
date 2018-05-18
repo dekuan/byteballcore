@@ -52,7 +52,7 @@ function validate(objJoint, callbacks) {
 	if (!objUnit.unit)
 		throw Error("no unit");
 	
-	console.log("\nvalidating joint identified by unit "+objJoint.unit.unit);
+	log.consoleLog("\nvalidating joint identified by unit "+objJoint.unit.unit);
 	
 	if (!isStringOfLength(objUnit.unit, constants.HASH_LENGTH))
 		return callbacks.ifJointError("wrong unit length");
@@ -807,7 +807,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 					function(row, cb){
 						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
 							if (bIncluded)
-								console.log("checkNoPendingChangeOfDefinitionChash: unit "+row.unit+" is included");
+								log.consoleLog("checkNoPendingChangeOfDefinitionChash: unit "+row.unit+" is included");
 							bIncluded ? cb("found") : cb();
 						});
 					},
@@ -847,7 +847,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 					function(row, cb){
 						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
 							if (bIncluded)
-								console.log("checkNoPendingDefinition: unit "+row.unit+" is included");
+								log.consoleLog("checkNoPendingDefinition: unit "+row.unit+" is included");
 							bIncluded ? cb("found") : cb();
 						});
 					},
@@ -886,7 +886,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 							function(row, cb){
 								graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
 									if (bIncluded)
-										console.log("checkNoPendingOrRetrievableNonserialIncluded: unit "+row.unit+" is included");
+										log.consoleLog("checkNoPendingOrRetrievableNonserialIncluded: unit "+row.unit+" is included");
 									bIncluded ? cb("found") : cb();
 								});
 							},
@@ -934,7 +934,7 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 }
 
 function validateMessages(conn, arrMessages, objUnit, objValidationState, callback){
-	console.log("validateMessages "+objUnit.unit);
+	log.consoleLog("validateMessages "+objUnit.unit);
 	async.forEachOfSeries(
 		arrMessages, 
 		function(objMessage, message_index, cb){
@@ -1480,7 +1480,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 					doubleSpendQuery, doubleSpendVars, 
 					objUnit, objValidationState, 
 					function acceptDoublespends(cb3){
-						console.log("--- accepting doublespend on unit "+objUnit.unit);
+						log.consoleLog("--- accepting doublespend on unit "+objUnit.unit);
 						var sql = "UPDATE inputs SET is_unique=NULL WHERE "+doubleSpendWhere+
 							" AND (SELECT is_stable FROM units WHERE units.unit=inputs.unit)=0";
 						if (!(objAsset && objAsset.is_private)){
@@ -1489,12 +1489,12 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 							return cb3();
 						}
 						mutex.lock(["private_write"], function(unlock){
-							console.log("--- will ununique the conflicts of unit "+objUnit.unit);
+							log.consoleLog("--- will ununique the conflicts of unit "+objUnit.unit);
 							conn.query(
 								sql, 
 								doubleSpendVars, 
 								function(){
-									console.log("--- ununique done unit "+objUnit.unit);
+									log.consoleLog("--- ununique done unit "+objUnit.unit);
 									objValidationState.arrDoubleSpendInputs.push({message_index: message_index, input_index: input_index});
 									unlock();
 									cb3();
@@ -1638,7 +1638,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 						if (arrInputAddresses.indexOf(owner_address) === -1)
 							arrInputAddresses.push(owner_address);
 						total_input += src_coin.amount;
-						console.log("-- val state "+JSON.stringify(objValidationState));
+						log.consoleLog("-- val state "+JSON.stringify(objValidationState));
 					//	if (objAsset)
 					//		profiler2.stop('validate transfer');
 						return checkInputDoubleSpend(cb);
@@ -1784,7 +1784,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 			}
 		},
 		function(err){
-			console.log("inputs done "+payload.asset, arrInputAddresses, arrOutputAddresses);
+			log.consoleLog("inputs done "+payload.asset, arrInputAddresses, arrOutputAddresses);
 			if (err)
 				return callback(err);
 			if (objAsset){
@@ -1828,7 +1828,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 									return cb(cond_err);
 								if (!bSatisfiesCondition)
 									return cb("transfer or issue condition not satisfied");
-								console.log("validatePaymentInputsAndOutputs with transfer/issue conditions done");
+								log.consoleLog("validatePaymentInputsAndOutputs with transfer/issue conditions done");
 								cb();
 							}
 						);
@@ -1840,7 +1840,7 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 					return callback("inputs and outputs do not balance: "+total_input+" !== "+total_output+" + "+objUnit.headers_commission+" + "+objUnit.payload_commission);
 				callback();
 			}
-		//	console.log("validatePaymentInputsAndOutputs done");
+		//	log.consoleLog("validatePaymentInputsAndOutputs done");
 		//	if (objAsset)
 		//		profiler2.stop('validate IO');
 		//	callback();

@@ -38,8 +38,8 @@ function getNakedUnit(objUnit){
 			delete objNakedUnit.messages[i].payload_uri;
 		}
 	}
-	//console.log("naked Unit: ", objNakedUnit);
-	//console.log("original Unit: ", objUnit);
+	//log.consoleLog("naked Unit: ", objNakedUnit);
+	//log.consoleLog("original Unit: ", objUnit);
 	return objNakedUnit;
 }
 

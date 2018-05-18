@@ -131,7 +131,7 @@ function testProofs(){
 				throw "proof failed len="+len+", i="+i;
 		}
 	}
-	console.log("proofs ok");
+	log.consoleLog("proofs ok");
 }
 
 function testRoot(){
@@ -143,7 +143,7 @@ function testRoot(){
 	var root = hash( hash( hash(arrElements[0]) + hash(arrElements[1]) ) + hash( hash(arrElements[2]) + hash(arrElements[2]) ) );
 	if (root !== getMerkleRoot(arrElements))
 		throw "3-element root failed";
-	console.log("root ok");
+	log.consoleLog("root ok");
 }
 
 testProofs();

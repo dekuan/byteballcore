@@ -24,7 +24,7 @@ function validateAndSaveDivisiblePrivatePayment(conn, objPrivateElement, callbac
 	validateDivisiblePrivatePayment(conn, objPrivateElement, {
 		ifError: callbacks.ifError,
 		ifOk: function(bStable, arrAuthorAddresses){
-			console.log("private validation OK "+bStable);
+			log.consoleLog("private validation OK "+bStable);
 			var unit = objPrivateElement.unit;
 			var message_index = objPrivateElement.message_index;
 			var payload = objPrivateElement.payload;
@@ -161,7 +161,7 @@ function validateDivisiblePrivatePayment(conn, objPrivateElement, callbacks){
 				validation.validatePayment(conn, payload, message_index, objPartialUnit, objValidationState, cb);
 			});
 			async.series(arrFuncs, function(err){
-				console.log("162: "+err);
+				log.consoleLog("162: "+err);
 				err ? callbacks.ifError(err) : callbacks.ifOk(bStable, arrAuthorAddresses);
 			});
 		}
@@ -170,7 +170,7 @@ function validateDivisiblePrivatePayment(conn, objPrivateElement, callbacks){
 
 // {asset: asset, paying_addresses: arrPayingAddresses, fee_paying_addresses: arrFeePayingAddresses, change_address: change_address, to_address: to_address, amount: amount, signer: signer, callbacks: callbacks}
 function composeDivisibleAssetPaymentJoint(params){
-	console.log("asset payment from "+params.paying_addresses);
+	log.consoleLog("asset payment from "+params.paying_addresses);
 	if ((params.to_address || params.amount) && params.asset_outputs)
 		throw Error("to_address and asset_outputs at the same time");
 	if (!ValidationUtils.isNonemptyArray(params.fee_paying_addresses))
@@ -207,7 +207,7 @@ function composeDivisibleAssetPaymentJoint(params){
 				composer.pickDivisibleCoinsForAmount(
 					conn, objAsset, arrAssetPayingAddresses, last_ball_mci, target_amount, bMultiAuthored, 
 					function(arrInputsWithProofs, total_input){
-						console.log("pick coins callback "+arrInputsWithProofs);
+						log.consoleLog("pick coins callback "+arrInputsWithProofs);
 						if (!arrInputsWithProofs)
 							return onDone({error_code: "NOT_ENOUGH_FUNDS", error: "not enough asset coins"});
 						var arrOutputs = params.to_address ? [{address: params.to_address, amount: params.amount}] : params.asset_outputs;
@@ -283,7 +283,7 @@ function getSavingCallbacks(callbacks){
 					throw Error("unexpected dependencies: "+arrMissingUnits.join(", "));
 				},
 				ifOk: function(objValidationState, validation_unlock){
-					console.log("divisible asset OK "+objValidationState.sequence);
+					log.consoleLog("divisible asset OK "+objValidationState.sequence);
 					if (objValidationState.sequence !== 'good'){
 						validation_unlock();
 						composer_unlock();
@@ -322,7 +322,7 @@ function getSavingCallbacks(callbacks){
 					composer.postJointToLightVendorIfNecessaryAndSave(
 						objJoint, 
 						function onLightError(err){ // light only
-							console.log("failed to post divisible payment "+unit);
+							log.consoleLog("failed to post divisible payment "+unit);
 							validation_unlock();
 							composer_unlock();
 							callbacks.ifError(err);
@@ -332,7 +332,7 @@ function getSavingCallbacks(callbacks){
 								objJoint, objValidationState, 
 								preCommitCallback,
 								function onDone(err){
-									console.log("saved unit "+unit, objPrivateElement);
+									log.consoleLog("saved unit "+unit, objPrivateElement);
 									validation_unlock();
 									composer_unlock();
 									var arrChains = objPrivateElement ? [[objPrivateElement]] : null; // only one chain that consists of one element

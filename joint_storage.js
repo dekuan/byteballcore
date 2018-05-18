@@ -82,7 +82,7 @@ function saveUnhandledJointAndDependencies(objJoint, arrMissingParentUnits, peer
 
 // handleDependentJoint called for each dependent unit
 function readDependentJointsThatAreReady(unit, handleDependentJoint){
-	//console.log("readDependentJointsThatAreReady "+unit);
+	//log.consoleLog("readDependentJointsThatAreReady "+unit);
 	var t=Date.now();
 	var from = unit ? "FROM dependencies AS src_deps JOIN dependencies USING(unit)" : "FROM dependencies";
 	var where = unit ? "WHERE src_deps.depends_on_unit="+db.escape(unit) : "";
@@ -98,8 +98,8 @@ function readDependentJointsThatAreReady(unit, handleDependentJoint){
 			HAVING count_missing_parents=0 \n\
 			ORDER BY NULL", 
 			function(rows){
-				//console.log(rows.length+" joints are ready");
-				//console.log("deps: "+(Date.now()-t));
+				//log.consoleLog(rows.length+" joints are ready");
+				//log.consoleLog("deps: "+(Date.now()-t));
 				rows.forEach(function(row) {
 					db.query("SELECT json, peer, "+db.getUnixTimestamp("creation_date")+" AS creation_ts FROM unhandled_joints WHERE unit=?", [row.unit_for_json], function(internal_rows){
 						internal_rows.forEach(function(internal_row) {
@@ -114,7 +114,7 @@ function readDependentJointsThatAreReady(unit, handleDependentJoint){
 }
 
 function findLostJoints(handleLostJoints){
-	//console.log("findLostJoints");
+	//log.consoleLog("findLostJoints");
 	db.query(
 		"SELECT DISTINCT depends_on_unit \n\
 		FROM dependencies \n\
@@ -122,7 +122,7 @@ function findLostJoints(handleLostJoints){
 		LEFT JOIN units ON depends_on_unit=units.unit \n\
 		WHERE unhandled_joints.unit IS NULL AND units.unit IS NULL AND dependencies.creation_date < " + db.addTime("-8 SECOND"), 
 		function(rows){
-			//console.log(rows.length+" lost joints");
+			//log.consoleLog(rows.length+" lost joints");
 			if (rows.length === 0)
 				return;
 			handleLostJoints(rows.map(function(row){ return row.depends_on_unit; })); 

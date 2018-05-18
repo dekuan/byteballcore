@@ -60,7 +60,7 @@ function sortOutputs(a,b){
 // arrAddresses is paying addresses
 function pickDivisibleCoinsForAmount(conn, objAsset, arrAddresses, last_ball_mci, amount, bMultiAuthored, onDone){
 	var asset = objAsset ? objAsset.asset : null;
-	console.log("pick coins "+asset+" amount "+amount);
+	log.consoleLog("pick coins "+asset+" amount "+amount);
 	var is_base = objAsset ? 0 : 1;
 	var arrInputsWithProofs = [];
 	var total_amount = 0;
@@ -193,7 +193,7 @@ function pickDivisibleCoinsForAmount(conn, objAsset, arrAddresses, last_ball_mci
 			},
 			function(err){
 				if (!err)
-					console.log(arrAddresses+" "+type+": got only "+total_amount+" out of required "+required_amount);
+					log.consoleLog(arrAddresses+" "+type+": got only "+total_amount+" out of required "+required_amount);
 				(err === "found") ? onDone(arrInputsWithProofs, total_amount) : onStillNotEnough();
 			}
 		);
@@ -206,7 +206,7 @@ function pickDivisibleCoinsForAmount(conn, objAsset, arrAddresses, last_ball_mci
 			if (amount === Infinity && !objAsset.cap) // don't try to create infinite issue
 				return onDone(null);
 		}
-		console.log("will try to issue asset "+asset);
+		log.consoleLog("will try to issue asset "+asset);
 		// for issue, we use full list of addresses rather than spendable addresses
 		if (objAsset.issued_by_definer_only && arrAddresses.indexOf(objAsset.definer_address) === -1)
 			return finish();
@@ -656,9 +656,9 @@ function composeJoint(params){
 		function(cb){
 			if (!fnRetrieveMessages)
 				return cb();
-			console.log("will retrieve messages");
+			log.consoleLog("will retrieve messages");
 			fnRetrieveMessages(conn, last_ball_mci, bMultiAuthored, arrPayingAddresses, function(err, arrMoreMessages, assocMorePrivatePayloads){
-				console.log("fnRetrieveMessages callback: err code = "+(err ? err.error_code : ""));
+				log.consoleLog("fnRetrieveMessages callback: err code = "+(err ? err.error_code : ""));
 				if (err)
 					return cb((typeof err === "string") ? ("unable to add additional messages: "+err) : err);
 				Array.prototype.push.apply(objUnit.messages, arrMoreMessages);
@@ -704,7 +704,7 @@ function composeJoint(params){
 					total_input = _total_input;
 					objPaymentMessage.payload.inputs = arrInputsWithProofs.map(function(objInputWithProof){ return objInputWithProof.input; });
 					objUnit.payload_commission = objectLength.getTotalPayloadSize(objUnit);
-					console.log("inputs increased payload by", objUnit.payload_commission - naked_payload_commission);
+					log.consoleLog("inputs increased payload by", objUnit.payload_commission - naked_payload_commission);
 					cb();
 				}
 			);
@@ -769,7 +769,7 @@ function composeJoint(params){
 					objUnit.unit = objectHash.getUnitHash(objUnit);
 					if (bGenesis)
 						objJoint.ball = objectHash.getBallHash(objUnit.unit);
-					console.log(require('util').inspect(objJoint, {depth:null}));
+					log.consoleLog(require('util').inspect(objJoint, {depth:null}));
 					objJoint.unit.timestamp = Math.round(Date.now()/1000); // light clients need timestamp
 					if (Object.keys(assocPrivatePayloads).length === 0)
 						assocPrivatePayloads = null;
@@ -837,7 +837,7 @@ function signMessage(from_address, message, signer, handleResult){
 				function(err){
 					if (err)
 						return handleResult(err);
-					console.log(require('util').inspect(objUnit, {depth:null}));
+					log.consoleLog(require('util').inspect(objUnit, {depth:null}));
 					handleResult(null, objUnit);
 				}
 			);
@@ -946,7 +946,7 @@ function getSavingCallbacks(callbacks){
 					throw Error("unexpected dependencies: "+arrMissingUnits.join(", "));
 				},
 				ifOk: function(objValidationState, validation_unlock){
-					console.log("base asset OK "+objValidationState.sequence);
+					log.consoleLog("base asset OK "+objValidationState.sequence);
 					if (objValidationState.sequence !== 'good'){
 						validation_unlock();
 						composer_unlock();
@@ -955,7 +955,7 @@ function getSavingCallbacks(callbacks){
 					postJointToLightVendorIfNecessaryAndSave(
 						objJoint, 
 						function onLightError(err){ // light only
-							console.log("failed to post base payment "+unit);
+							log.consoleLog("failed to post base payment "+unit);
 							var eventBus = require('./event_bus.js');
 							if (err.match(/signature/))
 								eventBus.emit('nonfatal_error', "failed to post unit "+unit+": "+err+"; "+JSON.stringify(objUnit), new Error());
@@ -977,7 +977,7 @@ function getSavingCallbacks(callbacks){
 									composer_unlock();
 									if (err)
 										return callbacks.ifError(err);
-									console.log("saved unit "+unit);
+									log.consoleLog("saved unit "+unit);
 									callbacks.ifOk(objJoint, assocPrivatePayloads);
 								}
 							);

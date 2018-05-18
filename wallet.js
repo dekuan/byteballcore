@@ -333,7 +333,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 						var objJoint = {unit: objUnit, unsigned: true};
 						eventBus.once("validated-"+objUnit.unit, function(bValid){
 							if (!bValid){
-								console.log("===== unit in signing request is invalid");
+								log.consoleLog("===== unit in signing request is invalid");
 								return;
 							}
 							// This event should trigger a confirmation dialog.
@@ -408,10 +408,10 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 
 			var checkIfAllValidated = function(){
 				if (!assocValidatedByKey) // duplicate call - ignore
-					return console.log('duplicate call of checkIfAllValidated');
+					return log.consoleLog('duplicate call of checkIfAllValidated');
 				for (var key in assocValidatedByKey)
 					if (!assocValidatedByKey[key])
-						return console.log('not all private payments validated yet');
+						return log.consoleLog('not all private payments validated yet');
 				assocValidatedByKey = null; // to avoid duplicate calls
 				if (!body.forwarded){
 					emitNewPrivatePaymentReceived(from_address, arrChains, current_message_counter);
@@ -438,21 +438,21 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 					assocValidatedByKey[key] = false;
 					network.handleOnlinePrivatePayment(ws, arrPrivateElements, true, {
 						ifError: function(error){
-							console.log("handleOnlinePrivatePayment error: "+error);
+							log.consoleLog("handleOnlinePrivatePayment error: "+error);
 							cb("an error"); // do not leak error message to the hub
 						},
 						ifValidationError: function(unit, error){
-							console.log("handleOnlinePrivatePayment validation error: "+error);
+							log.consoleLog("handleOnlinePrivatePayment validation error: "+error);
 							cb("an error"); // do not leak error message to the hub
 						},
 						ifAccepted: function(unit){
-							console.log("handleOnlinePrivatePayment accepted");
+							log.consoleLog("handleOnlinePrivatePayment accepted");
 							assocValidatedByKey[key] = true;
 							cb(); // do not leak unit info to the hub
 						},
 						// this is the most likely outcome for light clients
 						ifQueued: function(){
-							console.log("handleOnlinePrivatePayment queued, will wait for "+key);
+							log.consoleLog("handleOnlinePrivatePayment queued, will wait for "+key);
 							eventBus.once(key, function(bValid){
 								if (!bValid)
 									return cancelAllKeys();
@@ -460,7 +460,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 								if (bParsingComplete)
 									checkIfAllValidated();
 								else
-									console.log('parsing incomplete yet');
+									log.consoleLog('parsing incomplete yet');
 							});
 							cb();
 						}
@@ -499,7 +499,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 			eventBus.once('saved_unit-'+unit, emitPn);
 			storage.readJoint(db, unit, {
 				ifNotFound: function(){
-					console.log("received payment notification for unit "+unit+" which is not known yet, will wait for it");
+					log.consoleLog("received payment notification for unit "+unit+" which is not known yet, will wait for it");
 					callbacks.ifOk();
 				},
 				ifFound: function(objJoint){
@@ -517,7 +517,7 @@ function handleMessageFromHub(ws, json, device_pubkey, bIndirectCorrespondent, c
 
 
 function forwardPrivateChainsToOtherMembersOfOutputAddresses(arrChains, conn, onSaved){
-	console.log("forwardPrivateChainsToOtherMembersOfOutputAddresses", arrChains);
+	log.consoleLog("forwardPrivateChainsToOtherMembersOfOutputAddresses", arrChains);
 	var assocOutputAddresses = {};
 	arrChains.forEach(function(arrPrivateElements){
 		var objHeadPrivateElement = arrPrivateElements[0];
@@ -530,7 +530,7 @@ function forwardPrivateChainsToOtherMembersOfOutputAddresses(arrChains, conn, on
 			assocOutputAddresses[objHeadPrivateElement.output.address] = true;
 	});
 	var arrOutputAddresses = Object.keys(assocOutputAddresses);
-	console.log("output addresses", arrOutputAddresses);
+	log.consoleLog("output addresses", arrOutputAddresses);
 	conn = conn || db;
 	if (!onSaved)
 		onSaved = function(){};
@@ -573,7 +573,7 @@ eventBus.on("new_direct_private_chains", forwardPrivateChainsToOtherMembersOfOut
 
 
 function emitNewPrivatePaymentReceived(payer_device_address, arrChains, message_counter){
-	console.log('emitNewPrivatePaymentReceived');
+	log.consoleLog('emitNewPrivatePaymentReceived');
 	walletGeneral.readMyAddresses(function(arrAddresses){
 		var assocAmountsByAsset = {};
 		var assocMyReceivingAddresses = {};
@@ -596,7 +596,7 @@ function emitNewPrivatePaymentReceived(payer_device_address, arrChains, message_
 				assocMyReceivingAddresses[output.address] = true;
 			}
 		});
-		console.log('assocAmountsByAsset', assocAmountsByAsset);
+		log.consoleLog('assocAmountsByAsset', assocAmountsByAsset);
 		var arrMyReceivingAddresses = Object.keys(assocMyReceivingAddresses);
 		if (arrMyReceivingAddresses.length === 0)
 			return;
@@ -758,7 +758,7 @@ function readAssetMetadata(arrAssets, handleMetadata){
 					return;
 				fetchAssetMetadata(asset, function(err, objMetadata){
 					if (err)
-						return console.log(err);
+						return log.consoleLog(err);
 					assocAssetMetadata[asset] = {
 						metadata_unit: objMetadata.metadata_unit,
 						decimals: objMetadata.decimals,
@@ -883,7 +883,7 @@ function readTransactionHistory(opts, handleHistory){
 				if (row.from_address)
 					assocMovements[row.unit].has_minus = true;
 			}
-		//	console.log(require('util').inspect(assocMovements));
+		//	log.consoleLog(require('util').inspect(assocMovements));
 			var arrTransactions = [];
 			async.forEachOfSeries(
 				assocMovements,
@@ -1789,9 +1789,9 @@ function claimBackOldTextcoins(to_address, days){
 				function(row, cb){
 					receiveTextCoin(row.mnemonic, to_address, function(err, unit, asset){
 						if (err)
-							console.log("failed claiming back old textcoin "+row.mnemonic+": "+err);
+							log.consoleLog("failed claiming back old textcoin "+row.mnemonic+": "+err);
 						else
-							console.log("claimed back mnemonic "+row.mnemonic+", unit "+unit+", asset "+asset);
+							log.consoleLog("claimed back mnemonic "+row.mnemonic+", unit "+unit+", asset "+asset);
 						cb();
 					});
 				}

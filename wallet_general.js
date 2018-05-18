@@ -28,11 +28,11 @@ function sendPrivatePayments(device_address, arrChains, bForwarded, conn, onSave
 }
 
 function forwardPrivateChainsToDevices(arrDeviceAddresses, arrChains, bForwarded, conn, onSaved){
-	console.log("devices: "+arrDeviceAddresses);
+	log.consoleLog("devices: "+arrDeviceAddresses);
 	async.eachSeries(
 		arrDeviceAddresses,
 		function(device_address, cb){
-			console.log("forwarding to device "+device_address);
+			log.consoleLog("forwarding to device "+device_address);
 			sendPrivatePayments(device_address, arrChains, bForwarded, conn, cb);
 		},
 		onSaved

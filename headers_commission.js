@@ -11,7 +11,7 @@ var max_spendable_mci = null;
 
 function calcHeadersCommissions(conn, onDone){
 	// we don't require neither source nor recipient to be majority witnessed -- we don't want to return many times to the same MC index.
-	console.log("will calc h-comm");
+	log.consoleLog("will calc h-comm");
 	if (max_spendable_mci === null) // first calc after restart only
 		return initMaxSpendableMci(conn, function(){ calcHeadersCommissions(conn, onDone); });
 	
@@ -104,7 +104,7 @@ function calcHeadersCommissions(conn, onDone){
 								assocWonAmounts[child_unit] = {};
 							assocWonAmounts[child_unit][payer_unit] = headers_commission;
 						}
-						//console.log(assocWonAmounts);
+						//log.consoleLog(assocWonAmounts);
 						var arrWinnerUnits = Object.keys(assocWonAmounts);
 						if (arrWinnerUnits.length === 0)
 							return cb();

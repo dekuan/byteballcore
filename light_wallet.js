@@ -25,11 +25,11 @@ function setLightVendorHost(light_vendor_host){
 function reconnectToLightVendor(){
 	network.findOutboundPeerOrConnect(network.light_vendor_url, function(err, ws){
 		if (err)
-			return console.log("reconnectToLightVendor: "+err);
+			return log.consoleLog("reconnectToLightVendor: "+err);
 		if (ws.bLightVendor)
-			return console.log("already connected to light vendor");
+			return log.consoleLog("already connected to light vendor");
 		if (ws.bRefreshingHistory)
-			return console.log("already refreshing history");
+			return log.consoleLog("already refreshing history");
 		refreshLightClientHistory();
 	});
 }
@@ -88,7 +88,7 @@ function refreshLightClientHistory(){
 	if (!conf.bLight)
 		return;
 	if (!network.light_vendor_url)
-		return console.log('refreshLightClientHistory called too early: light_vendor_url not set yet');
+		return log.consoleLog('refreshLightClientHistory called too early: light_vendor_url not set yet');
 	eventBus.emit('refresh_light_started');
 	if (!bFirstRefreshStarted){
 		archiveDoublespendUnits();
@@ -97,17 +97,17 @@ function refreshLightClientHistory(){
 	network.findOutboundPeerOrConnect(network.light_vendor_url, function onLocatedLightVendor(err, ws){
 		var finish = function(msg){
 			if (msg)
-				console.log(msg);
+				log.consoleLog(msg);
 			if (ws)
 				ws.bRefreshingHistory = false;
 			eventBus.emit('refresh_light_done');
 		};
 		if (err)
 			return finish("refreshLightClientHistory: "+err);
-		console.log('refreshLightClientHistory connected');
+		log.consoleLog('refreshLightClientHistory connected');
 		// handling the response may take some time, don't send new requests
 		if (ws.bRefreshingHistory)
-			return console.log("previous refresh not finished yet");
+			return log.consoleLog("previous refresh not finished yet");
 		ws.bRefreshingHistory = true;
 		prepareRequestForHistory(function(objRequest){
 			if (!objRequest)

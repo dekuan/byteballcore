@@ -68,7 +68,7 @@ function sendMailDirectly(params, cb) {
 				console.error("failed to send mail to "+params.to+": "+error);
 				return cb(error);
 			}
-			console.log('Message sent: %s', info.messageId);
+			log.consoleLog('Message sent: %s', info.messageId);
 			cb(null, info);
 		});
 	});
@@ -104,7 +104,7 @@ function sendMailThroughRelay(params, cb){
 			console.error("failed to send mail to "+params.to+": "+error+"\n", error);
 			return cb(error);
 		}
-		console.log('Message sent: %s', info.messageId);
+		log.consoleLog('Message sent: %s', info.messageId);
 		cb(null, info);
 	});
 }

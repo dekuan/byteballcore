@@ -30,9 +30,9 @@ function getPackageJsonDir(start_dir){
 
 // app installation dir, this is where the topmost package.json resides
 function getAppRootDir(){
-	//console.log("parent:", module.parent);
-	//console.log("process.mainModule:", process.mainModule);
-	//console.log("require.main:", require.main);
+	//log.consoleLog("parent:", module.parent);
+	//log.consoleLog("process.mainModule:", process.mainModule);
+	//log.consoleLog("require.main:", require.main);
 	var mainModuleDir = path.dirname(process.mainModule.paths[0]);
 	return getPackageJsonDir(mainModuleDir);
 	/*
@@ -47,7 +47,7 @@ function getAppRootDir(){
 // read app name from the topmost package.json
 function getAppName(){
 	var appDir = getAppRootDir();
-	console.log("app dir "+appDir);
+	log.consoleLog("app dir "+appDir);
 	return require(appDir + '/package.json').name;
 }
 
