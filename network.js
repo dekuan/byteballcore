@@ -1746,26 +1746,56 @@ function notifyWatchers( objJoint, source_ws )
 	);
 }
 
-
-function notifyWatchersAboutStableJoints(mci)
+function notifyWatchersAboutStableJoints( mci )
 {
-	// the event was emitted from inside mysql transaction, make sure it completes so that the changes are visible
-	// If the mci became stable in determineIfStableInLaterUnitsAndUpdateStableMcFlag (rare), write lock is released before the validation commits, 
-	// so we might not see this mci as stable yet. Hopefully, it'll complete before light/have_updates roundtrip
-	mutex.lock(["write"], function(unlock){
-		unlock(); // we don't need to block writes, we requested the lock just to wait that the current write completes
-		notifyLocalWatchedAddressesAboutStableJoints(mci);
-		log.consoleLog("notifyWatchersAboutStableJoints "+mci);
-		if (mci <= 1)
-			return;
-		storage.findLastBallMciOfMci(db, mci, function(last_ball_mci){
-			storage.findLastBallMciOfMci(db, mci-1, function(prev_last_ball_mci){
-				if (prev_last_ball_mci === last_ball_mci)
-					return;
-				notifyLightClientsAboutStableJoints(prev_last_ball_mci, last_ball_mci);
-			});
-		});
-	});
+	//
+	//	the event was emitted from inside mysql transaction, make sure it completes so that the changes are visible
+	//	If the mci became stable in determineIfStableInLaterUnitsAndUpdateStableMcFlag (rare), write lock is released before the validation commits,
+	//	so we might not see this mci as stable yet. Hopefully, it'll complete before light/have_updates roundtrip
+	//
+	mutex.lock
+	(
+		[ "write" ],
+		function( unlock )
+		{
+			//	we don't need to block writes, we requested the lock just to wait that the current write completes
+			unlock();
+
+			//	...
+			notifyLocalWatchedAddressesAboutStableJoints( mci );
+			log.consoleLog( "notifyWatchersAboutStableJoints " + mci );
+
+			if ( mci <= 1 )
+			{
+				return;
+			}
+
+			//	...
+			storage.findLastBallMciOfMci
+			(
+				db,
+				mci,
+				function( last_ball_mci )
+				{
+					storage.findLastBallMciOfMci
+					(
+						db,
+						mci - 1,
+						function( prev_last_ball_mci )
+						{
+							if ( prev_last_ball_mci === last_ball_mci )
+							{
+								return;
+							}
+
+							//	...
+							notifyLightClientsAboutStableJoints( prev_last_ball_mci, last_ball_mci );
+						}
+					);
+				}
+			);
+		}
+	);
 }
 
 
@@ -1889,8 +1919,9 @@ function flushEvents( forceFlushing )
 		return;
 	}
 
-	var arrQueryParams = [];
-	var objUpdatedHosts = {};
+	//	...
+	var arrQueryParams	= [];
+	var objUpdatedHosts	= {};
 
 	//	...
 	peer_events_buffer.forEach( function( event_row )
@@ -2034,7 +2065,9 @@ function broadcastJoint( objJoint )
 {
 	//	the joint was already posted to light vendor before saving
 	if ( conf.bLight )
+	{
 		return;
+	}
 
 	wss.clients.concat( arrOutboundPeers ).forEach
 	(
@@ -2044,6 +2077,8 @@ function broadcastJoint( objJoint )
 				sendJoint( client, objJoint );
 		}
 	);
+
+	//	...
 	notifyWatchers( objJoint );
 }
 
@@ -2066,8 +2101,11 @@ function checkCatchupLeftovers()
 		function( rows )
 		{
 			if ( rows.length === 0 )
+			{
 				return log.consoleLog('no leftovers');
+			}
 
+			//	...
 			log.consoleLog( 'have catchup leftovers from the previous run' );
 			findNextPeer
 			(
@@ -2091,8 +2129,11 @@ function requestCatchup( ws )
 	eventBus.emit( 'catching_up_started' );
 
 	if ( conf.storage === 'sqlite' )
+	{
 		db.query( "PRAGMA cache_size=-200000", function(){} );
+	}
 
+	//	...
 	catchup.purgeHandledBallsFromHashTree
 	(
 		db,
@@ -2229,66 +2270,132 @@ function handleCatchupChain( ws, request, response )
 
 
 
+
+
+
 //////////////////////////////////////////////////////////////////////
 //	hash tree
 //////////////////////////////////////////////////////////////////////
 
 
-function requestNextHashTree(ws){
-	eventBus.emit('catchup_next_hash_tree');
-	db.query("SELECT ball FROM catchup_chain_balls ORDER BY member_index LIMIT 2", function(rows){
-		if (rows.length === 0)
-			return comeOnline();
-		if (rows.length === 1){
-			db.query("DELETE FROM catchup_chain_balls WHERE ball=?", [rows[0].ball], function(){
-				comeOnline();
-			});
-			return;
-		}
-		var from_ball = rows[0].ball;
-		var to_ball = rows[1].ball;
-		
-		// don't send duplicate requests
-		for (var tag in ws.assocPendingRequests)
-			if (ws.assocPendingRequests[tag].request.command === 'get_hash_tree'){
-				log.consoleLog("already requested hash tree from this peer");
+function requestNextHashTree( ws )
+{
+	eventBus.emit( 'catchup_next_hash_tree' );
+	db.query
+	(
+		"SELECT ball FROM catchup_chain_balls ORDER BY member_index LIMIT 2",
+		function( rows )
+		{
+			if ( rows.length === 0 )
+				return comeOnline();
+
+			if ( rows.length === 1 )
+			{
+				db.query
+				(
+					"DELETE FROM catchup_chain_balls WHERE ball=?",
+					[ rows[ 0 ].ball ],
+					function()
+					{
+						comeOnline();
+					}
+				);
 				return;
 			}
-		sendRequest(ws, 'get_hash_tree', {from_ball: from_ball, to_ball: to_ball}, true, handleHashTree);
-	});
+
+			//	...
+			var from_ball	= rows[ 0 ].ball;
+			var to_ball	= rows[ 1 ].ball;
+
+			//	don't send duplicate requests
+			for ( var tag in ws.assocPendingRequests )
+			{
+				if ( ws.assocPendingRequests[ tag ].request.command === 'get_hash_tree' )
+				{
+					log.consoleLog("already requested hash tree from this peer");
+					return;
+				}
+			}
+
+			sendRequest( ws, 'get_hash_tree', { from_ball : from_ball, to_ball : to_ball }, true, handleHashTree );
+		}
+	);
 }
 
-function handleHashTree(ws, request, response){
-	if (response.error){
-		log.consoleLog('get_hash_tree got error response: '+response.error);
-		waitTillHashTreeFullyProcessedAndRequestNext(ws); // after 1 sec, it'll request the same hash tree, likely from another peer
+
+function handleHashTree( ws, request, response )
+{
+	if ( response.error )
+	{
+		log.consoleLog( 'get_hash_tree got error response: ' + response.error );
+		waitTillHashTreeFullyProcessedAndRequestNext( ws );
+		//	after 1 sec, it'll request the same hash tree, likely from another peer
 		return;
 	}
-	var hashTree = response;
-	catchup.processHashTree(hashTree.balls, {
-		ifError: function(error){
-			sendError(ws, error);
-			waitTillHashTreeFullyProcessedAndRequestNext(ws); // after 1 sec, it'll request the same hash tree, likely from another peer
-		},
-		ifOk: function(){
-			requestNewMissingJoints(ws, hashTree.balls.map(function(objBall){ return objBall.unit; }));
-			waitTillHashTreeFullyProcessedAndRequestNext(ws);
+
+	//	...
+	var hashTree	= response;
+	catchup.processHashTree
+	(
+		hashTree.balls,
+		{
+			ifError : function( error )
+			{
+				sendError( ws, error );
+				waitTillHashTreeFullyProcessedAndRequestNext( ws );
+				//	after 1 sec, it'll request the same hash tree, likely from another peer
+			},
+			ifOk : function()
+			{
+				requestNewMissingJoints
+				(
+					ws,
+					hashTree.balls.map
+					(
+						function( objBall )
+						{
+							return objBall.unit;
+						}
+					)
+				);
+				waitTillHashTreeFullyProcessedAndRequestNext( ws );
+			}
 		}
-	});
+	);
 }
 
-function waitTillHashTreeFullyProcessedAndRequestNext(ws){
-	setTimeout(function(){
-		db.query("SELECT 1 FROM hash_tree_balls LEFT JOIN units USING(unit) WHERE units.unit IS NULL LIMIT 1", function(rows){
-			if (rows.length === 0){
-				findNextPeer(ws, function(next_ws){
-					requestNextHashTree(next_ws);
-				});
-			}
-			else
-				waitTillHashTreeFullyProcessedAndRequestNext(ws);
-		});
-	}, 1000);
+
+function waitTillHashTreeFullyProcessedAndRequestNext( ws )
+{
+	setTimeout
+	(
+		function()
+		{
+			db.query
+			(
+				"SELECT 1 FROM hash_tree_balls LEFT JOIN units USING(unit) WHERE units.unit IS NULL LIMIT 1",
+				function( rows )
+				{
+					if ( rows.length === 0 )
+					{
+						findNextPeer
+						(
+							ws,
+							function( next_ws )
+							{
+								requestNextHashTree( next_ws );
+							}
+						);
+					}
+					else
+					{
+						waitTillHashTreeFullyProcessedAndRequestNext( ws );
+					}
+				}
+			);
+		},
+		1000
+	);
 }
 
 
