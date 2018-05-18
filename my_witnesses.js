@@ -1,6 +1,7 @@
 /*jslint node: true */
 "use strict";
 
+var log			= require( './log.js' );
 var db			= require( './db.js' );
 var conf		= require( './conf.js' );
 var constants		= require( './constants.js' );
@@ -35,7 +36,7 @@ function readMyWitnesses( handleWitnesses, actionIfEmpty )
 				constants.version === '1.0' && arrWitnesses.indexOf( '2FF7PSL7FYXVU5UIQHCVDTTPUOOG75GX' ) >= 0
 			)
 			{
-				console.log( 'deleting old witnesses' );
+				log.consoleLog( 'deleting old witnesses' );
 				db.query( "DELETE FROM my_witnesses" );
 				arrWitnesses = [];
 			}
@@ -47,7 +48,7 @@ function readMyWitnesses( handleWitnesses, actionIfEmpty )
 
 				if ( actionIfEmpty === 'wait' )
 				{
-					console.log('no witnesses yet, will retry later');
+					log.consoleLog('no witnesses yet, will retry later');
 					setTimeout
 					(
 						function()
@@ -157,7 +158,7 @@ function insertWitnesses( arrWitnesses, onDone )
 	}
 
 	var placeholders	= Array.apply( null, Array( arrWitnesses.length ) ).map( function(){ return '(?)'; } ).join( ',' );
-	console.log( 'will insert witnesses', arrWitnesses );
+	log.consoleLog( 'will insert witnesses', arrWitnesses );
 
 	db.query
 	(
@@ -165,7 +166,7 @@ function insertWitnesses( arrWitnesses, onDone )
 		arrWitnesses,
 		function()
 		{
-			console.log('inserted witnesses');
+			log.consoleLog('inserted witnesses');
 			if ( onDone )
 			{
 				onDone();
@@ -179,6 +180,6 @@ function insertWitnesses( arrWitnesses, onDone )
 /**
  *	exports
  */
-exports.readMyWitnesses = readMyWitnesses;
-exports.replaceWitness = replaceWitness;
-exports.insertWitnesses = insertWitnesses;
+exports.readMyWitnesses	= readMyWitnesses;
+exports.replaceWitness	= replaceWitness;
+exports.insertWitnesses	= insertWitnesses;
