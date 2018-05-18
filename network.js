@@ -29,76 +29,28 @@ var light		= require('./light.js');
 var breadcrumbs		= require('./breadcrumbs.js');
 var mail		= process.browser ? null : require( './mail.js' + '' );
 
-var FORWARDING_TIMEOUT		= 10 * 1000; // don't forward if the joint was received more than FORWARDING_TIMEOUT ms ago
-var STALLED_TIMEOUT		= 5000; // a request is treated as stalled if no response received within STALLED_TIMEOUT ms
-var RESPONSE_TIMEOUT		= 300 * 1000; // after this timeout, the request is abandoned
+var FORWARDING_TIMEOUT		= 10 * 1000;	//	don't forward if the joint was received more than FORWARDING_TIMEOUT ms ago
+var STALLED_TIMEOUT		= 5000;		//	a request is treated as stalled if no response received within STALLED_TIMEOUT ms
+var RESPONSE_TIMEOUT		= 300 * 1000;	//	after this timeout, the request is abandoned
 var HEARTBEAT_TIMEOUT		= conf.HEARTBEAT_TIMEOUT || 10 * 1000;
 var HEARTBEAT_RESPONSE_TIMEOUT	= 60 * 1000;
 var PAUSE_TIMEOUT		= 2 * HEARTBEAT_TIMEOUT;
 
 var wss;
-var arrOutboundPeers			= [];
-var assocConnectingOutboundWebsockets	= {};
-var assocUnitsInWork			= {};
-var assocRequestedUnits			= {};
-var bCatchingUp				= false;
-var bWaitingForCatchupChain		= false;
-var bWaitingTillIdle			= false;
-var coming_online_time			= Date.now();
-var assocReroutedConnectionsByTag	= {};
-var arrWatchedAddresses			= []; // does not include my addresses, therefore always empty
-var last_hearbeat_wake_ts		= Date.now();
-var peer_events_buffer			= [];
-var assocKnownPeers			= {};
-var exchangeRates			= {};
-
-
-if ( process.browser )
-{
-	//	browser
-	log.consoleLog( "defining .on() on ws" );
-
-	WebSocket.prototype.on = function( event, callback )
-	{
-		var self = this;
-		if ( event === 'message' )
-		{
-			this[ 'on' + event ] = function( event )
-			{
-				callback.call( self, event.data );
-			};
-			return;
-		}
-
-		if ( event !== 'open' )
-		{
-			this[ 'on' + event ] = callback;
-			return;
-		}
-
-		//	allow several handlers for 'open' event
-		if ( ! this[ 'open_handlers' ] )
-			this['open_handlers'] = [];
-
-		this[ 'open_handlers' ].push( callback );
-		this[ 'on' + event ] = function()
-		{
-			self[ 'open_handlers' ].forEach
-			(
-				function( cb )
-				{
-					cb();
-				}
-			);
-		};
-	};
-
-	//	...
-	WebSocket.prototype.once		= WebSocket.prototype.on;
-	WebSocket.prototype.setMaxListeners	= function(){};
-}
-
-
+var arrOutboundPeers				= [];
+var m_oAssocConnectingOutboundWebsockets	= {};
+var assocUnitsInWork				= {};
+var assocRequestedUnits				= {};
+var bCatchingUp					= false;
+var bWaitingForCatchupChain			= false;
+var bWaitingTillIdle				= false;
+var coming_online_time				= Date.now();
+var assocReroutedConnectionsByTag		= {};
+var arrWatchedAddresses				= []; // does not include my addresses, therefore always empty
+var last_hearbeat_wake_ts			= Date.now();
+var peer_events_buffer				= [];
+var assocKnownPeers				= {};
+var exchangeRates				= {};
 
 
 /**
@@ -106,13 +58,6 @@ if ( process.browser )
  */
 var my_device_address;
 var objMyTempPubkeyPackage;
-
-function setMyDeviceProps( device_address, objTempPubkey )
-{
-	my_device_address	= device_address;
-	objMyTempPubkeyPackage	= objTempPubkey;
-}
-
 
 
 exports.light_vendor_url = null;
@@ -122,7 +67,21 @@ exports.light_vendor_url = null;
 
 
 
-// general network functions
+
+
+function setMyDeviceProps( device_address, objTempPubkey )
+{
+	my_device_address	= device_address;
+	objMyTempPubkeyPackage	= objTempPubkey;
+}
+
+
+
+
+//////////////////////////////////////////////////////////////////////
+//	general network functions
+//////////////////////////////////////////////////////////////////////
+
 
 function sendMessage( ws, type, content )
 {
@@ -404,7 +363,10 @@ function cancelRequestsOnClosedConnection( ws )
 
 
 
-// peers
+
+//////////////////////////////////////////////////////////////////////
+//	peers
+//////////////////////////////////////////////////////////////////////
 
 function findNextPeer( ws, handleNextPeer )
 {
@@ -600,15 +562,15 @@ function connectToPeer( url, onOpen )
 	//	...
 	var ws	= options.agent ? new WebSocket( url, options ) : new WebSocket( url );
 
-	assocConnectingOutboundWebsockets[ url ] = ws;
+	m_oAssocConnectingOutboundWebsockets[ url ] = ws;
 	setTimeout
 	(
 		function()
 		{
-			if ( assocConnectingOutboundWebsockets[ url ] )
+			if ( m_oAssocConnectingOutboundWebsockets[ url ] )
 			{
 				log.consoleLog( 'abandoning connection to ' + url + ' due to timeout' );
-				delete assocConnectingOutboundWebsockets[ url ];
+				delete m_oAssocConnectingOutboundWebsockets[ url ];
 				//	after this, new connection attempts will be allowed to the wire, but this one can still succeed.  See the check for duplicates below.
 			}
 		},
@@ -623,7 +585,7 @@ function connectToPeer( url, onOpen )
 		function onWsOpen()
 		{
 			breadcrumbs.add( 'connected to ' + url );
-			delete assocConnectingOutboundWebsockets[ url ];
+			delete m_oAssocConnectingOutboundWebsockets[ url ];
 
 			ws.assocPendingRequests		= {};
 			ws.assocInPreparingResponse	= {};
@@ -695,7 +657,7 @@ function connectToPeer( url, onOpen )
 		'error',
 		function onWsError( e )
 		{
-			delete assocConnectingOutboundWebsockets[ url ];
+			delete m_oAssocConnectingOutboundWebsockets[ url ];
 			log.consoleLog( "error from server " + url + ": " + e );
 
 			var err	= e.toString();
@@ -857,7 +819,7 @@ function findOutboundPeerOrConnect( url, onOpen )
 	if (ws)
 		return onOpen(null, ws);
 	// check if we are already connecting to the peer
-	ws = assocConnectingOutboundWebsockets[url];
+	ws = m_oAssocConnectingOutboundWebsockets[url];
 	if (ws){ // add second event handler
 		breadcrumbs.add('already connecting to '+url);
 		return eventBus.once('open-'+url, function secondOnOpen(err){
@@ -963,24 +925,37 @@ function handleNewPeers(ws, request, arrPeerUrls)
 
 function heartbeat()
 {
-	// just resumed after sleeping
-	var bJustResumed = (typeof window !== 'undefined' && window && window.cordova && Date.now() - last_hearbeat_wake_ts > 2*HEARTBEAT_TIMEOUT);
-	last_hearbeat_wake_ts = Date.now();
-	wss.clients.concat(arrOutboundPeers).forEach(function(ws){
-		if (ws.bSleeping || ws.readyState !== ws.OPEN)
+	//	just resumed after sleeping
+	var bJustResumed	= ( typeof window !== 'undefined' && window && window.cordova && Date.now() - last_hearbeat_wake_ts > 2 * HEARTBEAT_TIMEOUT );
+	last_hearbeat_wake_ts	= Date.now();
+
+	//
+	//	...
+	//
+	wss.clients.concat( arrOutboundPeers ).forEach( function( ws )
+	{
+		if ( ws.bSleeping || ws.readyState !== ws.OPEN )
+		{
 			return;
-		var elapsed_since_last_received = Date.now() - ws.last_ts;
-		if (elapsed_since_last_received < HEARTBEAT_TIMEOUT)
-			return;
-		if (!ws.last_sent_heartbeat_ts || bJustResumed){
-			ws.last_sent_heartbeat_ts = Date.now();
-			return sendRequest(ws, 'heartbeat', null, false, handleHeartbeatResponse);
 		}
-		var elapsed_since_last_sent_heartbeat = Date.now() - ws.last_sent_heartbeat_ts;
-		if (elapsed_since_last_sent_heartbeat < HEARTBEAT_RESPONSE_TIMEOUT)
+
+		var elapsed_since_last_received	= Date.now() - ws.last_ts;
+		if ( elapsed_since_last_received < HEARTBEAT_TIMEOUT )
 			return;
-		log.consoleLog('will disconnect peer '+ws.peer+' who was silent for '+elapsed_since_last_received+'ms');
-		ws.close(1000, "lost connection");
+
+		if ( ! ws.last_sent_heartbeat_ts || bJustResumed )
+		{
+			ws.last_sent_heartbeat_ts	= Date.now();
+			return sendRequest( ws, 'heartbeat', null, false, handleHeartbeatResponse );
+		}
+
+		var elapsed_since_last_sent_heartbeat	= Date.now() - ws.last_sent_heartbeat_ts;
+		if ( elapsed_since_last_sent_heartbeat < HEARTBEAT_RESPONSE_TIMEOUT )
+			return;
+
+		//	...
+		log.consoleLog( 'will disconnect peer ' + ws.peer + ' who was silent for ' + elapsed_since_last_received + 'ms' );
+		ws.close( 1000, "lost connection" );
 	});
 }
 
@@ -1007,13 +982,19 @@ function requestFromLightVendor(command, params, responseHandler)
 	});
 }
 
+
 function printConnectionStatus()
 {
-	log.consoleLog(wss.clients.length+" incoming connections, "+arrOutboundPeers.length+" outgoing connections, "+
-		Object.keys(assocConnectingOutboundWebsockets).length+" outgoing connections being opened");
+	log.consoleLog
+	(
+		wss.clients.length + " incoming connections, "
+		+ arrOutboundPeers.length + " outgoing connections, "
+		+ Object.keys( m_om_oAssocConnectingOutboundWebsockets ).length + " outgoing connections being opened"
+	);
 }
 
-function subscribe(ws)
+
+function subscribe( ws )
 {
 	ws.subscription_id = crypto.randomBytes(30).toString("base64"); // this is to detect self-connect
 	storage.readLastMainChainIndex(function(last_mci){
@@ -1027,7 +1008,11 @@ function subscribe(ws)
 	});
 }
 
-// joints
+
+
+//////////////////////////////////////////////////////////////////////
+//	joints
+//////////////////////////////////////////////////////////////////////
 
 // sent as justsaying or as response to a request
 function sendJoint(ws, objJoint, tag)
@@ -1362,54 +1347,67 @@ function handleJoint(ws, objJoint, bSaved, callbacks)
 }
 
 // handle joint posted to me by a light client
-function handlePostedJoint(ws, objJoint, onDone)
+function handlePostedJoint( ws, objJoint, onDone )
 {
-	
-	if (!objJoint || !objJoint.unit || !objJoint.unit.unit)
-		return onDone('no unit');
-	
-	var unit = objJoint.unit.unit;
-	delete objJoint.unit.main_chain_index;
-	
-	handleJoint(ws, objJoint, false, {
-		ifUnitInWork: function(){
-			onDone("already handling this unit");
-		},
-		ifUnitError: function(error){
-			onDone(error);
-		},
-		ifJointError: function(error){
-			onDone(error);
-		},
-		ifNeedHashTree: function(){
-			onDone("need hash tree");
-		},
-		ifNeedParentUnits: function(arrMissingUnits){
-			onDone("unknown parents");
-		},
-		ifOk: function(){
-			onDone();
-			
-			// forward to other peers
-			if (!bCatchingUp && !conf.bLight)
-				forwardJoint(ws, objJoint);
+	if ( ! objJoint || ! objJoint.unit || ! objJoint.unit.unit )
+		return onDone( 'no unit' );
 
-			delete assocUnitsInWork[unit];
-		},
-		ifOkUnsigned: function(){
-			delete assocUnitsInWork[unit];
-			onDone("you can't send unsigned units");
-		},
-		ifKnown: function(){
-			if (objJoint.unsigned)
-				throw Error("known unsigned");
-			onDone("known");
-			writeEvent('known_good', ws.host);
-		},
-		ifKnownBad: function(){
-			onDone("known bad");
-			writeEvent('known_bad', ws.host);
-		},
+	var unit	= objJoint.unit.unit;
+	delete objJoint.unit.main_chain_index;
+
+	handleJoint
+	(
+		ws,
+		objJoint,
+		false,
+		{
+			ifUnitInWork : function()
+			{
+				onDone("already handling this unit");
+			},
+			ifUnitError : function( error )
+			{
+				onDone( error );
+			},
+			ifJointError : function( error )
+			{
+				onDone( error );
+			},
+			ifNeedHashTree : function()
+			{
+				onDone("need hash tree");
+			},
+			ifNeedParentUnits : function( arrMissingUnits )
+			{
+				onDone("unknown parents");
+			},
+			ifOk : function()
+			{
+				onDone();
+
+				// forward to other peers
+				if ( ! bCatchingUp && ! conf.bLight )
+					forwardJoint( ws, objJoint );
+
+				delete assocUnitsInWork[unit];
+			},
+			ifOkUnsigned : function()
+			{
+				delete assocUnitsInWork[unit];
+				onDone( "you can't send unsigned units" );
+			},
+			ifKnown : function()
+			{
+				if ( objJoint.unsigned )
+					throw Error( "known unsigned" );
+				onDone( "known" );
+				writeEvent( 'known_good', ws.host );
+			},
+			ifKnownBad : function()
+			{
+				onDone("known bad");
+				writeEvent('known_bad', ws.host);
+			},
 		ifKnownUnverified: function(){ // impossible unless the peer also sends this joint by 'joint' justsaying
 			onDone("known unverified");
 			delete assocUnitsInWork[unit];
@@ -1577,8 +1575,13 @@ function addWatchedAddress(address)
 	arrWatchedAddresses.push(address);
 }
 
-// if any of the watched addresses are affected, notifies:  1. own UI  2. light clients
-function notifyWatchers(objJoint, source_ws)
+
+/**
+ *	if any of the watched addresses are affected, notifies:  1. own UI  2. light clients
+ *	@param	objJoint
+ *	@param	source_ws
+ */
+function notifyWatchers( objJoint, source_ws )
 {
 	var objUnit = objJoint.unit;
 	var arrAddresses = objUnit.authors.map(function(author){ return author.address; });
@@ -1650,9 +1653,16 @@ function notifyWatchersAboutStableJoints(mci)
 	});
 }
 
-// from_mci is non-inclusive, to_mci is inclusive
-function notifyLightClientsAboutStableJoints(from_mci, to_mci){
-	db.query(
+
+/**
+ *	from_mci is non-inclusive, to_mci is inclusive
+ *	@param	from_mci
+ *	@param	to_mci
+ */
+function notifyLightClientsAboutStableJoints( from_mci, to_mci )
+{
+	db.query
+	(
 		"SELECT peer FROM units JOIN unit_authors USING(unit) JOIN watched_light_addresses USING(address) \n\
 		WHERE main_chain_index>? AND main_chain_index<=? \n\
 		UNION \n\
@@ -1661,39 +1671,67 @@ function notifyLightClientsAboutStableJoints(from_mci, to_mci){
 		UNION \n\
 		SELECT peer FROM units JOIN watched_light_units USING(unit) \n\
 		WHERE main_chain_index>? AND main_chain_index<=?",
-		[from_mci, to_mci, from_mci, to_mci, from_mci, to_mci],
-		function(rows){
-			rows.forEach(function(row){
-				var ws = getPeerWebSocket(row.peer);
-				if (ws && ws.readyState === ws.OPEN)
-					sendJustsaying(ws, 'light/have_updates');
+		[ from_mci, to_mci, from_mci, to_mci, from_mci, to_mci ],
+		function( rows )
+		{
+			rows.forEach( function( row )
+			{
+				var ws = getPeerWebSocket( row.peer );
+				if ( ws && ws.readyState === ws.OPEN )
+					sendJustsaying( ws, 'light/have_updates' );
 			});
-			db.query("DELETE FROM watched_light_units \n\
-				WHERE unit IN (SELECT unit FROM units WHERE main_chain_index>? AND main_chain_index<=?)", [from_mci, to_mci], function() {
-				
-			});
+			db.query
+			(
+				"DELETE FROM watched_light_units \n\
+					WHERE unit IN (SELECT unit FROM units WHERE main_chain_index > ? AND main_chain_index<=?)",
+				[ from_mci, to_mci ],
+				function()
+				{
+				}
+			);
 		}
 	);
 }
 
-function notifyLocalWatchedAddressesAboutStableJoints(mci){
-	function handleRows(rows){
-		if (rows.length > 0){
-			eventBus.emit('my_transactions_became_stable', rows.map(function(row){ return row.unit; }));
-			rows.forEach(function(row){
-				eventBus.emit('my_stable-'+row.unit);
+
+function notifyLocalWatchedAddressesAboutStableJoints( mci )
+{
+	function handleRows( rows )
+	{
+		if ( rows.length > 0 )
+		{
+			eventBus.emit
+			(
+				'my_transactions_became_stable',
+				rows.map
+				(
+					function( row )
+					{
+						return row.unit;
+					}
+				)
+			);
+			rows.forEach( function( row )
+			{
+				eventBus.emit( 'my_stable-' + row.unit );
 			});
 		}
 	}
-	if (arrWatchedAddresses.length > 0)
-		db.query(
+
+	if ( arrWatchedAddresses.length > 0 )
+	{
+		db.query
+		(
 			"SELECT unit FROM units JOIN unit_authors USING(unit) WHERE main_chain_index=? AND address IN(?) AND sequence='good' \n\
 			UNION \n\
 			SELECT unit FROM units JOIN outputs USING(unit) WHERE main_chain_index=? AND address IN(?) AND sequence='good'",
-			[mci, arrWatchedAddresses, mci, arrWatchedAddresses],
+			[ mci, arrWatchedAddresses, mci, arrWatchedAddresses ],
 			handleRows
 		);
-	db.query(
+	}
+
+	db.query
+	(
 		"SELECT unit FROM units JOIN unit_authors USING(unit) JOIN my_addresses USING(address) WHERE main_chain_index=? AND sequence='good' \n\
 		UNION \n\
 		SELECT unit FROM units JOIN outputs USING(unit) JOIN my_addresses USING(address) WHERE main_chain_index=? AND sequence='good' \n\
@@ -1701,208 +1739,385 @@ function notifyLocalWatchedAddressesAboutStableJoints(mci){
 		SELECT unit FROM units JOIN unit_authors USING(unit) JOIN shared_addresses ON address=shared_address WHERE main_chain_index=? AND sequence='good' \n\
 		UNION \n\
 		SELECT unit FROM units JOIN outputs USING(unit) JOIN shared_addresses ON address=shared_address WHERE main_chain_index=? AND sequence='good'",
-		[mci, mci, mci, mci],
+		[ mci, mci, mci, mci ],
 		handleRows
 	);
 }
 
-function addLightWatchedAddress(address){
-	if (!conf.bLight || !exports.light_vendor_url)
+
+function addLightWatchedAddress( address )
+{
+	if ( ! conf.bLight || ! exports.light_vendor_url)
 		return;
-	findOutboundPeerOrConnect(exports.light_vendor_url, function(err, ws){
-		if (err)
-			return;
-		sendJustsaying(ws, 'light/new_address_to_watch', address);
-	});
+
+	findOutboundPeerOrConnect
+	(
+		exports.light_vendor_url,
+		function( err, ws )
+		{
+			if (err)
+				return;
+			sendJustsaying( ws, 'light/new_address_to_watch', address );
+		}
+	);
 }
 
-function flushEvents(forceFlushing) {
-	if (peer_events_buffer.length == 0 || (!forceFlushing && peer_events_buffer.length != 100)) {
+
+/**
+ *
+ *	@param forceFlushing
+ */
+function flushEvents( forceFlushing )
+{
+	if ( peer_events_buffer.length === 0 || ( ! forceFlushing && peer_events_buffer.length !== 100 ) )
+	{
 		return;
 	}
 
 	var arrQueryParams = [];
 	var objUpdatedHosts = {};
-	peer_events_buffer.forEach(function(event_row){
-		var host = event_row.host;
-		var event = event_row.event;
-		var event_date = event_row.event_date;
-		if (event === 'new_good'){
-			var column = "count_"+event+"_joints";
-			_.set(objUpdatedHosts, [host, column], _.get(objUpdatedHosts, [host, column], 0)+1);
+
+	//	...
+	peer_events_buffer.forEach( function( event_row )
+	{
+		var host	= event_row.host;
+		var event	= event_row.event;
+		var event_date	= event_row.event_date;
+		if ( event === 'new_good' )
+		{
+			var column	= "count_" + event + "_joints";
+			_.set
+			(
+				objUpdatedHosts,
+				[ host, column ],
+				_.get( objUpdatedHosts, [ host, column ], 0 ) + 1
+			);
 		}
-		arrQueryParams.push("(" + db.escape(host) +"," + db.escape(event) + "," + db.getFromUnixTime(event_date) + ")");
+
+		arrQueryParams.push
+		(
+			"(" + db.escape( host ) +"," + db.escape( event ) + "," + db.getFromUnixTime( event_date ) + ")"
+		);
 	});
 
-	for (var host in objUpdatedHosts) {
-		var columns_obj = objUpdatedHosts[host];
-		var sql_columns_updates = [];
-		for (var column in columns_obj) {
-			sql_columns_updates.push(column + "=" + column + "+" + columns_obj[column]);
+	for ( var host in objUpdatedHosts )
+	{
+		var columns_obj		= objUpdatedHosts[ host ];
+		var sql_columns_updates	= [];
+
+		for ( var column in columns_obj )
+		{
+			sql_columns_updates.push( column + "=" + column + "+" + columns_obj[ column ] );
 		}
-		db.query("UPDATE peer_hosts SET "+sql_columns_updates.join()+" WHERE peer_host=?", [host]);
+		db.query
+		(
+			"UPDATE peer_hosts SET " + sql_columns_updates.join() + " WHERE peer_host=?",
+			[ host ]
+		);
 	}
 
-	db.query("INSERT INTO peer_events (peer_host, event, event_date) VALUES "+ arrQueryParams.join());
-	peer_events_buffer = [];
-	objUpdatedHosts = {};
+	db.query
+	(
+		"INSERT INTO peer_events ( peer_host, event, event_date ) VALUES " + arrQueryParams.join()
+	);
+	peer_events_buffer	= [];
+	objUpdatedHosts		= {};
 }
 
-function writeEvent(event, host){
-	if (conf.bLight)
+
+function writeEvent( event, host )
+{
+	if ( conf.bLight )
 		return;
-	if (event === 'invalid' || event === 'nonserial'){
-		var column = "count_"+event+"_joints";
-		db.query("UPDATE peer_hosts SET "+column+"="+column+"+1 WHERE peer_host=?", [host]);
-		db.query("INSERT INTO peer_events (peer_host, event) VALUES (?,?)", [host, event]);
+
+	if ( event === 'invalid' || event === 'nonserial' )
+	{
+		var column	= "count_" + event + "_joints";
+
+		db.query
+		(
+			"UPDATE peer_hosts SET " + column + "=" + column + "+1 WHERE peer_host=?",
+			[ host ]
+		);
+		db.query
+		(
+			"INSERT INTO peer_events (peer_host, event) VALUES (?,?)",
+			[ host, event ]
+		);
 		return;
 	}
-	var event_date = Math.floor(Date.now() / 1000);
-	peer_events_buffer.push({host: host, event: event, event_date: event_date});
+
+	var event_date	= Math.floor( Date.now() / 1000 );
+	peer_events_buffer.push( { host : host, event : event, event_date : event_date } );
 	flushEvents();
 }
 
-if (!conf.bLight)
-	setInterval(function(){flushEvents(true)}, 1000 * 60);
 
-
-function findAndHandleJointsThatAreReady(unit){
-	joint_storage.readDependentJointsThatAreReady(unit, handleSavedJoint);
-	handleSavedPrivatePayments(unit);
+function findAndHandleJointsThatAreReady( unit )
+{
+	joint_storage.readDependentJointsThatAreReady( unit, handleSavedJoint );
+	handleSavedPrivatePayments( unit );
 }
 
-function comeOnline(){
-	bCatchingUp = false;
-	coming_online_time = Date.now();
-	waitTillIdle(function(){
-		requestFreeJointsFromAllOutboundPeers();
-		setTimeout(cleanBadSavedPrivatePayments, 300*1000);
-	});
-	eventBus.emit('catching_up_done');
+
+function comeOnline()
+{
+	bCatchingUp		= false;
+	coming_online_time	= Date.now();
+
+	waitTillIdle
+	(
+		function()
+		{
+			requestFreeJointsFromAllOutboundPeers();
+			setTimeout
+			(
+				cleanBadSavedPrivatePayments,
+				300 * 1000
+			);
+		}
+	);
+	eventBus.emit( 'catching_up_done' );
 }
 
-function isIdle(){
-	//log.consoleLog(db._freeConnections.length +"/"+ db._allConnections.length+" connections are free, "+mutex.getCountOfQueuedJobs()+" jobs queued, "+mutex.getCountOfLocks()+" locks held, "+Object.keys(assocUnitsInWork).length+" units in work");
-	return (db.getCountUsedConnections() === 0 && mutex.getCountOfQueuedJobs() === 0 && mutex.getCountOfLocks() === 0 && Object.keys(assocUnitsInWork).length === 0);
+
+function isIdle()
+{
+	//	log.consoleLog(db._freeConnections.length +"/"+ db._allConnections.length+" connections are free, "+mutex.getCountOfQueuedJobs()+" jobs queued, "+mutex.getCountOfLocks()+" locks held, "+Object.keys(assocUnitsInWork).length+" units in work");
+	return (
+		db.getCountUsedConnections() === 0 &&
+		mutex.getCountOfQueuedJobs() === 0 &&
+		mutex.getCountOfLocks() === 0 &&
+		Object.keys( assocUnitsInWork ).length === 0
+	);
 }
 
-function waitTillIdle(onIdle){
-	if (isIdle()){
-		bWaitingTillIdle = false;
+
+function waitTillIdle( onIdle )
+{
+	if ( isIdle() )
+	{
+		bWaitingTillIdle	= false;
 		onIdle();
 	}
-	else{
-		bWaitingTillIdle = true;
-		setTimeout(function(){
-			waitTillIdle(onIdle);
-		}, 100);
+	else
+	{
+		bWaitingTillIdle	= true;
+		setTimeout
+		(
+			function()
+			{
+				waitTillIdle( onIdle );
+			},
+			100
+		);
 	}
 }
 
-function broadcastJoint(objJoint){
-	if (conf.bLight) // the joint was already posted to light vendor before saving
+
+function broadcastJoint( objJoint )
+{
+	//	the joint was already posted to light vendor before saving
+	if ( conf.bLight )
 		return;
-	wss.clients.concat(arrOutboundPeers).forEach(function(client) {
-		if (client.bSubscribed)
-			sendJoint(client, objJoint);
-	});
-	notifyWatchers(objJoint);
+
+	wss.clients.concat( arrOutboundPeers ).forEach
+	(
+		function( client )
+		{
+			if ( client.bSubscribed )
+				sendJoint( client, objJoint );
+		}
+	);
+	notifyWatchers( objJoint );
 }
 
 
 
-// catchup
 
-function checkCatchupLeftovers(){
-	db.query(
+
+//////////////////////////////////////////////////////////////////////
+//	catchup
+//////////////////////////////////////////////////////////////////////
+
+function checkCatchupLeftovers()
+{
+	db.query
+	(
 		"SELECT 1 FROM hash_tree_balls \n\
 		UNION \n\
 		SELECT 1 FROM catchup_chain_balls \n\
 		LIMIT 1",
-		function(rows){
-			if (rows.length === 0)
+		function( rows )
+		{
+			if ( rows.length === 0 )
 				return log.consoleLog('no leftovers');
-			log.consoleLog('have catchup leftovers from the previous run');
-			findNextPeer(null, function(ws){
-				log.consoleLog('will request leftovers from '+ws.peer);
-				if (!bCatchingUp && !bWaitingForCatchupChain)
-					requestCatchup(ws);
-			});
+
+			log.consoleLog( 'have catchup leftovers from the previous run' );
+			findNextPeer
+			(
+				null,
+				function( ws )
+				{
+					log.consoleLog( 'will request leftovers from ' + ws.peer );
+					if ( ! bCatchingUp && ! bWaitingForCatchupChain )
+						requestCatchup( ws );
+				}
+			);
 		}
 	);
 }
 
-function requestCatchup(ws){
+
+function requestCatchup( ws )
+{
 	log.consoleLog("will request catchup from "+ws.peer);
-	eventBus.emit('catching_up_started');
-	if (conf.storage === 'sqlite')
-		db.query("PRAGMA cache_size=-200000", function(){});
-	catchup.purgeHandledBallsFromHashTree(db, function(){
-		db.query(
-			"SELECT hash_tree_balls.unit FROM hash_tree_balls LEFT JOIN units USING(unit) WHERE units.unit IS NULL ORDER BY ball_index", 
-			function(tree_rows){ // leftovers from previous run
-				if (tree_rows.length > 0){
-					bCatchingUp = true;
-					log.consoleLog("will request balls found in hash tree");
-					requestNewMissingJoints(ws, tree_rows.map(function(tree_row){ return tree_row.unit; }));
-					waitTillHashTreeFullyProcessedAndRequestNext(ws);
-					return;
-				}
-				db.query("SELECT 1 FROM catchup_chain_balls LIMIT 1", function(chain_rows){ // leftovers from previous run
-					if (chain_rows.length > 0){
-						bCatchingUp = true;
-						requestNextHashTree(ws);
+
+	eventBus.emit( 'catching_up_started' );
+
+	if ( conf.storage === 'sqlite' )
+		db.query( "PRAGMA cache_size=-200000", function(){} );
+
+	catchup.purgeHandledBallsFromHashTree
+	(
+		db,
+		function()
+		{
+			db.query
+			(
+				"SELECT hash_tree_balls.unit FROM hash_tree_balls LEFT JOIN units USING(unit) WHERE units.unit IS NULL ORDER BY ball_index",
+				function( tree_rows )
+				{
+					//	leftovers from previous run
+					if ( tree_rows.length > 0 )
+					{
+						bCatchingUp	= true;
+						log.consoleLog("will request balls found in hash tree");
+
+						requestNewMissingJoints
+						(
+							ws,
+							tree_rows.map
+							(
+								function( tree_row )
+								{
+									return tree_row.unit;
+								}
+							)
+						);
+
+						waitTillHashTreeFullyProcessedAndRequestNext( ws );
 						return;
 					}
-					// we are not switching to catching up mode until we receive a catchup chain - don't allow peers to throw us into 
-					// catching up mode by just sending a ball
+
+					db.query
+					(
+						"SELECT 1 FROM catchup_chain_balls LIMIT 1",
+						function( chain_rows )
+						{
+							//	leftovers from previous run
+							if ( chain_rows.length > 0 )
+							{
+								bCatchingUp = true;
+								requestNextHashTree( ws );
+								return;
+							}
+
+							//
+							//	we are not switching to catching up mode until we receive a catchup chain
+							// 	- don't allow peers to throw us into
+							//	catching up mode by just sending a ball
+
+							//	to avoid duplicate requests, we are raising this flag before actually sending the request
+							//	(will also reset the flag only after the response is fully processed)
+							bWaitingForCatchupChain = true;
 					
-					// to avoid duplicate requests, we are raising this flag before actually sending the request 
-					// (will also reset the flag only after the response is fully processed)
-					bWaitingForCatchupChain = true;
-					
-					log.consoleLog('will read last stable mci for catchup');
-					storage.readLastStableMcIndex(db, function(last_stable_mci){
-						storage.readLastMainChainIndex(function(last_known_mci){
-							myWitnesses.readMyWitnesses(function(arrWitnesses){
-								var params = {witnesses: arrWitnesses, last_stable_mci: last_stable_mci, last_known_mci: last_known_mci};
-								sendRequest(ws, 'catchup', params, true, handleCatchupChain);
-							}, 'wait');
-						});
-					});
-				});
-			}
-		);
-	});
+							log.consoleLog( 'will read last stable mci for catchup' );
+							storage.readLastStableMcIndex
+							(
+								db,
+								function( last_stable_mci )
+								{
+									storage.readLastMainChainIndex
+									(
+										function( last_known_mci )
+										{
+											myWitnesses.readMyWitnesses
+											(
+												function( arrWitnesses )
+												{
+													var params =
+													{
+														witnesses	: arrWitnesses,
+														last_stable_mci	: last_stable_mci,
+														last_known_mci	: last_known_mci
+													};
+													sendRequest
+													(
+														ws,
+														'catchup',
+														params,
+														true,
+														handleCatchupChain
+													);
+												},
+												'wait'
+											);
+										}
+									);
+								}
+							);
+						}
+					);
+				}
+			);
+		}
+	);
 }
 
-function handleCatchupChain(ws, request, response){
-	if (response.error){
+
+function handleCatchupChain( ws, request, response )
+{
+	if ( response.error )
+	{
 		bWaitingForCatchupChain = false;
 		log.consoleLog('catchup request got error response: '+response.error);
 		// findLostJoints will wake up and trigger another attempt to request catchup
 		return;
 	}
+
 	var catchupChain = response;
-	catchup.processCatchupChain(catchupChain, ws.peer, {
-		ifError: function(error){
-			bWaitingForCatchupChain = false;
-			sendError(ws, error);
-		},
-		ifOk: function(){
-			bWaitingForCatchupChain = false;
-			bCatchingUp = true;
-			requestNextHashTree(ws);
-		},
-		ifCurrent: function(){
-			bWaitingForCatchupChain = false;
+	catchup.processCatchupChain
+	(
+		catchupChain,
+		ws.peer,
+		{
+			ifError	: function( error )
+			{
+				bWaitingForCatchupChain = false;
+				sendError( ws, error );
+			},
+			ifOk	: function()
+			{
+				bWaitingForCatchupChain = false;
+				bCatchingUp = true;
+				requestNextHashTree( ws );
+			},
+			ifCurrent : function()
+			{
+				bWaitingForCatchupChain = false;
+			}
 		}
-	});
+	);
 }
 
 
 
-// hash tree
+
+//////////////////////////////////////////////////////////////////////
+//	hash tree
+//////////////////////////////////////////////////////////////////////
+
 
 function requestNextHashTree(ws){
 	eventBus.emit('catchup_next_hash_tree');
@@ -3149,26 +3364,49 @@ function startLightClient(){
 	setInterval(requestUnfinishedPastUnitsOfSavedPrivateElements, 12*1000);
 }
 
-function start(){
-	log.consoleLog("starting network");
+function start()
+{
+	log.consoleLog( "starting network" );
+
+	//	...
 	conf.bLight ? startLightClient() : startRelay();
-	setInterval(printConnectionStatus, 6*1000);
-	// if we have exactly same intervals on two clints, they might send heartbeats to each other at the same time
-	setInterval(heartbeat, 3*1000 + getRandomInt(0, 1000));
+
+	//	...
+	setInterval
+	(
+		printConnectionStatus,
+		6 * 1000
+	);
+
+	//
+	//	if we have exactly same intervals on two clints,
+	//	they might send heartbeats to each other at the same time
+	//
+	setInterval
+	(
+		heartbeat,
+		3 * 1000 + getRandomInt( 0, 1000 )
+	);
 }
 
-function closeAllWsConnections() {
-	arrOutboundPeers.forEach(function(ws) {
-		ws.close(1000,'Re-connect');
+
+function closeAllWsConnections()
+{
+	arrOutboundPeers.forEach( function( ws )
+	{
+		ws.close( 1000, 'Re-connect' );
 	});
 }
+
 
 function isConnected()
 {
 	return ( arrOutboundPeers.length + wss.clients.length );
 }
 
-function isCatchingUp(){
+
+function isCatchingUp()
+{
 	return bCatchingUp;
 }
 
@@ -3177,15 +3415,89 @@ function isCatchingUp(){
 
 
 
-eventBus.on( 'mci_became_stable', notifyWatchersAboutStableJoints );
+if ( process.browser )
+{
+	//	browser
+	log.consoleLog( "defining .on() on ws" );
+
+	WebSocket.prototype.on = function( event, callback )
+	{
+		var self = this;
+		if ( event === 'message' )
+		{
+			this[ 'on' + event ] = function( event )
+			{
+				callback.call( self, event.data );
+			};
+			return;
+		}
+
+		if ( event !== 'open' )
+		{
+			this[ 'on' + event ] = callback;
+			return;
+		}
+
+		//	allow several handlers for 'open' event
+		if ( ! this[ 'open_handlers' ] )
+			this['open_handlers'] = [];
+
+		this[ 'open_handlers' ].push( callback );
+		this[ 'on' + event ] = function()
+		{
+			self[ 'open_handlers' ].forEach
+			(
+				function( cb )
+				{
+					cb();
+				}
+			);
+		};
+	};
+
+	//	...
+	WebSocket.prototype.once		= WebSocket.prototype.on;
+	WebSocket.prototype.setMaxListeners	= function(){};
+}
+
+
+/**
+ *	...
+ */
+if ( ! conf.bLight )
+{
+	setInterval
+	(
+		function()
+		{
+			flushEvents( true );
+		},
+		1000 * 60
+	);
+}
 
 
 
+/**
+ *	set events
+ */
+eventBus.on
+(
+	'mci_became_stable',
+	notifyWatchersAboutStableJoints
+);
 
 
+/**
+ *	start
+ */
 start();
 
 
+
+/**
+ *	exports
+ */
 exports.start						= start;
 exports.postJointToLightVendor				= postJointToLightVendor;
 exports.broadcastJoint					= broadcastJoint;

@@ -221,7 +221,7 @@ function loginToHub()
 			}
 
 			//	...
-			log.consoleLog( 'done loginToHub, successfully!' );
+			log.consoleLog( '+ network.findOutboundPeerOrConnect :: done loginToHub, successfully!' );
 		}
 	);
 }
