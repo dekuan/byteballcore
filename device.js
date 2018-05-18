@@ -1,22 +1,23 @@
 /*jslint node: true */
 "use strict";
-var crypto = require('crypto');
-var async = require('async');
-var ecdsa = require('secp256k1');
-var db = require('./db.js');
-var mutex = require('./mutex.js');
-var objectHash = require('./object_hash.js');
-var ecdsaSig = require('./signature.js');
-var network = require('./network.js');
-var eventBus = require('./event_bus.js');
-var ValidationUtils = require("./validation_utils.js");
-var conf = require('./conf.js');
-var breadcrumbs = require('./breadcrumbs.js');
+
+var crypto		= require('crypto');
+var async		= require('async');
+var ecdsa		= require('secp256k1');
+var db			= require('./db.js');
+var mutex		= require('./mutex.js');
+var objectHash		= require('./object_hash.js');
+var ecdsaSig		= require('./signature.js');
+var network		= require('./network.js');
+var eventBus		= require('./event_bus.js');
+var ValidationUtils	= require("./validation_utils.js");
+var conf		= require('./conf.js');
+var breadcrumbs		= require('./breadcrumbs.js');
 
 
-var SEND_RETRY_PERIOD = 60*1000;
-var RECONNECT_TO_HUB_PERIOD = 60*1000;
-var TEMP_DEVICE_KEY_ROTATION_PERIOD = 3600*1000;
+var SEND_RETRY_PERIOD			= 60 * 1000;
+var RECONNECT_TO_HUB_PERIOD		= 60 * 1000;
+var TEMP_DEVICE_KEY_ROTATION_PERIOD	= 3600 * 1000;
 
 var my_device_hub;
 var my_device_name;
@@ -25,51 +26,75 @@ var my_device_address;
 var objMyPermanentDeviceKey;
 var objMyTempDeviceKey;
 var objMyPrevTempDeviceKey;
-var saveTempKeys; // function that saves temp keys
+var saveTempKeys;		//	function that saves temp keys
 var bScheduledTempDeviceKeyRotation = false;
 
 
-function getMyDevicePubKey(){
-	if (!objMyPermanentDeviceKey || !objMyPermanentDeviceKey.pub_b64)
-		throw Error('my device pubkey not defined');
+
+function getMyDevicePubKey()
+{
+	if ( ! objMyPermanentDeviceKey || ! objMyPermanentDeviceKey.pub_b64 )
+		throw Error( 'my device pubkey not defined' );
+
 	return objMyPermanentDeviceKey.pub_b64;
 }
 
-function getMyDeviceAddress(){
-	if (!my_device_address)
+function getMyDeviceAddress()
+{
+	if ( ! my_device_address )
 		throw Error('my_device_address not defined');
-	if (typeof window !== 'undefined' && window && window.cordova)
+
+	if ( typeof window !== 'undefined' && window && window.cordova )
 		checkDeviceAddress();
+
 	return my_device_address;
 }
 
 
-function setDevicePrivateKey(priv_key){
+function setDevicePrivateKey( priv_key )
+{
 	breadcrumbs.add("setDevicePrivateKey");
+
 	var bChanged = (!objMyPermanentDeviceKey || priv_key !== objMyPermanentDeviceKey.priv);
-	objMyPermanentDeviceKey = {
-		priv: priv_key,
-		pub_b64: ecdsa.publicKeyCreate(priv_key, true).toString('base64')
+
+	objMyPermanentDeviceKey =
+	{
+		priv	: priv_key,
+		pub_b64	: ecdsa.publicKeyCreate(priv_key, true).toString('base64')
 	};
-	var new_my_device_address = objectHash.getDeviceAddress(objMyPermanentDeviceKey.pub_b64);
-	if (my_device_address && my_device_address !== new_my_device_address){
-		breadcrumbs.add('different device address: old '+my_device_address+', new '+new_my_device_address);
-		throw Error('different device address: old '+my_device_address+', new '+new_my_device_address);
+
+	var new_my_device_address = objectHash.getDeviceAddress( objMyPermanentDeviceKey.pub_b64 );
+	if ( my_device_address && my_device_address !== new_my_device_address )
+	{
+		breadcrumbs.add( 'different device address: old ' + my_device_address + ', new ' + new_my_device_address );
+		throw Error( 'different device address: old ' + my_device_address + ', new ' + new_my_device_address );
 	}
-	breadcrumbs.add("same device addresses: "+new_my_device_address);
+
+	//	...
+	breadcrumbs.add( "same device addresses: " + new_my_device_address );
 	my_device_address = new_my_device_address;
+
 	// this temp pubkey package signs my permanent key and is actually used only if I'm my own hub. 
 	// In this case, there are no intermediaries and TLS already provides perfect forward security
-	network.setMyDeviceProps(my_device_address, createTempPubkeyPackage(objMyPermanentDeviceKey.pub_b64));
+	network.setMyDeviceProps
+	(
+		my_device_address,
+		createTempPubkeyPackage( objMyPermanentDeviceKey.pub_b64 )
+	);
+
 	if (bChanged)
 		loginToHub();
 }
 
-function checkDeviceAddress(){
-	if (!objMyPermanentDeviceKey)
+
+function checkDeviceAddress()
+{
+	if ( ! objMyPermanentDeviceKey )
 		return;
-	var derived_my_device_address = objectHash.getDeviceAddress(objMyPermanentDeviceKey.pub_b64);
-	if (my_device_address !== derived_my_device_address){
+
+	var derived_my_device_address	= objectHash.getDeviceAddress( objMyPermanentDeviceKey.pub_b64 );
+	if ( my_device_address !== derived_my_device_address )
+	{
 		breadcrumbs.add('different device address: old '+my_device_address+', derived '+derived_my_device_address);
 		throw Error('different device address: old '+my_device_address+', derived '+derived_my_device_address);
 	}
@@ -108,12 +133,18 @@ function setDeviceName(device_name){
 	my_device_name = device_name;
 }
 
-function setDeviceHub(device_hub){
+function setDeviceHub( device_hub )
+{
 	console.log("setDeviceHub", device_hub);
-	var bChanged = (device_hub !== my_device_hub);
+
+	var bChanged	= ( device_hub !== my_device_hub );
+
+	//	...
 	my_device_hub = device_hub;
-	if (bChanged){
-		network.addPeer(conf.WS_PROTOCOL+device_hub);
+
+	if ( bChanged )
+	{
+		network.addPeer( conf.WS_PROTOCOL + device_hub );
 		loginToHub();
 	}
 }
@@ -134,30 +165,45 @@ function handleChallenge(ws, challenge){
 		ws.received_challenge = challenge;
 }
 
-function loginToHub(){
-	if (!objMyPermanentDeviceKey)
+function loginToHub()
+{
+	if ( ! objMyPermanentDeviceKey )
 		return console.log("objMyPermanentDeviceKey not set yet, can't log in");
-	if (!objMyTempDeviceKey)
+
+	if ( ! objMyTempDeviceKey )
 		return console.log("objMyTempDeviceKey not set yet, can't log in");
-	if (!my_device_hub)
+
+	if ( ! my_device_hub )
 		return console.log("my_device_hub not set yet, can't log in");
-	console.log("logging in to hub "+my_device_hub);
-	network.findOutboundPeerOrConnect(conf.WS_PROTOCOL+my_device_hub, function onLocatedHubForLogin(err, ws){
-		if (err)
-			return;
-		if (ws.bLoggedIn)
-			return;
-		if (ws.received_challenge)
-			sendLoginCommand(ws, ws.received_challenge);
-		else
-			ws.bLoggingIn = true;
-		console.log('done loginToHub');
-	});
+
+	//	...
+	console.log( "logging in to hub " + my_device_hub );
+
+	network.findOutboundPeerOrConnect
+	(
+		conf.WS_PROTOCOL+my_device_hub,
+		function onLocatedHubForLogin( err, ws )
+		{
+			if ( err )
+				return;
+
+			if (ws.bLoggedIn)
+				return;
+			if (ws.received_challenge)
+				sendLoginCommand(ws, ws.received_challenge);
+			else
+				ws.bLoggingIn = true;
+
+			console.log('done loginToHub');
+		}
+	);
 }
 
 
-setInterval(loginToHub, RECONNECT_TO_HUB_PERIOD);
-eventBus.on('connected', loginToHub);
+
+
+
+
 
 function sendLoginCommand(ws, challenge){
 	var objLogin = {challenge: challenge, pubkey: objMyPermanentDeviceKey.pub_b64};
@@ -729,6 +775,18 @@ function requestFromHub(command, params, responseHandler){
 		});
 	});
 }
+
+
+
+
+
+
+
+setInterval(loginToHub, RECONNECT_TO_HUB_PERIOD);
+eventBus.on('connected', loginToHub);
+
+
+
 
 
 exports.getMyDevicePubKey = getMyDevicePubKey;
