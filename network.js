@@ -1405,174 +1405,254 @@ function handlePostedJoint( ws, objJoint, onDone )
 			},
 			ifKnownBad : function()
 			{
-				onDone("known bad");
-				writeEvent('known_bad', ws.host);
+				onDone( "known bad" );
+				writeEvent( 'known_bad', ws.host );
 			},
-		ifKnownUnverified: function(){ // impossible unless the peer also sends this joint by 'joint' justsaying
-			onDone("known unverified");
-			delete assocUnitsInWork[unit];
+			ifKnownUnverified : function()
+			{
+				//	impossible unless the peer also sends this joint by 'joint' justsaying
+				onDone( "known unverified" );
+				delete assocUnitsInWork[ unit ];
+			}
 		}
-	});
+	);
 }
 
-function handleOnlineJoint(ws, objJoint, onDone)
+
+function handleOnlineJoint( ws, objJoint, onDone )
 {
-	if (!onDone)
+	if ( ! onDone)
 		onDone = function(){};
+
 	var unit = objJoint.unit.unit;
 	delete objJoint.unit.main_chain_index;
-	
-	handleJoint(ws, objJoint, false, {
-		ifUnitInWork: onDone,
-		ifUnitError: function(error){
-			sendErrorResult(ws, unit, error);
-			onDone();
-		},
-		ifJointError: function(error){
-			sendErrorResult(ws, unit, error);
-			onDone();
-		},
-		ifNeedHashTree: function(){
-			if (!bCatchingUp && !bWaitingForCatchupChain)
-				requestCatchup(ws);
-			// we are not saving the joint so that in case requestCatchup() fails, the joint will be requested again via findLostJoints, 
-			// which will trigger another attempt to request catchup
-			onDone();
-		},
-		ifNeedParentUnits: function(arrMissingUnits){
-			sendInfo(ws, {unit: unit, info: "unresolved dependencies: "+arrMissingUnits.join(", ")});
-			joint_storage.saveUnhandledJointAndDependencies(objJoint, arrMissingUnits, ws.peer, function(){
-				delete assocUnitsInWork[unit];
-			});
-			requestNewMissingJoints(ws, arrMissingUnits);
-			onDone();
-		},
-		ifOk: function(){
-			sendResult(ws, {unit: unit, result: 'accepted'});
-			
-			// forward to other peers
-			if (!bCatchingUp && !conf.bLight)
-				forwardJoint(ws, objJoint);
 
-			delete assocUnitsInWork[unit];
 
-			// wake up other joints that depend on me
-			findAndHandleJointsThatAreReady(unit);
-			onDone();
-		},
-		ifOkUnsigned: function(){
-			delete assocUnitsInWork[unit];
-			onDone();
-		},
-		ifKnown: function(){
-			if (objJoint.unsigned)
-				throw Error("known unsigned");
-			sendResult(ws, {unit: unit, result: 'known'});
-			writeEvent('known_good', ws.host);
-			onDone();
-		},
-		ifKnownBad: function(){
-			sendResult(ws, {unit: unit, result: 'known_bad'});
-			writeEvent('known_bad', ws.host);
-			if (objJoint.unsigned)
-				eventBus.emit("validated-"+unit, false);
-			onDone();
-		},
-		ifKnownUnverified: function(){
-			sendResult(ws, {unit: unit, result: 'known_unverified'});
-			delete assocUnitsInWork[unit];
-			onDone();
+	handleJoint
+	(
+		ws,
+		objJoint,
+		false,
+		{
+			ifUnitInWork : onDone,
+			ifUnitError : function( error )
+			{
+				sendErrorResult( ws, unit, error );
+				onDone();
+			},
+			ifJointError : function( error )
+			{
+				sendErrorResult( ws, unit, error );
+				onDone();
+			},
+			ifNeedHashTree : function()
+			{
+				if ( ! bCatchingUp && ! bWaitingForCatchupChain )
+					requestCatchup( ws );
+
+				//
+				//	we are not saving the joint so that in case requestCatchup() fails,
+				//	the joint will be requested again via findLostJoints,
+				//	which will trigger another attempt to request catchup
+				onDone();
+			},
+			ifNeedParentUnits : function( arrMissingUnits )
+			{
+				sendInfo( ws, { unit : unit, info : "unresolved dependencies: " + arrMissingUnits.join( ", " ) } );
+				joint_storage.saveUnhandledJointAndDependencies( objJoint, arrMissingUnits, ws.peer, function()
+				{
+					delete assocUnitsInWork[unit];
+				});
+				requestNewMissingJoints( ws, arrMissingUnits );
+				onDone();
+			},
+			ifOk : function()
+			{
+				sendResult( ws, { unit: unit, result: 'accepted' } );
+
+				//	forward to other peers
+				if ( ! bCatchingUp && ! conf.bLight )
+					forwardJoint( ws, objJoint );
+
+				delete assocUnitsInWork[ unit ];
+
+				//	wake up other joints that depend on me
+				findAndHandleJointsThatAreReady( unit );
+				onDone();
+			},
+			ifOkUnsigned : function()
+			{
+				delete assocUnitsInWork[ unit ];
+				onDone();
+			},
+			ifKnown : function()
+			{
+				if ( objJoint.unsigned )
+					throw Error( "known unsigned" );
+
+				sendResult( ws, { unit: unit, result: 'known' } );
+				writeEvent( 'known_good', ws.host );
+				onDone();
+			},
+			ifKnownBad : function()
+			{
+				sendResult( ws, { unit : unit, result : 'known_bad' } );
+				writeEvent( 'known_bad', ws.host );
+				if ( objJoint.unsigned )
+					eventBus.emit( "validated-" + unit, false );
+
+				onDone();
+			},
+			ifKnownUnverified : function()
+			{
+				sendResult( ws, { unit : unit, result : 'known_unverified' } );
+				delete assocUnitsInWork[ unit ];
+				onDone();
+			}
 		}
-	});
+	);
 }
 
 
-function handleSavedJoint(objJoint, creation_ts, peer)
+function handleSavedJoint( objJoint, creation_ts, peer )
 {
-	
-	var unit = objJoint.unit.unit;
-	var ws = getPeerWebSocket(peer);
-	if (ws && ws.readyState !== ws.OPEN)
+	var unit	= objJoint.unit.unit;
+	var ws		= getPeerWebSocket( peer );
+
+	if ( ws && ws.readyState !== ws.OPEN )
 		ws = null;
 
-	handleJoint(ws, objJoint, true, {
-		ifUnitInWork: function(){},
-		ifUnitError: function(error){
-			if (ws)
-				sendErrorResult(ws, unit, error);
-		},
-		ifJointError: function(error){
-			if (ws)
-				sendErrorResult(ws, unit, error);
-		},
-		ifNeedHashTree: function(){
-			throw Error("handleSavedJoint: need hash tree");
-		},
-		ifNeedParentUnits: function(arrMissingUnits){
-			db.query("SELECT 1 FROM archived_joints WHERE unit IN(?) LIMIT 1", [arrMissingUnits], function(rows){
-				if (rows.length === 0)
-					throw Error("unit "+unit+" still has unresolved dependencies: "+arrMissingUnits.join(", "));
-				breadcrumbs.add("unit "+unit+" has unresolved dependencies that were archived: "+arrMissingUnits.join(", "))
-				if (ws)
-					requestNewMissingJoints(ws, arrMissingUnits);
-				else
-					findNextPeer(null, function(next_ws){
-						requestNewMissingJoints(next_ws, arrMissingUnits);
-					});
-				delete assocUnitsInWork[unit];
-			});
-		},
-		ifOk: function(){
-			if (ws)
-				sendResult(ws, {unit: unit, result: 'accepted'});
-			
-			// forward to other peers
-			if (!bCatchingUp && !conf.bLight && creation_ts > Date.now() - FORWARDING_TIMEOUT)
-				forwardJoint(ws, objJoint);
+	handleJoint
+	(
+		ws,
+		objJoint,
+		true,
+		{
+			ifUnitInWork : function(){},
+			ifUnitError : function( error )
+			{
+				if ( ws )
+					sendErrorResult( ws, unit, error );
+			},
+			ifJointError : function( error )
+			{
+				if ( ws )
+					sendErrorResult( ws, unit, error );
+			},
+			ifNeedHashTree : function()
+			{
+				throw Error( "handleSavedJoint: need hash tree" );
+			},
+			ifNeedParentUnits : function( arrMissingUnits )
+			{
+				db.query
+				(
+					"SELECT 1 FROM archived_joints WHERE unit IN(?) LIMIT 1",
+					[ arrMissingUnits ],
+					function( rows )
+					{
+						if ( rows.length === 0 )
+							throw Error( "unit " + unit + " still has unresolved dependencies: " + arrMissingUnits.join( ", " ) );
 
-			joint_storage.removeUnhandledJointAndDependencies(unit, function(){
-				delete assocUnitsInWork[unit];
-				// wake up other saved joints that depend on me
-				findAndHandleJointsThatAreReady(unit);
-			});
+						breadcrumbs.add
+						(
+							"unit " + unit + " has unresolved dependencies that were archived: " + arrMissingUnits.join( ", " )
+						);
+						if ( ws )
+						{
+							requestNewMissingJoints( ws, arrMissingUnits );
+						}
+						else
+						{
+							findNextPeer
+							(
+								null,
+								function( next_ws )
+								{
+									requestNewMissingJoints( next_ws, arrMissingUnits );
+								}
+							);
+						}
+
+						//	...
+						delete assocUnitsInWork[ unit ];
+					}
+				);
+			},
+			ifOk : function()
+			{
+				if ( ws )
+					sendResult( ws, { unit : unit, result : 'accepted' } );
+
+				//	forward to other peers
+				if ( ! bCatchingUp && ! conf.bLight && creation_ts > Date.now() - FORWARDING_TIMEOUT )
+					forwardJoint( ws, objJoint );
+
+				joint_storage.removeUnhandledJointAndDependencies
+				(
+					unit,
+					function()
+					{
+						delete assocUnitsInWork[unit];
+
+						//	wake up other saved joints that depend on me
+						findAndHandleJointsThatAreReady( unit );
+					}
+				);
+			},
+			ifOkUnsigned : function()
+			{
+				joint_storage.removeUnhandledJointAndDependencies( unit, function()
+				{
+					delete assocUnitsInWork[ unit ];
+				}
+			);
 		},
-		ifOkUnsigned: function(){
-			joint_storage.removeUnhandledJointAndDependencies(unit, function(){
-				delete assocUnitsInWork[unit];
-			});
-		},
-		// readDependentJointsThatAreReady can read the same joint twice before it's handled. If not new, just ignore (we've already responded to peer).
-		ifKnown: function(){},
-		ifKnownBad: function(){},
-		ifNew: function(){
-			// that's ok: may be simultaneously selected by readDependentJointsThatAreReady and deleted by purgeJunkUnhandledJoints when we wake up after sleep
+		//	readDependentJointsThatAreReady can read the same joint twice before it's handled. If not new, just ignore (we've already responded to peer).
+		ifKnown : function(){},
+		ifKnownBad : function(){},
+		ifNew : function()
+		{
+			//	that's ok: may be simultaneously selected by readDependentJointsThatAreReady and deleted by purgeJunkUnhandledJoints when we wake up after sleep
 			delete assocUnitsInWork[unit];
 			log.consoleLog("new in handleSavedJoint: "+unit);
-		//	throw Error("new in handleSavedJoint: "+unit);
+			//	throw Error("new in handleSavedJoint: "+unit);
 		}
 	});
 }
 
-function handleLightOnlineJoint(ws, objJoint)
+
+function handleLightOnlineJoint( ws, objJoint )
 {
-	// the lock ensures that we do not overlap with history processing which might also write new joints
-	mutex.lock(["light_joints"], function(unlock){
-		breadcrumbs.add('got light_joints for handleLightOnlineJoint '+objJoint.unit.unit);
-		handleOnlineJoint(ws, objJoint, function(){
-			breadcrumbs.add('handleLightOnlineJoint done');
-			unlock();
-		});
-	});
+	//	the lock ensures that we do not overlap with history processing which might also write new joints
+	mutex.lock
+	(
+		[ "light_joints" ],
+		function( unlock )
+		{
+			breadcrumbs.add( 'got light_joints for handleLightOnlineJoint ' + objJoint.unit.unit );
+			handleOnlineJoint
+			(
+				ws,
+				objJoint,
+				function()
+				{
+					breadcrumbs.add('handleLightOnlineJoint done');
+					unlock();
+				}
+			);
+		}
+	);
 }
 
-function setWatchedAddresses(_arrWatchedAddresses)
+function setWatchedAddresses( _arrWatchedAddresses )
 {
 	arrWatchedAddresses = _arrWatchedAddresses;
 }
 
-function addWatchedAddress(address)
+function addWatchedAddress( address )
 {
-	arrWatchedAddresses.push(address);
+	arrWatchedAddresses.push( address );
 }
 
 
@@ -1583,52 +1663,87 @@ function addWatchedAddress(address)
  */
 function notifyWatchers( objJoint, source_ws )
 {
-	var objUnit = objJoint.unit;
-	var arrAddresses = objUnit.authors.map(function(author){ return author.address; });
-	if (!objUnit.messages) // voided unit
+	var objUnit		= objJoint.unit;
+	var arrAddresses	= objUnit.authors.map( function( author ){ return author.address; } );
+
+	if ( ! objUnit.messages )
+	{
+		//	voided unit
 		return;
-	for (var i=0; i<objUnit.messages.length; i++){
-		var message = objUnit.messages[i];
-		if (message.app !== "payment" || !message.payload)
+	}
+
+	for ( var i = 0; i < objUnit.messages.length; i++ )
+	{
+		var message	= objUnit.messages[ i ];
+		if ( message.app !== "payment" || ! message.payload )
+		{
 			continue;
-		var payload = message.payload;
-		for (var j=0; j<payload.outputs.length; j++){
-			var address = payload.outputs[j].address;
-			if (arrAddresses.indexOf(address) === -1)
-				arrAddresses.push(address);
+		}
+
+		var payload	= message.payload;
+		for ( var j = 0; j < payload.outputs.length; j++ )
+		{
+			var address	= payload.outputs[ j ].address;
+			if ( arrAddresses.indexOf( address ) === -1 )
+			{
+				arrAddresses.push( address );
+			}
 		}
 	}
-	if (_.intersection(arrWatchedAddresses, arrAddresses).length > 0){
-		eventBus.emit("new_my_transactions", [objJoint.unit.unit]);
-		eventBus.emit("new_my_unit-"+objJoint.unit.unit, objJoint);
+	if ( _.intersection( arrWatchedAddresses, arrAddresses ).length > 0 )
+	{
+		eventBus.emit( "new_my_transactions", [ objJoint.unit.unit ] );
+		eventBus.emit( "new_my_unit-" + objJoint.unit.unit, objJoint );
 	}
 	else
-		db.query(
-			"SELECT 1 FROM my_addresses WHERE address IN(?) UNION SELECT 1 FROM shared_addresses WHERE shared_address IN(?)", 
-			[arrAddresses, arrAddresses], 
-			function(rows){
-				if (rows.length > 0){
-					eventBus.emit("new_my_transactions", [objJoint.unit.unit]);
-					eventBus.emit("new_my_unit-"+objJoint.unit.unit, objJoint);
+	{
+		db.query
+		(
+			"SELECT 1 FROM my_addresses WHERE address IN(?) UNION SELECT 1 FROM shared_addresses WHERE shared_address IN(?)",
+			[ arrAddresses, arrAddresses ],
+			function( rows )
+			{
+				if ( rows.length > 0 )
+				{
+					eventBus.emit( "new_my_transactions", [ objJoint.unit.unit ] );
+					eventBus.emit( "new_my_unit-" + objJoint.unit.unit, objJoint );
 				}
 			}
 		);
-	
-	if (conf.bLight)
+	}
+
+	if ( conf.bLight )
 		return;
-	if (objJoint.ball) // already stable, light clients will require a proof
+
+	if ( objJoint.ball )
+	{
+		//	already stable, light clients will require a proof
 		return;
-	// this is a new unstable joint, light clients will accept it without proof
-	db.query("SELECT peer FROM watched_light_addresses WHERE address IN(?)", [arrAddresses], function(rows){
-		if (rows.length === 0)
-			return;
-		objUnit.timestamp = Math.round(Date.now()/1000); // light clients need timestamp
-		rows.forEach(function(row){
-			var ws = getPeerWebSocket(row.peer);
-			if (ws && ws.readyState === ws.OPEN && ws !== source_ws)
-				sendJoint(ws, objJoint);
-		});
-	});
+	}
+
+	//	this is a new unstable joint, light clients will accept it without proof
+	db.query
+	(
+		"SELECT peer FROM watched_light_addresses WHERE address IN(?)",
+		[ arrAddresses ],
+		function( rows )
+		{
+			if ( rows.length === 0 )
+				return;
+
+			//	...
+			objUnit.timestamp	= Math.round( Date.now() / 1000 );	//	light clients need timestamp
+			rows.forEach
+			(
+				function( row )
+				{
+					var ws	= getPeerWebSocket( row.peer );
+					if ( ws && ws.readyState === ws.OPEN && ws !== source_ws )
+						sendJoint( ws, objJoint );
+				}
+			);
+		}
+	);
 }
 
 
