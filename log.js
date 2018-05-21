@@ -31,7 +31,7 @@ function consoleLog()
 	arrArgs.unshift( sDateText );
 
 	//	...
-	console.log( arrArgs );
+	console.log.apply( this, arrArgs );
 }
 
 
