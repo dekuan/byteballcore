@@ -28,7 +28,7 @@ function consoleLog()
 	//
 	//	insert date text the the beginning of the array
 	//
-	arrArgs		= arrArgs.unshift( sDateText );
+	arrArgs.unshift( sDateText );
 
 	//	...
 	console.log( arrArgs );

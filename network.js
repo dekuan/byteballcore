@@ -1116,7 +1116,7 @@ function printConnectionStatus()
 	(
 		wss.clients.length + " incoming connections, "
 		+ arrOutboundPeers.length + " outgoing connections, "
-		+ Object.keys( m_om_oAssocConnectingOutboundWebsockets ).length + " outgoing connections being opened"
+		+ Object.keys( m_oAssocConnectingOutboundWebsockets ).length + " outgoing connections being opened"
 	);
 }
 
