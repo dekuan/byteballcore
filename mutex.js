@@ -26,8 +26,8 @@ function lock( arrKeys, pfnProcedure, pfnNextProcedure )
 		(
 			{
 				arrKeys		: arrKeys,
-				proc		: pfnProcedure,
-				nextProc	: pfnNextProcedure,
+				procedure	: pfnProcedure,
+				nextProcedure	: pfnNextProcedure,
 				ts		: Date.now()
 			}
 		);
@@ -39,7 +39,8 @@ function lock( arrKeys, pfnProcedure, pfnNextProcedure )
 }
 
 /**
- *	lock or skip
+ *	execute next procedure if current {procedure} was locked,
+ *	or execute current procedure
  *	@public
  */
 function lockOrSkip( arrKeys, pfnProcedure, pfnNextProcedure )
@@ -210,7 +211,7 @@ function _handleJobsInQueue()
 		//	execute the job in queue
 		//
 		log.consoleLog( "_handleJobsInQueue, starting job held by keys", oJob.arrKeys );
-		_execute( oJob.arrKeys, oJob.proc, oJob.nextProc );
+		_execute( oJob.arrKeys, oJob.procedure, oJob.nextProcedure );
 
 		//
 		//	WE'VE JUST REMOVED ONE ITEM
@@ -243,7 +244,7 @@ function _checkForDeadlocks()
 			throw Error
 			(
 				"possible deadlock on job " + require('util').inspect( job ) + ","
-				+"\nproc:" + job.proc.toString() + " \n"
+				+"\nprocedure:" + job.procedure.toString() + " \n"
 				+ "all jobs: " + require('util').inspect( m_arrQueuedJobs, { depth : null } )
 			);
 		}

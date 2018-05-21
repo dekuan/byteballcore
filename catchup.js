@@ -2,90 +2,177 @@
 "use strict";
 
 var log			= require( './log.js' );
-var async = require('async');
-var _ = require('lodash');
-var storage = require('./storage.js');
-var objectHash = require("./object_hash.js");
-var db = require('./db.js');
-var mutex = require('./mutex.js');
-var validation = require('./validation.js');
-var witnessProof = require('./witness_proof.js');
+var async		= require( 'async' );
+var _			= require( 'lodash' );
+var storage		= require( './storage.js' );
+var objectHash		= require( './object_hash.js' );
+var db			= require( './db.js' );
+var mutex		= require( './mutex.js' );
+var validation		= require( './validation.js' );
+var witnessProof	= require( './witness_proof.js' );
 
 
-
-function prepareCatchupChain(catchupRequest, callbacks){
-	if (!catchupRequest)
+/**
+ *	prepare catchup chain
+ *
+ *	@param catchupRequest
+ *	@param callbacks
+ *	@returns {*}
+ */
+function prepareCatchupChain( catchupRequest, callbacks )
+{
+	if ( ! catchupRequest )
+	{
 		return callbacks.ifError("no catchup request");
-	var last_stable_mci = catchupRequest.last_stable_mci;
-	var last_known_mci = catchupRequest.last_known_mci;
-	var arrWitnesses = catchupRequest.witnesses;
+	}
+
+	var last_stable_mci	= catchupRequest.last_stable_mci;
+	var last_known_mci	= catchupRequest.last_known_mci;
+	var arrWitnesses	= catchupRequest.witnesses;
 	
-	if (typeof last_stable_mci !== "number")
+	if ( typeof last_stable_mci !== "number" )
+	{
 		return callbacks.ifError("no last_stable_mci");
-	if (typeof last_known_mci !== "number")
+	}
+	if ( typeof last_known_mci !== "number" )
+	{
 		return callbacks.ifError("no last_known_mci");
-	if (last_stable_mci >= last_known_mci && (last_known_mci > 0 || last_stable_mci > 0))
+	}
+	if ( last_stable_mci >= last_known_mci && ( last_known_mci > 0 || last_stable_mci > 0 ) )
+	{
 		return callbacks.ifError("last_stable_mci >= last_known_mci");
-	if (!Array.isArray(arrWitnesses))
+	}
+	if ( ! Array.isArray( arrWitnesses ) )
+	{
 		return callbacks.ifError("no witnesses");
+	}
 
-	mutex.lock(['prepareCatchupChain'], function(unlock){
-		var start_ts = Date.now();
-		var objCatchupChain = {
-			unstable_mc_joints: [], 
-			stable_last_ball_joints: [],
-			witness_change_and_definition_joints: []
-		};
-		var last_ball_unit = null;
-		async.series([
-			function(cb){ // check if the peer really needs hash trees
-				db.query("SELECT is_stable FROM units WHERE is_on_main_chain=1 AND main_chain_index=?", [last_known_mci], function(rows){
-					if (rows.length === 0)
-						return cb("already_current");
-					if (rows[0].is_stable === 0)
-						return cb("already_current");
-					cb();
-				});
-			},
-			function(cb){
-				witnessProof.prepareWitnessProof(
-					arrWitnesses, last_stable_mci, 
-					function(err, arrUnstableMcJoints, arrWitnessChangeAndDefinitionJoints, _last_ball_unit, _last_ball_mci){
-						if (err)
-							return cb(err);
-						objCatchupChain.unstable_mc_joints = arrUnstableMcJoints;
-						if (arrWitnessChangeAndDefinitionJoints.length > 0)
-							objCatchupChain.witness_change_and_definition_joints = arrWitnessChangeAndDefinitionJoints;
-						last_ball_unit = _last_ball_unit;
-						cb();
+	//
+	//	lock to execute the procedure
+	//
+	mutex.lock
+	(
+		[ 'prepareCatchupChain' ],
+		function( unlock )
+		{
+			var start_ts		= Date.now();
+			var objCatchupChain	=
+			{
+				unstable_mc_joints			: [],
+				stable_last_ball_joints			: [],
+				witness_change_and_definition_joints	: []
+			};
+			var last_ball_unit = null;
+
+			async.series
+			(
+				//	task list
+				[
+					function( cb )
+					{
+						//	check if the peer really needs hash trees
+						db.query
+						(
+							"SELECT is_stable FROM units WHERE is_on_main_chain=1 AND main_chain_index=?",
+							[ last_known_mci ],
+							function( rows )
+							{
+								if (rows.length === 0)
+									return cb("already_current");
+
+								if (rows[0].is_stable === 0)
+									return cb("already_current");
+
+								cb();
+							}
+						);
+					},
+					function( cb )
+					{
+						witnessProof.prepareWitnessProof
+						(
+							arrWitnesses,
+							last_stable_mci,
+							function( err, arrUnstableMcJoints, arrWitnessChangeAndDefinitionJoints, _last_ball_unit, _last_ball_mci )
+							{
+								if ( err )
+									return cb( err );
+
+								objCatchupChain.unstable_mc_joints = arrUnstableMcJoints;
+
+								if ( arrWitnessChangeAndDefinitionJoints.length > 0 )
+									objCatchupChain.witness_change_and_definition_joints = arrWitnessChangeAndDefinitionJoints;
+
+								last_ball_unit = _last_ball_unit;
+								cb();
+							}
+						);
+					},
+					function( cb )
+					{
+						//	jump by last_ball references until we land on or behind last_stable_mci
+						if ( ! last_ball_unit )
+							return cb();
+
+						goUp( last_ball_unit );
+
+						function goUp( unit )
+						{
+							storage.readJointWithBall
+							(
+								db,
+								unit,
+								function( objJoint )
+								{
+									objCatchupChain.stable_last_ball_joints.push( objJoint );
+									storage.readUnitProps
+									(
+										db,
+										unit,
+										function( objUnitProps )
+										{
+											( objUnitProps.main_chain_index <= last_stable_mci )
+												? cb()
+												:
+												goUp( objJoint.unit.last_ball_unit );
+										}
+									);
+								}
+							);
+						}
 					}
-				);
-			},
-			function(cb){ // jump by last_ball references until we land on or behind last_stable_mci
-				if (!last_ball_unit)
-					return cb();
-				goUp(last_ball_unit);
+				],
 
-				function goUp(unit){
-					storage.readJointWithBall(db, unit, function(objJoint){
-						objCatchupChain.stable_last_ball_joints.push(objJoint);
-						storage.readUnitProps(db, unit, function(objUnitProps){
-							(objUnitProps.main_chain_index <= last_stable_mci) ? cb() : goUp(objJoint.unit.last_ball_unit);
-						});
-					});
+				//	callback
+				function( err )
+				{
+					if ( err === "already_current" )
+					{
+						callbacks.ifOk( { status : "current" } );
+					}
+					else if ( err )
+					{
+						callbacks.ifError( err );
+					}
+					else
+					{
+						callbacks.ifOk( objCatchupChain );
+					}
+
+					//	...
+					log.consoleLog
+					(
+						"prepareCatchupChain since mci " + last_stable_mci + " took " + ( Date.now() - start_ts ) + 'ms'
+					);
+
+					//
+					//	unlock from this point
+					//
+					unlock();
 				}
-			}
-		], function(err){
-			if (err === "already_current")
-				callbacks.ifOk({status: "current"});
-			else if (err)
-				callbacks.ifError(err);
-			else
-				callbacks.ifOk(objCatchupChain);
-			log.consoleLog("prepareCatchupChain since mci "+last_stable_mci+" took "+(Date.now()-start_ts)+'ms');
-			unlock();
-		});
-	});
+			);
+		}
+	);
 }
 
 
@@ -414,6 +501,12 @@ function purgeHandledBallsFromHashTree(conn, onDone){
 	});
 }
 
+
+
+
+/**
+ *	exports
+ */
 exports.prepareCatchupChain = prepareCatchupChain;
 exports.processCatchupChain = processCatchupChain;
 exports.readHashTree = readHashTree;
