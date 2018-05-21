@@ -3,9 +3,11 @@
 
 let log		= require( './log.js' );
 let _		= require( 'lodash' );
-require( './enforce_singleton.js' );
+let singleton	= require( './enforce_singleton.js' );
 
-
+/**
+ *	member variables
+ */
 let m_arrQueuedJobs		= [];
 let m_arrLockedKeyArrays	= [];
 
@@ -13,8 +15,9 @@ let m_arrLockedKeyArrays	= [];
 
 /**
  *	lock
+ *	@public
  */
-function lock( arrKeys, proc, next_proc )
+function lock( arrKeys, pfnProcedure, pfnNextProcedure )
 {
 	if ( _isAnyOfKeysLocked( arrKeys ) )
 	{
@@ -23,39 +26,41 @@ function lock( arrKeys, proc, next_proc )
 		(
 			{
 				arrKeys		: arrKeys,
-				proc		: proc,
-				next_proc	: next_proc,
+				proc		: pfnProcedure,
+				nextProc	: pfnNextProcedure,
 				ts		: Date.now()
 			}
 		);
 	}
 	else
 	{
-		_execute( arrKeys, proc, next_proc );
+		_execute( arrKeys, pfnProcedure, pfnNextProcedure );
 	}
 }
 
 /**
  *	lock or skip
+ *	@public
  */
-function lockOrSkip( arrKeys, proc, next_proc )
+function lockOrSkip( arrKeys, pfnProcedure, pfnNextProcedure )
 {
 	if ( _isAnyOfKeysLocked( arrKeys ) )
 	{
 		log.consoleLog( "skipping job held by keys", arrKeys );
-		if ( next_proc )
+		if ( pfnNextProcedure )
 		{
-			next_proc();
+			pfnNextProcedure();
 		}
 	}
 	else
 	{
-		_execute( arrKeys, proc, next_proc );
+		_execute( arrKeys, pfnProcedure, pfnNextProcedure );
 	}
 }
 
 /**
  *	get job count
+ *	@public
  */
 function getCountOfQueuedJobs()
 {
@@ -64,6 +69,7 @@ function getCountOfQueuedJobs()
 
 /**
  *	get count of locks
+ *	@public
  */
 function getCountOfLocks()
 {
@@ -76,16 +82,21 @@ function getCountOfLocks()
 
 
 
+////////////////////////////////////////////////////////////////////////////////
+//	Private
+//
 
 
-
+/**
+ *	check if the {procedure} was locked with keys
+ */
 function _isAnyOfKeysLocked( arrKeys )
 {
 	let i;
 	let j;
 	let arrLockedKeys;
 
-	for ( i = 0; i < m_arrLockedKeyArrays.length; i++ )
+	for ( i = 0; i < m_arrLockedKeyArrays.length; i ++ )
 	{
 		arrLockedKeys	= m_arrLockedKeyArrays[ i ];
 		for ( j = 0; j < arrLockedKeys.length; j ++ )
@@ -100,7 +111,11 @@ function _isAnyOfKeysLocked( arrKeys )
 	return false;
 }
 
-
+/**
+ *	just release
+ *	@param arrKeys
+ *	@private
+ */
 function _release( arrKeys )
 {
 	let i;
@@ -109,23 +124,37 @@ function _release( arrKeys )
 	{
 		if ( _.isEqual( arrKeys, m_arrLockedKeyArrays[ i ] ) )
 		{
+			//
 			//	remove the element from Array
+			//
 			m_arrLockedKeyArrays.splice( i, 1 );
-			return;
+			return true;
 		}
 	}
+
+	return false;
 }
 
-function _execute( arrKeys, proc, next_proc )
+/**
+ *
+ *	@param	arrKeys			array
+ *	@param	pfnProcedure		function
+ *	@param	pfnNextProcedure	function
+ *	@private
+ */
+function _execute( arrKeys, pfnProcedure, pfnNextProcedure )
 {
-	let bLocked = true;
+	let bLocked;
 
 	//	...
 	m_arrLockedKeyArrays.push( arrKeys );
 	log.consoleLog( "lock acquired", arrKeys );
 
-	//	...
-	proc
+	//
+	//	execute
+	//
+	bLocked	= true;
+	pfnProcedure
 	(
 		function()
 		{
@@ -141,50 +170,65 @@ function _execute( arrKeys, proc, next_proc )
 			//	...
 			log.consoleLog( "lock released", arrKeys );
 
-			if ( next_proc )
+			//
+			//	execute the next procedure
+			//
+			if ( pfnNextProcedure )
 			{
-				next_proc.apply( next_proc, arguments );
+				pfnNextProcedure.apply( pfnNextProcedure, arguments );
 			}
 
 			//	...
-			_handleQueue();
+			_handleJobsInQueue();
 		}
 	);
 }
 
-function _handleQueue()
+/**
+ * 	process the jobs in queue
+ *	@private
+ */
+function _handleJobsInQueue()
 {
 	let i;
-	let job;
+	let oJob;
 
-	log.consoleLog( "_handleQueue " + m_arrQueuedJobs.length + " items" );
+	log.consoleLog( "_handleJobsInQueue, " + m_arrQueuedJobs.length + " items" );
 
-	for ( i = 0; i < m_arrQueuedJobs.length; i++ )
+	for ( i = 0; i < m_arrQueuedJobs.length; i ++ )
 	{
-		job	= m_arrQueuedJobs[ i ];
-		if ( _isAnyOfKeysLocked( job.arrKeys ) )
+		oJob	= m_arrQueuedJobs[ i ];
+		if ( _isAnyOfKeysLocked( oJob.arrKeys ) )
 		{
+			//
+			//	skip the locked items
+			//
 			continue;
 		}
 
 		//
-		//	The splice() method
-		// 	changes the contents of an array by removing existing elements and/or adding new elements.
-		//	https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/splice
+		//	execute the job in queue
 		//
-		//	do it before _execute as _execute can trigger another job added, another lock unlocked, another _handleQueue called
+		log.consoleLog( "_handleJobsInQueue, starting job held by keys", oJob.arrKeys );
+		_execute( oJob.arrKeys, oJob.proc, oJob.nextProc );
+
+		//
+		//	WE'VE JUST REMOVED ONE ITEM
+		//
+		//	do it before _execute as _execute can trigger another job added,
+		// 	another lock unlocked, another _handleJobsInQueue called
+		//
+		//	The splice() method
+		//		changes the contents of an array by removing existing elements and/or adding new elements.
+		//		https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/splice
 		//
 		m_arrQueuedJobs.splice( i, 1 );
-		log.consoleLog( "starting job held by keys", job.arrKeys );
-		_execute( job.arrKeys, job.proc, job.next_proc );
-
-		//	we've just removed one item
 		i --;
 	}
 
-	log.consoleLog( "_handleQueue done " + m_arrQueuedJobs.length + " items" );
+	//	...
+	log.consoleLog( "_handleJobsInQueue done " + m_arrQueuedJobs.length + " items" );
 }
-
 
 function _checkForDeadlocks()
 {
