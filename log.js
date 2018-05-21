@@ -7,9 +7,9 @@
  */
 function consoleLog()
 {
-	var oDate;
-	var sText;
-	var arrArgs;
+	let oDate;
+	let sDateText;
+	let arrArgs;
 
 	//	...
 	if ( "[object Arguments]" === Object.prototype.toString.call( arguments ) )
@@ -22,11 +22,16 @@ function consoleLog()
 	}
 
 	//	...
-	oDate	= new Date();
-	sText	= "[" + oDate.toLocaleString() + "/" + oDate.getTime() + "]\t";
-	sText += arrArgs.join( ", " );
+	oDate		= new Date();
+	sDateText	= "[" + oDate.getTime() + "]";
 
-	console.log( sText );
+	//
+	//	insert date text the the beginning of the array
+	//
+	arrArgs		= arrArgs.unshift( sDateText );
+
+	//	...
+	console.log( arrArgs );
 }
 
 
