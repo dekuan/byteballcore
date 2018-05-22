@@ -1020,33 +1020,38 @@ function generateBlinding(){
 }
 
 
-exports.composePaymentAndTextJoint = composePaymentAndTextJoint;
-exports.composeTextJoint = composeTextJoint;
-exports.composePaymentJoint = composePaymentJoint;
-exports.composeDefinitionChangeJoint = composeDefinitionChangeJoint;
-exports.composeDataFeedJoint = composeDataFeedJoint;
-exports.composeDataJoint = composeDataJoint;
-exports.composeDedinitionTemplateJoint = composeDedinitionTemplateJoint;
-exports.composePollJoint = composePollJoint;
-exports.composeVoteJoint = composeVoteJoint;
-exports.composeProfileJoint = composeProfileJoint;
-exports.composeAttestationJoint = composeAttestationJoint;
-exports.composeAssetDefinitionJoint = composeAssetDefinitionJoint;
-exports.composeAssetAttestorsJoint = composeAssetAttestorsJoint;
 
-exports.composeJoint = composeJoint;
 
-exports.signMessage = signMessage;
+/**
+ *	exports
+ */
+exports.composePaymentAndTextJoint			= composePaymentAndTextJoint;
+exports.composeTextJoint				= composeTextJoint;
+exports.composePaymentJoint				= composePaymentJoint;
+exports.composeDefinitionChangeJoint			= composeDefinitionChangeJoint;
+exports.composeDataFeedJoint				= composeDataFeedJoint;
+exports.composeDataJoint				= composeDataJoint;
+exports.composeDedinitionTemplateJoint			= composeDedinitionTemplateJoint;
+exports.composePollJoint				= composePollJoint;
+exports.composeVoteJoint				= composeVoteJoint;
+exports.composeProfileJoint				= composeProfileJoint;
+exports.composeAttestationJoint				= composeAttestationJoint;
+exports.composeAssetDefinitionJoint			= composeAssetDefinitionJoint;
+exports.composeAssetAttestorsJoint			= composeAssetAttestorsJoint;
 
-exports.filterMostFundedAddresses = filterMostFundedAddresses;
-exports.readSortedFundedAddresses = readSortedFundedAddresses;
-exports.composeAndSaveMinimalJoint = composeAndSaveMinimalJoint;
+exports.composeJoint					= composeJoint;
 
-exports.sortOutputs = sortOutputs;
-exports.getSavingCallbacks = getSavingCallbacks;
-exports.postJointToLightVendorIfNecessaryAndSave = postJointToLightVendorIfNecessaryAndSave;
-exports.composeAndSavePaymentJoint = composeAndSavePaymentJoint;
+exports.signMessage					= signMessage;
 
-exports.generateBlinding = generateBlinding;
-exports.getMessageIndexByPayloadHash = getMessageIndexByPayloadHash;
-exports.pickDivisibleCoinsForAmount = pickDivisibleCoinsForAmount;
+exports.filterMostFundedAddresses			= filterMostFundedAddresses;
+exports.readSortedFundedAddresses			= readSortedFundedAddresses;
+exports.composeAndSaveMinimalJoint			= composeAndSaveMinimalJoint;
+
+exports.sortOutputs					= sortOutputs;
+exports.getSavingCallbacks				= getSavingCallbacks;
+exports.postJointToLightVendorIfNecessaryAndSave	= postJointToLightVendorIfNecessaryAndSave;
+exports.composeAndSavePaymentJoint			= composeAndSavePaymentJoint;
+
+exports.generateBlinding				= generateBlinding;
+exports.getMessageIndexByPayloadHash			= getMessageIndexByPayloadHash;
+exports.pickDivisibleCoinsForAmount			= pickDivisibleCoinsForAmount;
