@@ -1,7 +1,7 @@
 /*jslint node: true */
 "use strict";
 
-var WebSocket		= process.browser ? global.WebSocket : require('ws');
+var WebSocket		= process.browser ? global.WebSocket : require( 'ws' );
 var socks		= process.browser ? null : require('socks'+'');
 var WebSocketServer	= WebSocket.Server;
 
@@ -50,7 +50,7 @@ var arrWatchedAddresses				= []; // does not include my addresses, therefore alw
 var last_hearbeat_wake_ts			= Date.now();
 var peer_events_buffer				= [];
 var assocKnownPeers				= {};
-var exchangeRates				= {};
+var m_exchangeRates				= {};
 
 
 
@@ -4636,7 +4636,7 @@ function handleJustsaying( ws, subject, body )
 			}
 
 			//	...
-			_.assign( exchangeRates, body );
+			_.assign( m_exchangeRates, body );
 			eventBus.emit( 'rates_updated' );
 			break;
 
@@ -5749,6 +5749,12 @@ function isCatchingUp()
 }
 
 
+
+
+
+
+
+
 /**
  *	for browser
  */
@@ -5837,6 +5843,9 @@ start();
 
 
 
+
+
+
 /**
  *	exports
  */
@@ -5872,4 +5881,4 @@ exports.closeAllWsConnections				= closeAllWsConnections;
 exports.isConnected					= isConnected;
 exports.isCatchingUp					= isCatchingUp;
 exports.requestHistoryFor				= requestHistoryFor;
-exports.exchangeRates					= exchangeRates;
+exports.exchangeRates					= m_exchangeRates;
