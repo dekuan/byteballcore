@@ -5748,7 +5748,9 @@ function startLightClient()
 
 function start()
 {
+	log.consoleLog( "############################################################" );
 	log.consoleLog( "starting network" );
+	log.consoleLog( "############################################################" );
 
 	//	...
 	conf.bLight ? startLightClient() : startRelay();
