@@ -2510,7 +2510,10 @@ function notifyWatchersAboutStableJoints( mci )
 		[ "write" ],
 		function( unlock )
 		{
-			//	we don't need to block writes, we requested the lock just to wait that the current write completes
+			//
+			//	we don't need to block writes,
+			//	we requested the lock just to wait that the current write completes
+			//
 			unlock();
 
 			//	...

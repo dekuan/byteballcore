@@ -210,7 +210,7 @@ function _handleJobsInQueue()
 		//
 		//	execute the job in queue
 		//
-		log.consoleLog( "_handleJobsInQueue, starting job held by keys", oJob.arrKeys );
+		log.consoleLog( "_handleJobsInQueue, starting job held by keys", i, oJob.arrKeys );
 		_execute( oJob.arrKeys, oJob.procedure, oJob.nextProcedure );
 
 		//
