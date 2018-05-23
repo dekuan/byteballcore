@@ -113,19 +113,37 @@ function readDependentJointsThatAreReady(unit, handleDependentJoint){
 	});
 }
 
-function findLostJoints(handleLostJoints){
-	//log.consoleLog("findLostJoints");
-	db.query(
+/**
+ *	find lost joints
+ */
+function findLostJoints( handleLostJoints )
+{
+	//	log.consoleLog("findLostJoints");
+	db.query
+	(
 		"SELECT DISTINCT depends_on_unit \n\
 		FROM dependencies \n\
 		LEFT JOIN unhandled_joints ON depends_on_unit=unhandled_joints.unit \n\
 		LEFT JOIN units ON depends_on_unit=units.unit \n\
 		WHERE unhandled_joints.unit IS NULL AND units.unit IS NULL AND dependencies.creation_date < " + db.addTime("-8 SECOND"), 
-		function(rows){
-			//log.consoleLog(rows.length+" lost joints");
-			if (rows.length === 0)
+		function( rows )
+		{
+			//	log.consoleLog( rows.length+" lost joints" );
+			if ( rows.length === 0 )
+			{
 				return;
-			handleLostJoints(rows.map(function(row){ return row.depends_on_unit; })); 
+			}
+
+			handleLostJoints
+			(
+				rows.map
+				(
+					function( row )
+					{
+						return row.depends_on_unit;
+					}
+				)
+			);
 		}
 	);
 }

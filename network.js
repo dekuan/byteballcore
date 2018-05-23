@@ -104,7 +104,7 @@ function sendMessage( ws, type, content )
 
 function sendJustsaying( ws, subject, body )
 {
-	sendMessage( ws, 'justsaying', { subject: subject, body: body } );
+	sendMessage( ws, 'justsaying', { subject : subject, body : body } );
 }
 
 function sendAllInboundJustsaying( subject, body )
@@ -187,12 +187,12 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 	let request;
 	let content;
 	let tag;
-	var reroute;
-	var reroute_timer;
-	var cancel_timer;
+	let reroute;
+	let reroute_timer;
+	let cancel_timer;
 
 	//	...
-	request = { command: command };
+	request = { command : command };
 
 	if ( params )
 	{
@@ -209,7 +209,11 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 	//
 	if ( ws.assocPendingRequests[ tag ] )
 	{
-		log.consoleLog( 'already sent a '+command+' request to '+ws.peer+', will add one more response handler rather than sending a duplicate request to the wire' );
+		log.consoleLog
+		(
+			'already sent a ' + command + ' request to ' + ws.peer + ', '
+			+ 'will add one more response handler rather than sending a duplicate request to the wire'
+		);
 		ws.assocPendingRequests[ tag ].responseHandlers.push( responseHandler );
 	}
 	else
@@ -221,7 +225,7 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 		//	it'll work correctly even if the current peer is already disconnected when the timeout fires
 		reroute = ! bReroutable ? null : function()
 		{
-			log.consoleLog( 'will try to reroute a '+command+' request stalled at '+ws.peer );
+			log.consoleLog( 'will try to reroute a ' + command + ' request stalled at ' + ws.peer );
 
 			if ( ! ws.assocPendingRequests[ tag ] )
 			{
@@ -241,21 +245,21 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 				if ( next_ws === ws ||
 					m_oAssocReroutedConnectionsByTag[ tag ] && m_oAssocReroutedConnectionsByTag[ tag ].indexOf( next_ws ) >= 0 )
 				{
-					log.consoleLog( 'will not reroute '+command+' to the same peer, will rather wait for a new connection' );
+					log.consoleLog( 'will not reroute ' + command + ' to the same peer, will rather wait for a new connection' );
 					eventBus.once
 					(
 						'connected_to_source',
 						function()
 						{
 							//	try again
-							log.consoleLog( 'got new connection, retrying reroute '+command );
+							log.consoleLog( 'got new connection, retrying reroute ' + command );
 							reroute();
 						}
 					);
 					return;
 				}
 
-				log.consoleLog( 'rerouting ' + command + ' from ' + ws.peer+' to '+next_ws.peer );
+				log.consoleLog( 'rerouting ' + command + ' from ' + ws.peer+' to ' + next_ws.peer );
 				ws.assocPendingRequests[ tag ].responseHandlers.forEach( function( rh )
 				{
 					sendRequest( next_ws, command, params, bReroutable, rh );
@@ -291,10 +295,13 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 			RESPONSE_TIMEOUT
 		);
 
+		//
+		//	build pending request list
+		//
 		ws.assocPendingRequests[ tag ] =
 		{
 			request			: request,
-			responseHandlers	: [responseHandler],
+			responseHandlers	: [ responseHandler ],
 			reroute			: reroute,
 			reroute_timer		: reroute_timer,
 			cancel_timer		: cancel_timer
@@ -414,7 +421,7 @@ function findNextPeer( ws, handleNextPeer )
 
 			if ( next_ws )
 			{
-				return handleNextPeer(next_ws);
+				return handleNextPeer( next_ws );
 			}
 
 			//	...
@@ -547,12 +554,15 @@ function findRandomInboundPeer( handleInboundPeer )
 	);
 }
 
+/**
+ *	check and add peers
+ */
 function checkIfHaveEnoughOutboundPeersAndAdd()
 {
 	let arrOutboundPeerUrls;
 
 	//	...
-	arrOutboundPeerUrls	= m_arrOutboundPeers.map
+	arrOutboundPeerUrls = m_arrOutboundPeers.map
 	(
 		function( ws )
 		{
@@ -560,11 +570,15 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 		}
 	);
 
-	//	...
+	//
+	//	select peers good_joints > 0 and ...
+	//
 	db.query
 	(
 		"SELECT peer FROM peers JOIN peer_hosts USING( peer_host ) \n\
-			WHERE count_new_good_joints > 0 AND count_invalid_joints / count_new_good_joints < ? AND peer IN( ? )",
+			WHERE count_new_good_joints > 0 \n\
+			AND count_invalid_joints / count_new_good_joints < ? \n\
+			AND peer IN( ? )",
 		[
 			conf.MAX_TOLERATED_INVALID_RATIO,
 			( arrOutboundPeerUrls.length > 0 ) ? arrOutboundPeerUrls : null
@@ -577,19 +591,21 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 			let ws;
 
 			//	...
-			count_good_peers	= rows.length;
+			count_good_peers = rows.length;
 			if ( count_good_peers >= conf.MIN_COUNT_GOOD_PEERS )
 			{
+				//	larger then limitation
 				return;
 			}
-
-			//	nobody trusted enough to ask for new peers, can't do anything
 			if ( count_good_peers === 0 )
 			{
+				//	nobody trusted enough to ask for new peers, can't do anything
 				return;
 			}
 
-			//	...
+			//
+			//	good peers
+			//
 			arrGoodPeerUrls	= rows.map
 			(
 				function( row )
@@ -600,9 +616,14 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 
 			for ( i = 0; i < m_arrOutboundPeers.length; i++ )
 			{
-				ws	= m_arrOutboundPeers[ i ];
+				ws = m_arrOutboundPeers[ i ];
 				if ( arrGoodPeerUrls.indexOf( ws.peer ) !== -1 )
 				{
+					//
+					//	peer was not found in m_arrOutboundPeers
+					//
+					//	* try to send request to get peers
+					//
 					requestPeers( ws );
 				}
 			}
@@ -683,20 +704,23 @@ function connectToPeer( url, onOpen )
 
 			if ( ! ws.url )
 			{
-				throw Error("no url on ws");
+				throw Error( "no url on ws" );
 			}
 
-			// browser implementatin of Websocket might add "/"
+			//	browser implementatin of Websocket might add "/"
 			if ( ws.url !== url && ws.url !== url + "/" )
 			{
 				throw Error( "url is different: " + ws.url );
 			}
 
 			//	...
-			another_ws_to_same_peer = getOutboundPeerWsByUrl(url);
+			another_ws_to_same_peer	= getOutboundPeerWsByUrl( url );
 			if ( another_ws_to_same_peer )
 			{
-				//	duplicate connection.  May happen if we abondoned a connection attempt after timeout but it still succeeded while we opened another connection
+				//
+				//	duplicate connection.
+				//	May happen if we abondoned a connection attempt after timeout but it still succeeded while we opened another connection
+				//
 				log.consoleLog( 'already have a connection to ' + url + ', will keep the old one and close the duplicate' );
 				ws.close( 1000, 'duplicate connection' );
 
@@ -804,6 +828,10 @@ function connectToPeer( url, onOpen )
 	log.consoleLog( 'connectToPeer done' );
 }
 
+
+/**
+ *	try to add outbound peers
+ */
 function addOutboundPeers( multiplier )
 {
 	let order_by;
@@ -824,8 +852,8 @@ function addOutboundPeers( multiplier )
 	//
 	//	don't stick to old peers with most accumulated good joints
 	//
-	order_by			= ( multiplier <= 4 ) ? "count_new_good_joints DESC" : db.getRandom();
-	arrOutboundPeerUrls		= m_arrOutboundPeers.map
+	order_by		= ( multiplier <= 4 ) ? "count_new_good_joints DESC" : db.getRandom();
+	arrOutboundPeerUrls	= m_arrOutboundPeers.map
 	(
 		function( ws )
 		{
@@ -841,28 +869,32 @@ function addOutboundPeers( multiplier )
 	);
 
 	//	having too many connections being opened creates odd delays in db functions
-	max_new_outbound_peers	= Math.min
-	(
-		conf.MAX_OUTBOUND_CONNECTIONS - arrOutboundPeerUrls.length,
-		5
-	);
-
+	max_new_outbound_peers	= Math.min( conf.MAX_OUTBOUND_CONNECTIONS - arrOutboundPeerUrls.length, 5 );
 	if ( max_new_outbound_peers <= 0 )
 	{
 		return;
 	}
 
-	//	...
+	//
+	//	TODO
+	//	LONG SQL, BUT FAST, CAUSE FEW DATA
+	//
+	//	Questions:
+	//	1, What's the different among [peers], [peer_hosts], [peer_host_urls] ?
+	//	2, INVALID_RATIO = count_invalid_joints / count_new_good_joints, if 0/0 ?
+	//
 	db.query
 	(
 		"SELECT peer \n\
 		FROM peers \n\
 		JOIN peer_hosts USING(peer_host) \n\
 		LEFT JOIN peer_host_urls ON peer=url AND is_active=1 \n\
-		WHERE (count_invalid_joints/count_new_good_joints<? \n\
-			OR count_new_good_joints=0 AND count_nonserial_joints=0 AND count_invalid_joints=0) \n\
-			" + ( ( arrOutboundPeerUrls.length > 0 ) ? "AND peer NOT IN(" + db.escape( arrOutboundPeerUrls ) + ") \n" : "" ) + "\n\
-			" + ( ( arrInboundHosts.length > 0 ) ? "AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN(" + db.escape( arrInboundHosts ) + ")) \n" : "" ) + "\n\
+		WHERE ( \n\
+			count_invalid_joints / count_new_good_joints < ? \n\
+			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 \n\
+		      ) \n\
+			" + ( ( arrOutboundPeerUrls.length > 0 ) ? " AND peer NOT IN(" + db.escape( arrOutboundPeerUrls ) + ") \n" : "" ) + "\n\
+			" + ( ( arrInboundHosts.length > 0 ) ? " AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN(" + db.escape( arrInboundHosts ) + ")) \n" : "" ) + "\n\
 			AND is_self=0 \n\
 		ORDER BY " + order_by + " LIMIT ?",
 		[
@@ -873,6 +905,10 @@ function addOutboundPeers( multiplier )
 		{
 			let i;
 
+			//
+			//	TODO
+			//	find outbound peer or connect ?
+			//
 			for ( i = 0; i < rows.length; i ++ )
 			{
 				m_oAssocKnownPeers[ rows[ i ].peer ] = true;
@@ -1076,18 +1112,22 @@ function purgePeerEvents()
 	);
 }
 
+/**
+ *	try to purge dead peers
+ */
 function purgeDeadPeers()
 {
 	let arrOutboundPeerUrls;
 
 	if ( conf.storage !== 'sqlite' )
 	{
+		//	for SQLite only
 		return;
 	}
 
 	//	...
-	log.consoleLog('will purge dead peers');
-	arrOutboundPeerUrls	= m_arrOutboundPeers.map
+	log.consoleLog( 'will purge dead peers' );
+	arrOutboundPeerUrls = m_arrOutboundPeers.map
 	(
 		function( ws )
 		{
@@ -1095,9 +1135,17 @@ function purgeDeadPeers()
 		}
 	);
 
+	//
+	//	rowid is a 64-bit signed integer
+	//	The rowid column is a key that uniquely identifies the row within its table.
+	//	The table that has rowid column is called rowid table.
+	//
 	db.query
 	(
-		"SELECT rowid, " + db.getUnixTimestamp('event_date') + " AS ts FROM peer_events ORDER BY rowid DESC LIMIT 1",
+		"SELECT rowid, " + db.getUnixTimestamp( 'event_date' ) + " AS ts " +
+		"FROM peer_events " +
+		"ORDER BY rowid DESC " +
+		"LIMIT 1",
 		function( lrows )
 		{
 			let last_rowid;
@@ -1108,15 +1156,17 @@ function purgeDeadPeers()
 				return;
 			}
 
-			//	...
+			//	the last rowid and event ts
 			last_rowid	= lrows[ 0 ].rowid;
 			last_event_ts	= lrows[ 0 ].ts;
 
+			//	...
 			db.query
 			(
 				"SELECT peer, peer_host FROM peers",
 				function( rows )
 				{
+					//	...
 					async.eachSeries
 					(
 						rows,
@@ -1129,8 +1179,12 @@ function purgeDeadPeers()
 
 							db.query
 							(
-								"SELECT MAX(rowid) AS max_rowid, MAX(" + db.getUnixTimestamp( 'event_date' ) + ") AS max_event_ts FROM peer_events WHERE peer_host=?",
-								[ row.peer_host ],
+								"SELECT MAX(rowid) AS max_rowid, " +
+								"MAX(" + db.getUnixTimestamp( 'event_date' ) + ") AS max_event_ts " +
+								"FROM peer_events WHERE peer_host=?",
+								[
+									row.peer_host
+								],
 								function( mrows )
 								{
 									let max_rowid;
@@ -1174,6 +1228,10 @@ function purgeDeadPeers()
 	);
 }
 
+
+/**
+ *	send request for getting peers
+ */
 function requestPeers( ws )
 {
 	sendRequest( ws, 'get_peers', null, false, handleNewPeers );
@@ -1336,15 +1394,27 @@ function printConnectionStatus()
 }
 
 
+/**
+ *	subcribe data from others
+ */
 function subscribe( ws )
 {
+	//
 	//	this is to detect self-connect
+	//
 	ws.subscription_id	= crypto.randomBytes( 30 ).toString( "base64" );
 
+	//
+	//	obtain the value of the last main chain index
+	//	from database
+	//
 	storage.readLastMainChainIndex
 	(
 		function( last_mci )
 		{
+			//
+			//	send subscribe request with subscription id and last mci
+			//
 			sendRequest
 			(
 				ws,
@@ -1366,7 +1436,11 @@ function subscribe( ws )
 
 					//	...
 					ws.bSource	= true;
-					eventBus.emit( 'connected_to_source', ws );
+					eventBus.emit
+					(
+						'connected_to_source',
+						ws
+					);
 				}
 			);
 		}
@@ -1612,8 +1686,18 @@ function requestJoints( ws, arrUnits )
 				// even if readyState is not ws.OPEN, we still send the request, it'll be rerouted after timeout
 			}
 
-			//	...
-			sendRequest( ws, 'get_joint', unit, true, handleResponseToJointRequest );
+			//
+			//	*
+			//	send request for getting joints
+			//
+			sendRequest
+			(
+				ws,
+				'get_joint',
+				unit,
+				true,
+				handleResponseToJointRequest
+			);
 		}
 	);
 }
@@ -2564,6 +2648,10 @@ function notifyWatchersAboutStableJoints( mci )
  */
 function notifyLightClientsAboutStableJoints( from_mci, to_mci )
 {
+	//
+	//	watched_light_addresses
+	//	stored all light wallets connected to this hub
+	//
 	db.query
 	(
 		"SELECT peer FROM units JOIN unit_authors USING(unit) JOIN watched_light_addresses USING(address) \n\
@@ -2574,7 +2662,11 @@ function notifyLightClientsAboutStableJoints( from_mci, to_mci )
 		UNION \n\
 		SELECT peer FROM units JOIN watched_light_units USING(unit) \n\
 		WHERE main_chain_index>? AND main_chain_index<=?",
-		[ from_mci, to_mci, from_mci, to_mci, from_mci, to_mci ],
+		[
+			from_mci, to_mci,
+			from_mci, to_mci,
+			from_mci, to_mci
+		],
 		function( rows )
 		{
 			rows.forEach
@@ -2736,6 +2828,10 @@ function flushEvents( forceFlushing )
 
 		if ( event === 'new_good' )
 		{
+			//
+			//	increase value by step 1
+			//	objUpdatedHosts.host.column ++
+			//
 			column	= "count_" + event + "_joints";
 			_.set
 			(
@@ -2750,7 +2846,7 @@ function flushEvents( forceFlushing )
 
 		arrQueryParams.push
 		(
-			"(" + db.escape( host ) +"," + db.escape( event ) + "," + db.getFromUnixTime( event_date ) + ")"
+			"(" + db.escape( host ) + "," + db.escape( event ) + "," + db.getFromUnixTime( event_date ) + ")"
 		);
 	});
 
@@ -2921,7 +3017,7 @@ function checkCatchupLeftovers()
 		{
 			if ( rows.length === 0 )
 			{
-				return log.consoleLog('no leftovers');
+				return log.consoleLog( 'no leftovers' );
 			}
 
 			//	...
@@ -5499,8 +5595,15 @@ function onWebsocketMessage( message )
 	}
 }
 
+
+/**
+ *	start server
+ */
 function startAcceptingConnections()
 {
+	//
+	//	delete all ...
+	//
 	db.query( "DELETE FROM watched_light_addresses" );
 	db.query( "DELETE FROM watched_light_units" );
 
@@ -5519,8 +5622,8 @@ function startAcceptingConnections()
 		'connection',
 		function( ws )
 		{
-			var ip;
-			var bStatsCheckUnderWay;
+			let ip;
+			let bStatsCheckUnderWay;
 
 			//	...
 			ip = ws.upgradeReq.connection.remoteAddress;
@@ -5538,7 +5641,7 @@ function startAcceptingConnections()
 				//
 
 				//	we are behind a proxy
-				ip = ws.upgradeReq.headers['x-real-ip'];
+				ip = ws.upgradeReq.headers[ 'x-real-ip' ];
 			}
 
 			//	...
@@ -5565,9 +5668,9 @@ function startAcceptingConnections()
 			db.query
 			(
 				"SELECT \n\
-					SUM(CASE WHEN event='invalid' THEN 1 ELSE 0 END) AS count_invalid, \n\
-					SUM(CASE WHEN event='new_good' THEN 1 ELSE 0 END) AS count_new_good \n\
-					FROM peer_events WHERE peer_host=? AND event_date>"+db.addTime("-1 HOUR"),
+					SUM( CASE WHEN event='invalid' THEN 1 ELSE 0 END ) AS count_invalid, \n\
+					SUM( CASE WHEN event='new_good' THEN 1 ELSE 0 END ) AS count_new_good \n\
+					FROM peer_events WHERE peer_host=? AND event_date>" + db.addTime( "-1 HOUR" ),
 				[
 					ws.host
 				],
@@ -5579,10 +5682,10 @@ function startAcceptingConnections()
 					bStatsCheckUnderWay	= false;
 
 					//	...
-					stats	= rows[0];
+					stats	= rows[ 0 ];
 					if ( stats.count_invalid )
 					{
-						log.consoleLog("rejecting new client "+ws.host+" because of bad stats");
+						log.consoleLog( "rejecting new client " + ws.host + " because of bad stats" );
 						return ws.terminate();
 					}
 
@@ -5591,16 +5694,26 @@ function startAcceptingConnections()
 					//	if (!m_bCatchingUp)
 					//		sendFreeJoints(ws);
 					//
+					//	*
+					//	so, we response the version of this hub/witness
+					//
 					sendVersion( ws );
 
 					//	I'm a hub, send challenge
 					if ( conf.bServeAsHub )
 					{
 						ws.challenge	= crypto.randomBytes( 30 ).toString( "base64" );
+
+						//
+						//	the the new peer, I am a hub and I have ability to exchange data
+						//
 						sendJustsaying( ws, 'hub/challenge', ws.challenge );
 					}
 					if ( ! conf.bLight )
 					{
+						//
+						//	subscribe data from others
+						//
 						subscribe( ws );
 					}
 
@@ -5667,6 +5780,10 @@ function startAcceptingConnections()
 	log.consoleLog( 'WSS running at port ' + conf.port );
 }
 
+
+/**
+ *	start relay(hub)
+ */
 function startRelay()
 {
 	if ( process.browser || ! conf.port )
@@ -5676,26 +5793,61 @@ function startRelay()
 	}
 	else
 	{
+		//
+		//	*
+		//	prepare to accepting connections
+		//
 		startAcceptingConnections();
 	}
 
 	//	...
 	checkCatchupLeftovers();
 
+
+	//
+	//	the default value of conf.bWantNewPeers is true
+	//
 	if ( conf.bWantNewPeers )
 	{
-		//	outbound connections
+		//
+		//	add outbound connections
+		//
 		addOutboundPeers();
 
-		//	retry lost and failed connections every 1 minute
-		setInterval( addOutboundPeers, 60 * 1000 );
-		setTimeout( checkIfHaveEnoughOutboundPeersAndAdd, 30 * 1000 );
-		setInterval( purgeDeadPeers, 30 * 60 * 1000 );
+		//
+		//	retry lost and failed connections
+		//	every 1 minute
+		//
+		setInterval
+		(
+			addOutboundPeers,
+			60 * 1000
+		);
+
+		//
+		//	...
+		//
+		setTimeout
+		(
+			checkIfHaveEnoughOutboundPeersAndAdd,
+			30 * 1000
+		);
+
+		//
+		//	purge dead peers
+		//	every half hour
+		//
+		setInterval
+		(
+			purgeDeadPeers,
+			30 * 60 * 1000
+		);
 	}
 
 	//
-	//	purge peer_events every 6 hours,
+	//	purge peer_events
 	//	removing those older than 3 days ago.
+	//	every 6 hours
 	//
 	setInterval
 	(
@@ -5705,6 +5857,7 @@ function startRelay()
 
 	//
 	//	request needed joints that were not received during the previous session
+	//	every 8 seconds
 	//
 	rerequestLostJoints();
 	setInterval
@@ -5713,16 +5866,30 @@ function startRelay()
 		8 * 1000
 	);
 
+	//
+	//	purge junk unhandled joints
+	//	every half an hour
+	//
 	setInterval
 	(
 		purgeJunkUnhandledJoints,
 		30 * 60 * 1000
 	);
+
+	//
+	//	purge uncovered nonserial joints under lock
+	//	every 1 minute
+	//
 	setInterval
 	(
 		joint_storage.purgeUncoveredNonserialJointsUnderLock,
 		60 * 1000
 	);
+
+	//
+	//	find and handle joints that are ready
+	//	every 5 seconds
+	//
 	setInterval
 	(
 		findAndHandleJointsThatAreReady,
@@ -5753,6 +5920,10 @@ function startLightClient()
 	);
 }
 
+
+/**
+ *	network start
+ */
 function start()
 {
 	log.consoleLog( "############################################################" );
@@ -5877,7 +6048,7 @@ if ( ! conf.bLight )
 
 
 /**
- *	set events
+ *	mci
  */
 eventBus.on
 (

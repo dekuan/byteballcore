@@ -1,48 +1,72 @@
 /*jslint node: true */
 "use strict";
 
+var async		= require('async');
+var _			= require('lodash');
 var log			= require( './log.js' );
-var async = require('async');
-var _ = require('lodash');
-var db = require('./db.js');
-var conf = require('./conf.js');
-var objectHash = require("./object_hash.js");
-var constants = require("./constants.js");
-var mutex = require('./mutex.js');
-var archiving = require('./archiving.js');
-var profiler = require('./profiler.js');
-
-var MAX_INT32 = Math.pow(2, 31) - 1;
-
-var genesis_ball = objectHash.getBallHash(constants.GENESIS_UNIT);
-
-var MAX_ITEMS_IN_CACHE = 300;
-var assocKnownUnits = {};
-var assocCachedUnits = {};
-var assocCachedUnitAuthors = {};
-var assocCachedUnitWitnesses = {};
-var assocCachedAssetInfos = {};
-
-var assocUnstableUnits = {};
-var assocStableUnits = {};
-
-var min_retrievable_mci = null;
-initializeMinRetrievableMci();
+var db			= require('./db.js');
+var conf		= require('./conf.js');
+var objectHash		= require("./object_hash.js");
+var constants		= require("./constants.js");
+var mutex		= require('./mutex.js');
+var archiving		= require('./archiving.js');
+var profiler		= require('./profiler.js');
 
 
-function readJoint(conn, unit, callbacks) {
-	if (!conf.bSaveJointJson)
-		return readJointDirectly(conn, unit, callbacks);
-	conn.query("SELECT json FROM joints WHERE unit=?", [unit], function(rows){
-		if (rows.length === 0)
-			return readJointDirectly(conn, unit, callbacks);
-		var objJoint = JSON.parse(rows[0].json);
-		if (!objJoint.ball){ // got there because of an old bug
-			conn.query("DELETE FROM joints WHERE unit=?", [unit]);
-			return readJointDirectly(conn, unit, callbacks);
+var MAX_INT32			= Math.pow( 2, 31 ) - 1;
+
+var genesis_ball		= objectHash.getBallHash( constants.GENESIS_UNIT );
+
+var MAX_ITEMS_IN_CACHE		= 300;
+var assocKnownUnits		= {};
+var assocCachedUnits		= {};
+var assocCachedUnitAuthors	= {};
+var assocCachedUnitWitnesses	= {};
+var assocCachedAssetInfos	= {};
+
+var assocUnstableUnits		= {};
+var assocStableUnits		= {};
+
+var min_retrievable_mci		= null;
+
+
+
+
+
+
+
+
+function readJoint(conn, unit, callbacks)
+{
+	if ( ! conf.bSaveJointJson )
+	{
+		return readJointDirectly( conn, unit, callbacks );
+	}
+
+	//	...
+	conn.query
+	(
+		"SELECT json FROM joints WHERE unit = ? ",
+		[
+			unit
+		],
+		function( rows )
+		{
+			if ( rows.length === 0 )
+				return readJointDirectly(conn, unit, callbacks);
+
+			var objJoint	= JSON.parse( rows[ 0 ].json );
+			if ( ! objJoint.ball )
+			{
+				//	got there because of an old bug
+				conn.query( "DELETE FROM joints WHERE unit=?", [ unit ] );
+				return readJointDirectly( conn, unit, callbacks );
+			}
+
+			//	...
+			callbacks.ifFound( objJoint );
 		}
-		callbacks.ifFound(objJoint);
-	});
+	);
 }
 
 function readJointDirectly(conn, unit, callbacks, bRetrying) {
@@ -773,84 +797,180 @@ function readLastStableMcIndex(conn, handleLastStableMcIndex){
 }
 
 
-function readLastMainChainIndex(handleLastMcIndex){
-	db.query("SELECT MAX(main_chain_index) AS last_mc_index FROM units", function(rows){
-		var last_mc_index = rows[0].last_mc_index;
-		if (last_mc_index === null) // empty database
-			last_mc_index = 0;
-		handleLastMcIndex(last_mc_index);
-	});
-}
+/**
+ *	obtain the value of the last main chain index
+ */
+function readLastMainChainIndex( handleLastMcIndex )
+{
+	db.query
+	(
+		"SELECT MAX( main_chain_index ) AS last_mc_index FROM units",
+		function( rows )
+		{
+			let last_mc_index;
 
+			//	...
+			last_mc_index	= rows[ 0 ].last_mc_index;
 
-function findLastBallMciOfMci(conn, mci, handleLastBallMci){
-	if (mci === 0)
-		throw Error("findLastBallMciOfMci called with mci=0");
-	conn.query(
-		"SELECT lb_units.main_chain_index, lb_units.is_on_main_chain \n\
-		FROM units JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
-		WHERE units.is_on_main_chain=1 AND units.main_chain_index=?", 
-		[mci],
-		function(rows){
-			if (rows.length !== 1)
-				throw Error("last ball's mci count "+rows.length+" !== 1, mci = "+mci);
-			if (rows[0].is_on_main_chain !== 1)
-				throw Error("lb is not on mc?");
-			handleLastBallMci(rows[0].main_chain_index);
+			if ( last_mc_index === null )
+			{
+				//	empty database
+				last_mc_index = 0;
+			}
+
+			//	...
+			handleLastMcIndex( last_mc_index );
 		}
 	);
 }
 
-function getMinRetrievableMci(){
+
+/**
+ *	find last ball main chain index
+ *	by a special mic
+ */
+function findLastBallMciOfMci( conn, mci, handleLastBallMci )
+{
+	if ( 0 === mci )
+	{
+		throw Error( "findLastBallMciOfMci called with mci=0" );
+	}
+
+	//
+	//	ONLY one row dumped if we query successfully
+	//
+	conn.query
+	(
+		"SELECT lb_units.main_chain_index, lb_units.is_on_main_chain \n\
+		FROM units JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
+		WHERE units.is_on_main_chain=1 AND units.main_chain_index=?", 
+		[
+			mci
+		],
+		function( rows )
+		{
+			if ( rows.length !== 1 )
+			{
+				throw Error( "last ball's mci count " + rows.length + " !== 1, mci = " + mci );
+			}
+			if ( rows[ 0 ].is_on_main_chain !== 1 )
+			{
+				throw Error( "lb is not on mc?" );
+			}
+
+			//	...
+			handleLastBallMci( rows[ 0 ].main_chain_index );
+		}
+	);
+}
+
+function getMinRetrievableMci()
+{
 	return min_retrievable_mci;
 }
 
-function updateMinRetrievableMciAfterStabilizingMci(conn, last_stable_mci, handleMinRetrievableMci){
+function updateMinRetrievableMciAfterStabilizingMci( conn, last_stable_mci, handleMinRetrievableMci )
+{
 	log.consoleLog("updateMinRetrievableMciAfterStabilizingMci "+last_stable_mci);
-	findLastBallMciOfMci(conn, last_stable_mci, function(last_ball_mci){
-		if (last_ball_mci <= min_retrievable_mci) // nothing new
-			return handleMinRetrievableMci(min_retrievable_mci);
-		var prev_min_retrievable_mci = min_retrievable_mci;
-		min_retrievable_mci = last_ball_mci;
-
-		// strip content off units older than min_retrievable_mci
-		conn.query(
-			// 'JOIN messages' filters units that are not stripped yet
-			"SELECT DISTINCT unit, content_hash FROM units "+db.forceIndex('byMcIndex')+" CROSS JOIN messages USING(unit) \n\
-			WHERE main_chain_index<=? AND main_chain_index>=? AND sequence='final-bad'", 
-			[min_retrievable_mci, prev_min_retrievable_mci],
-			function(unit_rows){
-				var arrQueries = [];
-				async.eachSeries(
-					unit_rows,
-					function(unit_row, cb){
-						var unit = unit_row.unit;
-						if (!unit_row.content_hash)
-							throw Error("no content hash in bad unit "+unit);
-						readJoint(conn, unit, {
-							ifNotFound: function(){
-								throw Error("bad unit not found: "+unit);
-							},
-							ifFound: function(objJoint){
-								archiving.generateQueriesToArchiveJoint(conn, objJoint, 'voided', arrQueries, cb);
-							}
-						});
-					},
-					function(){
-						if (arrQueries.length === 0)
-							return handleMinRetrievableMci(min_retrievable_mci);
-						async.series(arrQueries, function(){
-							unit_rows.forEach(function(unit_row){
-								forgetUnit(unit_row.unit);
-							});
-							handleMinRetrievableMci(min_retrievable_mci);
-						});
-					}
-				);
+	findLastBallMciOfMci
+	(
+		conn,
+		last_stable_mci,
+		function( last_ball_mci )
+		{
+			if ( last_ball_mci <= min_retrievable_mci )
+			{
+				// nothing new
+				return handleMinRetrievableMci( min_retrievable_mci );
 			}
-		);
-	});
+
+			//	...
+			var prev_min_retrievable_mci = min_retrievable_mci;
+			min_retrievable_mci = last_ball_mci;
+
+			//	strip content off units older than min_retrievable_mci
+			conn.query
+			(
+				// 'JOIN messages' filters units that are not stripped yet
+				"SELECT DISTINCT unit, content_hash FROM units " + db.forceIndex( 'byMcIndex' ) + " CROSS JOIN messages USING(unit) \n\
+				WHERE main_chain_index <= ? AND main_chain_index >= ? AND sequence='final-bad'",
+				[
+					min_retrievable_mci,
+					prev_min_retrievable_mci
+				],
+				function( unit_rows )
+				{
+					var arrQueries = [];
+
+					//	...
+					async.eachSeries
+					(
+						unit_rows,
+						function( unit_row, cb )
+						{
+							var unit = unit_row.unit;
+
+							if ( ! unit_row.content_hash )
+							{
+								throw Error( "no content hash in bad unit " + unit );
+							}
+
+							//	...
+							readJoint
+							(
+								conn,
+								unit,
+								{
+									ifNotFound : function()
+									{
+										throw Error( "bad unit not found: " + unit );
+									},
+									ifFound : function( objJoint )
+									{
+										archiving.generateQueriesToArchiveJoint
+										(
+											conn,
+											objJoint,
+											'voided',
+											arrQueries,
+											cb
+										);
+									}
+								}
+							);
+						},
+						function()
+						{
+							if ( arrQueries.length === 0 )
+							{
+								return handleMinRetrievableMci( min_retrievable_mci );
+							}
+
+							async.series
+							(
+								arrQueries,
+								function()
+								{
+									unit_rows.forEach
+									(
+										function( unit_row )
+										{
+											forgetUnit( unit_row.unit );
+										}
+									);
+
+									//	...
+									handleMinRetrievableMci( min_retrievable_mci );
+								}
+							);
+						}
+					);
+				}
+			);
+		}
+	);
 }
+
 
 function initializeMinRetrievableMci(){
 	db.query(
@@ -925,6 +1045,11 @@ function archiveJointAndDescendants(from_unit){
 		log.consoleLog('done archiving from unit '+from_unit);
 	});
 }
+
+
+
+
+
 
 
 //_______________________________________________________________________________________________
@@ -1236,9 +1361,6 @@ function shrinkCache(){
 		}
 	});
 }
-setInterval(shrinkCache, 300*1000);
-
-
 
 function initUnstableUnits(onDone){
 	db.query(
@@ -1268,68 +1390,105 @@ function initUnstableUnits(onDone){
 	);
 }
 
-function resetUnstableUnits(onDone){
+function resetUnstableUnits(onDone)
+{
 	Object.keys(assocUnstableUnits).forEach(function(unit){
 		delete assocUnstableUnits[unit];
 	});
 	initUnstableUnits(onDone);
 }
 
-mutex.lock(['write'], initUnstableUnits);
-
-if (!conf.bLight)
-	archiveJointAndDescendantsIfExists('N6QadI9yg3zLxPMphfNGJcPfddW4yHPkoGMbbGZsWa0=');
 
 
-exports.isGenesisUnit = isGenesisUnit;
-exports.isGenesisBall = isGenesisBall;
-
-exports.readWitnesses = readWitnesses;
-exports.readWitnessList = readWitnessList;
-exports.findWitnessListUnit = findWitnessListUnit;
-exports.determineIfWitnessAddressDefinitionsHaveReferences = determineIfWitnessAddressDefinitionsHaveReferences;
-
-exports.readUnitProps = readUnitProps;
-exports.readPropsOfUnits = readPropsOfUnits;
-
-exports.readJoint = readJoint;
-exports.readJointWithBall = readJointWithBall;
-exports.readFreeJoints = readFreeJoints;
-
-exports.readDefinitionByAddress = readDefinitionByAddress;
-exports.readDefinition = readDefinition;
-
-exports.readLastMainChainIndex = readLastMainChainIndex;
-
-exports.readLastStableMcUnitProps = readLastStableMcUnitProps;
-exports.readLastStableMcIndex = readLastStableMcIndex;
 
 
-exports.findLastBallMciOfMci = findLastBallMciOfMci;
-exports.getMinRetrievableMci = getMinRetrievableMci;
-exports.updateMinRetrievableMciAfterStabilizingMci = updateMinRetrievableMciAfterStabilizingMci;
 
-exports.archiveJointAndDescendantsIfExists = archiveJointAndDescendantsIfExists;
 
-exports.readAsset = readAsset;
-exports.filterAttestedAddresses = filterAttestedAddresses;
-exports.loadAssetWithListOfAttestedAuthors = loadAssetWithListOfAttestedAuthors;
+/**
+ *	initialize min retrievable mci
+ */
+initializeMinRetrievableMci();
 
-exports.filterNewOrUnstableUnits = filterNewOrUnstableUnits;
 
-exports.determineWitnessedLevelAndBestParent = determineWitnessedLevelAndBestParent;
-exports.determineBestParent = determineBestParent;
-exports.determineIfHasWitnessListMutationsAlongMc = determineIfHasWitnessListMutationsAlongMc;
+/**
+ *	set interval
+ */
+setInterval
+(
+	shrinkCache,
+	300 * 1000
+);
 
-exports.readStaticUnitProps = readStaticUnitProps;
-exports.readUnitAuthors = readUnitAuthors;
 
-exports.isKnownUnit = isKnownUnit;
-exports.setUnitIsKnown = setUnitIsKnown;
-exports.forgetUnit = forgetUnit;
+/**
+ *	initialize unstable units
+ */
+mutex.lock
+(
+	[ 'write' ],
+	initUnstableUnits
+);
 
-exports.sliceAndExecuteQuery = sliceAndExecuteQuery;
+if ( ! conf.bLight )
+{
+	archiveJointAndDescendantsIfExists( 'N6QadI9yg3zLxPMphfNGJcPfddW4yHPkoGMbbGZsWa0=' );
+}
 
-exports.assocUnstableUnits = assocUnstableUnits;
-exports.assocStableUnits = assocStableUnits;
-exports.resetUnstableUnits = resetUnstableUnits;
+
+
+
+/**
+ *	exports
+ */
+exports.isGenesisUnit						= isGenesisUnit;
+exports.isGenesisBall						= isGenesisBall;
+
+exports.readWitnesses						= readWitnesses;
+exports.readWitnessList						= readWitnessList;
+exports.findWitnessListUnit					= findWitnessListUnit;
+exports.determineIfWitnessAddressDefinitionsHaveReferences	= determineIfWitnessAddressDefinitionsHaveReferences;
+
+exports.readUnitProps						= readUnitProps;
+exports.readPropsOfUnits					= readPropsOfUnits;
+
+exports.readJoint						= readJoint;
+exports.readJointWithBall					= readJointWithBall;
+exports.readFreeJoints						= readFreeJoints;
+
+exports.readDefinitionByAddress					= readDefinitionByAddress;
+exports.readDefinition						= readDefinition;
+
+exports.readLastMainChainIndex					= readLastMainChainIndex;
+
+exports.readLastStableMcUnitProps				= readLastStableMcUnitProps;
+exports.readLastStableMcIndex					= readLastStableMcIndex;
+
+
+exports.findLastBallMciOfMci					= findLastBallMciOfMci;
+exports.getMinRetrievableMci					= getMinRetrievableMci;
+exports.updateMinRetrievableMciAfterStabilizingMci		= updateMinRetrievableMciAfterStabilizingMci;
+
+exports.archiveJointAndDescendantsIfExists			= archiveJointAndDescendantsIfExists;
+
+exports.readAsset						= readAsset;
+exports.filterAttestedAddresses					= filterAttestedAddresses;
+exports.loadAssetWithListOfAttestedAuthors			= loadAssetWithListOfAttestedAuthors;
+
+exports.filterNewOrUnstableUnits				= filterNewOrUnstableUnits;
+
+exports.determineWitnessedLevelAndBestParent			= determineWitnessedLevelAndBestParent;
+exports.determineBestParent					= determineBestParent;
+exports.determineIfHasWitnessListMutationsAlongMc		= determineIfHasWitnessListMutationsAlongMc;
+
+exports.readStaticUnitProps					= readStaticUnitProps;
+exports.readUnitAuthors						= readUnitAuthors;
+
+exports.isKnownUnit						= isKnownUnit;
+exports.setUnitIsKnown						= setUnitIsKnown;
+exports.forgetUnit						= forgetUnit;
+
+exports.sliceAndExecuteQuery					= sliceAndExecuteQuery;
+
+exports.assocUnstableUnits					= assocUnstableUnits;
+exports.assocStableUnits					= assocStableUnits;
+exports.resetUnstableUnits					= resetUnstableUnits;

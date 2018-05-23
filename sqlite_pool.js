@@ -76,46 +76,86 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 				connectionHandler(this);
 			},
 			
-			query: function(){
-				if (!this.bInUse)
-					throw Error("this connection was returned to the pool");
-				var last_arg = arguments[arguments.length - 1];
-				var bHasCallback = (typeof last_arg === 'function');
-				if (!bHasCallback) // no callback
-					last_arg = function(){};
+			query: function()
+			{
+				if ( ! this.bInUse )
+				{
+					throw Error( "this connection was returned to the pool" );
+				}
 
+				//	...
+				var last_arg		= arguments[arguments.length - 1];
+				var bHasCallback	= (typeof last_arg === 'function');
+				if ( ! bHasCallback )
+				{
+					// no callback
+					last_arg = function(){};
+				}
+
+				//	...
 				var sql = arguments[0];
 				//log.consoleLog("======= query: "+sql);
-				var bSelect = !!sql.match(/^SELECT/i);
+				var bSelect = !! sql.match( /^SELECT/i );
 				var count_arguments_without_callback = bHasCallback ? (arguments.length-1) : arguments.length;
 				var new_args = [];
 				var self = this;
 
 				for (var i=0; i<count_arguments_without_callback; i++) // except the final callback
 					new_args.push(arguments[i]);
+
 				if (count_arguments_without_callback === 1) // no params
 					new_args.push([]);
-				expandArrayPlaceholders(new_args);
-				
+
+				expandArrayPlaceholders( new_args );
+
 				// add callback with error handling
-				new_args.push(function(err, result){
-					//log.consoleLog("query done: "+sql);
-					if (err){
-						console.error("\nfailed query:", new_args);
-						throw Error(err+"\n"+sql+"\n"+new_args[1].map(function(param){ if (param === null) return 'null'; if (param === undefined) return 'undefined'; return param;}).join(', '));
+				new_args.push
+				(
+					function( err, result )
+					{
+						//	log.consoleLog("query done: "+sql);
+						if ( err )
+						{
+							console.error("\nfailed query:", new_args);
+							throw Error(err+"\n"+sql+"\n"+new_args[1].map(function(param){ if (param === null) return 'null'; if (param === undefined) return 'undefined'; return param;}).join(', '));
+						}
+
+						//
+						//	note that sqlite3 sets nonzero this.changes even when rows were matched but nothing actually changed (new values are same as old)
+						//	this.changes appears to be correct for INSERTs despite the documentation states the opposite
+						//
+						if ( ! bSelect && ! bCordova )
+						{
+							result = { affectedRows : this.changes, insertId : this.lastID };
+						}
+						if ( bSelect && bCordova )
+						{
+							// note that on android, result.affectedRows is 1 even when inserted many rows
+							result = result.rows || [];
+						}
+
+						//log.consoleLog("changes="+this.changes+", affected="+result.affectedRows);
+
+						var consumed_time	= Date.now() - start_ts;
+						if ( consumed_time > 25 )
+						{
+							log.consoleLog
+							(
+								"long query took " + consumed_time + "ms:\n"
+								+ new_args.filter
+								(
+									function( a, i )
+									{
+										return ( i < new_args.length - 1 );
+									}
+								).join( ", " ) + "\nload avg: " + require('os').loadavg().join( ', ' )
+							);
+						}
+
+						//	...
+						last_arg( result );
 					}
-					// note that sqlite3 sets nonzero this.changes even when rows were matched but nothing actually changed (new values are same as old)
-					// this.changes appears to be correct for INSERTs despite the documentation states the opposite
-					if (!bSelect && !bCordova)
-						result = {affectedRows: this.changes, insertId: this.lastID};
-					if (bSelect && bCordova) // note that on android, result.affectedRows is 1 even when inserted many rows
-						result = result.rows || [];
-					//log.consoleLog("changes="+this.changes+", affected="+result.affectedRows);
-					var consumed_time = Date.now() - start_ts;
-					if (consumed_time > 25)
-						log.consoleLog("long query took "+consumed_time+"ms:\n"+new_args.filter(function(a, i){ return (i<new_args.length-1); }).join(", ")+"\nload avg: "+require('os').loadavg().join(', '));
-					last_arg(result);
-				});
+				);
 				
 				var start_ts = Date.now();
 				if (bCordova)
@@ -272,13 +312,20 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 		return "OR IGNORE";
 	}
 
-	function escape(str){
-		if (typeof str === 'string')
-			return "'"+str.replace(/'/g, "''")+"'";
-		else if (Array.isArray(str))
-			return str.map(function(member){ return escape(member); }).join(",");
+	function escape( str )
+	{
+		if ( typeof str === 'string' )
+		{
+			return "'" + str.replace( /'/g, "''" ) + "'";
+		}
+		else if ( Array.isArray( str ) )
+		{
+			return str.map( function( member ){ return escape( member ); } ).join( "," );
+		}
 		else
-			throw Error("escape: unknown type "+(typeof str));
+		{
+			throw Error( "escape: unknown type " + ( typeof str ) );
+		}
 	}
 	
 	

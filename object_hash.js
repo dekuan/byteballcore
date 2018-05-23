@@ -16,11 +16,12 @@ function getChash288(obj) {
 }
 
 function getHexHash(obj) {
-	return crypto.createHash("sha256").update(getSourceString(obj), "utf8").digest("hex");
+	return crypto.createHash( "sha256" ).update( getSourceString( obj ), "utf8" ).digest( "hex" );
 }
 
-function getBase64Hash(obj) {
-	return crypto.createHash("sha256").update(getSourceString(obj), "utf8").digest("base64");
+function getBase64Hash( obj )
+{
+	return crypto.createHash( "sha256" ).update( getSourceString( obj ), "utf8" ).digest( "base64" );
 }
 
 
