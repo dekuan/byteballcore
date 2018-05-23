@@ -1,97 +1,169 @@
 /*jslint node: true */
 "use strict";
 
+var crypto		= require( 'crypto' );
+var base32		= require( 'thirty-two' );
 var log			= require( './log.js' );
-var crypto = require('crypto');
-var base32 = require('thirty-two');
 
-var PI = "14159265358979323846264338327950288419716939937510";
-var zeroString = "00000000";
+var PI			= "14159265358979323846264338327950288419716939937510";
+var zeroString		= "00000000";
 
-var arrRelativeOffsets = PI.split("");
+var arrRelativeOffsets	= PI.split("");
+var arrOffsets160	= calcOffsets( 160 );
+var arrOffsets288	= calcOffsets( 288 );
 
-function checkLength(chash_length){
-	if (chash_length !== 160 && chash_length !== 288)
-		throw Error("unsupported c-hash length: "+chash_length);
+
+
+
+function checkLength( chash_length )
+{
+	if ( chash_length !== 160 && chash_length !== 288 )
+	{
+		throw Error( "unsupported c-hash length: " + chash_length );
+	}
 }
 
-function calcOffsets(chash_length){
-	checkLength(chash_length);
-	var arrOffsets = [];
-	var offset = 0;
-	var index = 0;
+function calcOffsets( chash_length )
+{
+	let arrOffsets;
+	let offset;
+	let index;
+	let i;
+	var relative_offset;
 
-	for (var i=0; offset<chash_length; i++){
-		var relative_offset = parseInt(arrRelativeOffsets[i]);
-		if (relative_offset === 0)
+	//	...
+	checkLength( chash_length );
+
+	arrOffsets	= [];
+	offset		= 0;
+	index		= 0;
+
+
+	for ( i = 0; offset < chash_length; i ++ )
+	{
+		relative_offset	= parseInt( arrRelativeOffsets[ i ] );
+
+		if ( relative_offset === 0 )
+		{
 			continue;
+		}
+
 		offset += relative_offset;
-		if (chash_length === 288)
+		if ( chash_length === 288 )
+		{
 			offset += 4;
-		if (offset >= chash_length)
+		}
+		if ( offset >= chash_length )
+		{
 			break;
-		arrOffsets.push(offset);
-		//log.consoleLog("index="+index+", offset="+offset);
-		index++;
+		}
+
+		arrOffsets.push( offset );
+		//	log.consoleLog("index="+index+", offset="+offset);
+		index ++;
 	}
 
-	if (index != 32)
-		throw Error("wrong number of checksum bits");
+	if ( index !== 32 )
+	{
+		throw Error( "wrong number of checksum bits" );
+	}
 	
 	return arrOffsets;
 }
 
-var arrOffsets160 = calcOffsets(160);
-var arrOffsets288 = calcOffsets(288);
 
-function separateIntoCleanDataAndChecksum(bin){
-	var len = bin.length;
-	var arrOffsets;
-	if (len === 160)
-		arrOffsets = arrOffsets160;
-	else if (len === 288)
-		arrOffsets = arrOffsets288;
-	else
-		throw Error("bad length="+len+", bin = "+bin);
-	var arrFrags = [];
-	var arrChecksumBits = [];
-	var start = 0;
-	for (var i=0; i<arrOffsets.length; i++){
-		arrFrags.push(bin.substring(start, arrOffsets[i]));
-		arrChecksumBits.push(bin.substr(arrOffsets[i], 1));
-		start = arrOffsets[i]+1;
+
+function separateIntoCleanDataAndChecksum( bin )
+{
+	let len;
+	let arrOffsets;
+	let arrFrags;
+	let arrChecksumBits;
+	let start;
+	let i;
+	let binCleanData;
+	let binChecksum;
+
+	//	...
+	len = bin.length;
+
+	if ( len === 160 )
+	{
+		arrOffsets	= arrOffsets160;
 	}
-	// add last frag
-	if (start < bin.length)
-		arrFrags.push(bin.substring(start));
-	var binCleanData = arrFrags.join("");
-	var binChecksum = arrChecksumBits.join("");
-	return {clean_data: binCleanData, checksum: binChecksum};
+	else if ( len === 288 )
+	{
+		arrOffsets	= arrOffsets288;
+	}
+	else
+	{
+		throw Error( "bad length=" + len + ", bin = " + bin );
+	}
+
+	//	...
+	arrFrags	= [];
+	arrChecksumBits	= [];
+	start		= 0;
+
+	for ( i = 0; i < arrOffsets.length; i ++ )
+	{
+		arrFrags.push( bin.substring( start, arrOffsets[ i ] ) );
+		arrChecksumBits.push( bin.substr( arrOffsets[ i ], 1 ) );
+		start = arrOffsets[ i ] + 1;
+	}
+
+	//	add last frag
+	if ( start < bin.length )
+	{
+		arrFrags.push( bin.substring( start ) );
+	}
+
+	//	...
+	binCleanData	= arrFrags.join( "" );
+	binChecksum	= arrChecksumBits.join( "" );
+
+	//	...
+	return {
+		clean_data	: binCleanData,
+		checksum	: binChecksum
+	};
 }
 
-function mixChecksumIntoCleanData(binCleanData, binChecksum){
-	if (binChecksum.length !== 32)
-		throw Error("bad checksum length");
+
+function mixChecksumIntoCleanData( binCleanData, binChecksum )
+{
+	if ( binChecksum.length !== 32 )
+		throw Error( "bad checksum length" );
+
 	var len = binCleanData.length + binChecksum.length;
 	var arrOffsets;
-	if (len === 160)
+
+	if ( len === 160 )
 		arrOffsets = arrOffsets160;
 	else if (len === 288)
 		arrOffsets = arrOffsets288;
 	else
 		throw Error("bad length="+len+", clean data = "+binCleanData+", checksum = "+binChecksum);
+
 	var arrFrags = [];
 	var arrChecksumBits = binChecksum.split("");
 	var start = 0;
-	for (var i=0; i<arrOffsets.length; i++){
+
+	for (var i=0; i<arrOffsets.length; i++)
+	{
 		var end = arrOffsets[i] - i;
 		arrFrags.push(binCleanData.substring(start, end));
 		arrFrags.push(arrChecksumBits[i]);
 		start = end;
 	}
+
 	// add last frag
 	if (start < binCleanData.length)
+	{
 		arrFrags.push(binCleanData.substring(start));
+	}
+
+	//	...
 	return arrFrags.join("");
 }
 
@@ -173,6 +245,11 @@ function isChashValid(encoded){
 }
 
 
+
+
+/**
+ *	exports
+ */
 exports.getChash160 = getChash160;
 exports.getChash288 = getChash288;
 exports.isChashValid = isChashValid;

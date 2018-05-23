@@ -1,23 +1,27 @@
 /*jslint node: true */
 "use strict";
 
+var _			= require( 'lodash' );
+var async		= require( 'async' );
 var log			= require( './log.js' );
-var _ = require('lodash');
-var async = require('async');
-var db = require('./db.js');
-var constants = require("./constants.js");
-var storage = require('./storage.js');
-var graph = require('./graph.js');
-var objectHash = require("./object_hash.js");
-var paid_witnessing = require("./paid_witnessing.js");
-var headers_commission = require("./headers_commission.js");
-var mutex = require('./mutex.js');
-var eventBus = require('./event_bus.js');
-var profiler = require('./profiler.js');
-var breadcrumbs = require('./breadcrumbs.js');
+var db			= require( './db.js' );
+var constants		= require( "./constants.js" );
+var storage		= require( './storage.js' );
+var graph		= require( './graph.js' );
+var objectHash		= require( './object_hash.js' );
+var paid_witnessing	= require( './paid_witnessing.js' );
+var headers_commission	= require( './headers_commission.js' );
+var mutex		= require( './mutex.js' );
+var eventBus		= require( './event_bus.js' );
+var profiler		= require( './profiler.js' );
+var breadcrumbs		= require( './breadcrumbs.js' );
 
-// override when adding units which caused witnessed level to significantly retreat
-var arrRetreatingUnits = [
+
+/**
+ *	override when adding units which caused witnessed level to significantly retreat
+ */
+var arrRetreatingUnits =
+[
 	'+5ntioHT58jcFb8oVc+Ff4UvO5UvYGRcrGfYIofGUW8=',
 	'C/aPdM0sODPLC3NqJPWdZlqmV8B4xxf2N/+HSEi0sKU=',
 	'sSev6hvQU86SZBemy9CW2lJIko2jZDoY55Lm3zf2QU4=',
@@ -27,20 +31,27 @@ var arrRetreatingUnits = [
 ];
 
 
-function updateMainChain(conn, from_unit, last_added_unit, onDone){
-	
-	var arrAllParents = [];
-	var arrNewMcUnits = [];
+/**
+ *	* Update main chain
+ */
+function updateMainChain( conn, from_unit, last_added_unit, onDone )
+{
+	var arrAllParents	= [];
+	var arrNewMcUnits	= [];
 	
 	// if unit === null, read free balls
-	function findNextUpMainChainUnit(unit, handleUnit){
-		function handleProps(props){
+	function findNextUpMainChainUnit( unit, handleUnit )
+	{
+		function handleProps( props )
+		{
 			if (props.best_parent_unit === null)
 				throw Error("best parent is null");
 			log.consoleLog("unit "+unit+", best parent "+props.best_parent_unit+", wlevel "+props.witnessed_level);
 			handleUnit(props.best_parent_unit);
 		}
-		function readLastUnitProps(handleLastUnitProps){
+
+		function readLastUnitProps( handleLastUnitProps )
+		{
 			conn.query("SELECT unit AS best_parent_unit, witnessed_level \n\
 				FROM units WHERE is_free=1 \n\
 				ORDER BY witnessed_level DESC, \n\
@@ -72,44 +83,68 @@ function updateMainChain(conn, from_unit, last_added_unit, onDone){
 		unit ? storage.readStaticUnitProps(conn, unit, handleProps) : readLastUnitProps(handleProps);
 	}
 	
-	function goUpFromUnit(unit){
-		if (storage.isGenesisUnit(unit))
-			return checkNotRebuildingStableMainChainAndGoDown(0, unit);
-		
+	function goUpFromUnit( unit )
+	{
+		if ( storage.isGenesisUnit( unit ) )
+		{
+			return checkNotRebuildingStableMainChainAndGoDown( 0, unit );
+		}
+
+		//	...
 		profiler.start();
-		findNextUpMainChainUnit(unit, function(best_parent_unit){
-			storage.readUnitProps(conn, best_parent_unit, function(objBestParentUnitProps){
-				var objBestParentUnitProps2 = storage.assocUnstableUnits[best_parent_unit];
-				if (!objBestParentUnitProps2){
-					if (storage.isGenesisUnit(best_parent_unit))
-						objBestParentUnitProps2 = storage.assocStableUnits[best_parent_unit];
+		findNextUpMainChainUnit
+		(
+			unit,
+			function( best_parent_unit )
+			{
+				storage.readUnitProps( conn, best_parent_unit, function( objBestParentUnitProps )
+				{
+					var objBestParentUnitProps2 = storage.assocUnstableUnits[best_parent_unit];
+					if ( ! objBestParentUnitProps2 )
+					{
+						if ( storage.isGenesisUnit( best_parent_unit ) )
+							objBestParentUnitProps2 = storage.assocStableUnits[best_parent_unit];
+						else
+							throw Error("unstable unit not found: "+best_parent_unit);
+					}
+
+					var objBestParentUnitPropsForCheck	 = _.cloneDeep( objBestParentUnitProps2 );
+					delete objBestParentUnitPropsForCheck.parent_units;
+
+					if ( ! _.isEqual( objBestParentUnitPropsForCheck, objBestParentUnitProps ) )
+						throwError( "different props, db: "+JSON.stringify(objBestParentUnitProps)+", unstable: "+JSON.stringify(objBestParentUnitProps2));
+
+					if ( ! objBestParentUnitProps.is_on_main_chain )
+					{
+						conn.query
+						(
+							"UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?",
+							[ best_parent_unit ],
+							function()
+							{
+								objBestParentUnitProps2.is_on_main_chain = 1;
+								objBestParentUnitProps2.main_chain_index = null;
+								arrNewMcUnits.push(best_parent_unit);
+								profiler.stop('mc-goUpFromUnit');
+								goUpFromUnit(best_parent_unit);
+							}
+						);
+					}
 					else
-						throw Error("unstable unit not found: "+best_parent_unit);
-				}
-				var objBestParentUnitPropsForCheck = _.cloneDeep(objBestParentUnitProps2);
-				delete objBestParentUnitPropsForCheck.parent_units;
-				if (!_.isEqual(objBestParentUnitPropsForCheck, objBestParentUnitProps))
-					throwError("different props, db: "+JSON.stringify(objBestParentUnitProps)+", unstable: "+JSON.stringify(objBestParentUnitProps2));
-				if (!objBestParentUnitProps.is_on_main_chain)
-					conn.query("UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?", [best_parent_unit], function(){
-						objBestParentUnitProps2.is_on_main_chain = 1;
-						objBestParentUnitProps2.main_chain_index = null;
-						arrNewMcUnits.push(best_parent_unit);
+					{
 						profiler.stop('mc-goUpFromUnit');
-						goUpFromUnit(best_parent_unit);
-					});
-				else{
-					profiler.stop('mc-goUpFromUnit');
-					if (unit === null)
-						updateLatestIncludedMcIndex(objBestParentUnitProps.main_chain_index, false);
-					else
-						checkNotRebuildingStableMainChainAndGoDown(objBestParentUnitProps.main_chain_index, best_parent_unit);
+						if (unit === null)
+							updateLatestIncludedMcIndex(objBestParentUnitProps.main_chain_index, false);
+						else
+							checkNotRebuildingStableMainChainAndGoDown(objBestParentUnitProps.main_chain_index, best_parent_unit);
+					}
 				}
-			});
+			);
 		});
 	}
-	
-	function checkNotRebuildingStableMainChainAndGoDown(last_main_chain_index, last_main_chain_unit){
+
+	function checkNotRebuildingStableMainChainAndGoDown( last_main_chain_index, last_main_chain_unit )
+	{
 		log.consoleLog("checkNotRebuildingStableMainChainAndGoDown "+from_unit);
 		profiler.start();
 		conn.query(
@@ -124,26 +159,38 @@ function updateMainChain(conn, from_unit, last_added_unit, onDone){
 		);
 	}
 	
-	function goDownAndUpdateMainChainIndex(last_main_chain_index, last_main_chain_unit){
+	function goDownAndUpdateMainChainIndex( last_main_chain_index, last_main_chain_unit )
+	{
 		profiler.start();
-		conn.query(
+		conn.query
+		(
 			//"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE is_on_main_chain=1 AND main_chain_index>?", 
 			"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE main_chain_index>?", 
-			[last_main_chain_index], 
-			function(){
-				for (var unit in storage.assocUnstableUnits){
+			[
+				last_main_chain_index
+			],
+			function()
+			{
+				for ( var unit in storage.assocUnstableUnits )
+				{
 					var o = storage.assocUnstableUnits[unit];
-					if (o.main_chain_index > last_main_chain_index){
+					if (o.main_chain_index > last_main_chain_index)
+					{
 						o.is_on_main_chain = 0;
 						o.main_chain_index = null;
 					}
 				}
+
 				var main_chain_index = last_main_chain_index;
 				var main_chain_unit = last_main_chain_unit;
-				conn.query(
+
+				conn.query
+				(
 					"SELECT unit FROM units WHERE is_on_main_chain=1 AND main_chain_index IS NULL ORDER BY level",
-					function(rows){
-						if (rows.length === 0){
+					function(rows)
+					{
+						if (rows.length === 0)
+						{
 							//if (last_main_chain_index > 0)
 								throw Error("no unindexed MC units after adding "+last_added_unit);
 							//else{
@@ -151,23 +198,33 @@ function updateMainChain(conn, from_unit, last_added_unit, onDone){
 							//    return updateLatestIncludedMcIndex(last_main_chain_index, true);
 							//}
 						}
+
 						var arrDbNewMcUnits = rows.map(function(row){ return row.unit; });
 						arrNewMcUnits.reverse();
-						if (!_.isEqual(arrNewMcUnits, arrDbNewMcUnits))
-							throwError("different new MC units, arr: "+JSON.stringify(arrNewMcUnits)+", db: "+JSON.stringify(arrDbNewMcUnits));
-						async.eachSeries(
+
+						if ( ! _.isEqual( arrNewMcUnits, arrDbNewMcUnits ) )
+							throwError("different new MC units, arr: " + JSON.stringify( arrNewMcUnits ) + ", db: " + JSON.stringify( arrDbNewMcUnits ) );
+
+						async.eachSeries
+						(
 							rows, 
-							function(row, cb){
+							function( row, cb )
+							{
 								main_chain_index++;
 								var arrUnits = [row.unit];
 								
-								function goUp(arrStartUnits){
-									conn.query(
+								function goUp( arrStartUnits )
+								{
+									conn.query
+									(
 										"SELECT DISTINCT unit \n\
 										FROM parenthoods JOIN units ON parent_unit=unit \n\
 										WHERE child_unit IN(?) AND main_chain_index IS NULL",
-										[arrStartUnits],
-										function(rows){
+										[
+											arrStartUnits
+										],
+										function( rows )
+										{
 											var arrNewStartUnits = rows.map(function(row){ return row.unit; });
 											var arrNewStartUnits2 = [];
 											arrStartUnits.forEach(function(start_unit){
@@ -186,22 +243,37 @@ function updateMainChain(conn, from_unit, last_added_unit, onDone){
 									);
 								}
 	
-								function updateMc(){
-									arrUnits.forEach(function(unit){
+								function updateMc()
+								{
+									arrUnits.forEach( function( unit )
+									{
 										storage.assocUnstableUnits[unit].main_chain_index = main_chain_index;
 									});
+
 									var strUnitList = arrUnits.map(db.escape).join(', ');
-									conn.query("UPDATE units SET main_chain_index=? WHERE unit IN("+strUnitList+")", [main_chain_index], function(){
-										conn.query("UPDATE unit_authors SET _mci=? WHERE unit IN("+strUnitList+")", [main_chain_index], function(){
-											cb();
-										});
-									});
+									conn.query
+									(
+										"UPDATE units SET main_chain_index=? WHERE unit IN(" + strUnitList + ")",
+										[ main_chain_index ],
+										function()
+										{
+											conn.query
+											(
+												"UPDATE unit_authors SET _mci=? WHERE unit IN(" + strUnitList + ")",
+												[ main_chain_index ],
+												function()
+												{
+													cb();
+												}
+											);
+										}
+									);
 								}
 								
-								goUp(arrUnits);
-								
+								goUp( arrUnits );
 							}, 
-							function(err){
+							function( err )
+							{
 								log.consoleLog("goDownAndUpdateMainChainIndex done");
 								if (err)
 									throw Error("goDownAndUpdateMainChainIndex eachSeries failed");
@@ -849,7 +921,8 @@ function readBestParentAndItsWitnesses(conn, unit, handleBestParentAndItsWitness
 }
 
 
-function markMcIndexStable(conn, mci, onDone){
+function markMcIndexStable( conn, mci, onDone )
+{
 	profiler.start();
 	var arrStabilizedUnits = [];
 	for (var unit in storage.assocUnstableUnits){
@@ -1078,26 +1151,45 @@ function markMcIndexStable(conn, mci, onDone){
 			calcCommissions();
 		});
 	}
-	
-	function calcCommissions(){
-		async.series([
-			function(cb){
-				profiler.start();
-				headers_commission.calcHeadersCommissions(conn, cb);
-			},
-			function(cb){
-				profiler.stop('mc-headers-commissions');
-				paid_witnessing.updatePaidWitnesses(conn, cb);
+
+
+
+	////////////////////////////////////////////////////////////
+	//	* IMPORTANT
+	////////////////////////////////////////////////////////////
+	function calcCommissions()
+	{
+		async.series
+		(
+			[
+				function( cb )
+				{
+					profiler.start();
+					headers_commission.calcHeadersCommissions( conn, cb );
+				},
+				function( cb )
+				{
+					profiler.stop( 'mc-headers-commissions' );
+					paid_witnessing.updatePaidWitnesses( conn, cb );
+				}
+			],
+			function()
+			{
+				process.nextTick
+				(
+					function()
+					{
+						//	don't call it synchronously with event emitter
+						eventBus.emit( "mci_became_stable", mci );
+					}
+				);
+				onDone();
 			}
-		], function(){
-			process.nextTick(function(){ // don't call it synchronously with event emitter
-				eventBus.emit("mci_became_stable", mci);
-			});
-			onDone();
-		});
+		);
 	}
-	
 }
+
+
 
 // returns list of past MC indices for skiplist
 function getSimilarMcis(mci){

@@ -2498,6 +2498,7 @@ function notifyWatchers( objJoint, source_ws )
 	);
 }
 
+
 function notifyWatchersAboutStableJoints( mci )
 {
 	//
@@ -2525,7 +2526,9 @@ function notifyWatchersAboutStableJoints( mci )
 				return;
 			}
 
-			//	...
+			//
+			//	find last ball ...
+			//
 			storage.findLastBallMciOfMci
 			(
 				db,
@@ -2633,9 +2636,9 @@ function notifyLocalWatchedAddressesAboutStableJoints( mci )
 	{
 		db.query
 		(
-			"SELECT unit FROM units JOIN unit_authors USING(unit) WHERE main_chain_index=? AND address IN(?) AND sequence='good' \n\
+			"SELECT unit FROM units JOIN unit_authors USING(unit) WHERE main_chain_index = ? AND address IN( ? ) AND sequence='good' \n\
 			UNION \n\
-			SELECT unit FROM units JOIN outputs USING(unit) WHERE main_chain_index=? AND address IN(?) AND sequence='good'",
+			SELECT unit FROM units JOIN outputs USING(unit) WHERE main_chain_index = ? AND address IN( ? ) AND sequence='good'",
 			[
 				mci,
 				m_arrWatchedAddresses,
@@ -5802,7 +5805,7 @@ function isCatchingUp()
 
 
 /**
- *	for browser
+ *	Adding support for browser
  */
 if ( process.browser )
 {
