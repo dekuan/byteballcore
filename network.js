@@ -2627,6 +2627,7 @@ function notifyLocalWatchedAddressesAboutStableJoints( mci )
 				function( row )
 				{
 					eventBus.emit( 'my_stable-' + row.unit );
+					log.consoleLog( "notifyLocalWatchedAddressesAboutStableJoints, handleRows, emit event: my_stable-" + row.unit );
 				}
 			);
 		}
