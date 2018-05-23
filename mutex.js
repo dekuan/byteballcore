@@ -5,30 +5,78 @@ var _	= require('lodash');
 require('./enforce_singleton.js');
 
 
-var arrQueuedJobs		= [];
-var arrLockedKeyArrays		= [];
+var m_arrQueuedJobs		= [];
+var m_arrLockedKeyArrays	= [];
 
 
+/**
+ *	lock
+ */
+function lock( arrKeys, procedure, nextProcedure )
+{
+	if ( _isAnyOfKeysLocked( arrKeys ) )
+	{
+		console.log( "queuing job held by keys", arrKeys );
+		m_arrQueuedJobs.push
+		(
+			{
+				arrKeys		: arrKeys,
+				procedure	: procedure,
+				nextProcedure	: nextProcedure,
+				ts		: Date.now()
+			}
+		);
+	}
+	else
+	{
+		_execute( arrKeys, procedure, nextProcedure );
+	}
+}
+
+function lockOrSkip( arrKeys, procedure, nextProcedure )
+{
+	if ( _isAnyOfKeysLocked( arrKeys ) )
+	{
+		console.log( "skipping job held by keys", arrKeys );
+		if ( nextProcedure )
+		{
+			nextProcedure();
+		}
+	}
+	else
+	{
+		_execute( arrKeys, procedure, nextProcedure );
+	}
+}
 
 function getCountOfQueuedJobs()
 {
-	return arrQueuedJobs.length;
+	return m_arrQueuedJobs.length;
 }
 
 function getCountOfLocks()
 {
-	return arrLockedKeyArrays.length;
+	return m_arrLockedKeyArrays.length;
 }
 
-function isAnyOfKeysLocked( arrKeys )
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	Private
+//
+
+function _isAnyOfKeysLocked( arrKeys )
 {
 	let i;
 	let j;
 	let arrLockedKeys;
 
-	for ( i = 0; i < arrLockedKeyArrays.length; i ++ )
+	for ( i = 0; i < m_arrLockedKeyArrays.length; i ++ )
 	{
-		arrLockedKeys = arrLockedKeyArrays[i];
+		arrLockedKeys = m_arrLockedKeyArrays[i];
 		for ( j = 0; j < arrLockedKeys.length; j ++ )
 		{
 			if ( arrKeys.indexOf( arrLockedKeys[ j ] ) !== -1 )
@@ -41,30 +89,30 @@ function isAnyOfKeysLocked( arrKeys )
 	return false;
 }
 
-function release( arrKeys )
+function _release( arrKeys )
 {
 	let i;
 
-	for ( i = 0; i < arrLockedKeyArrays.length; i ++ )
+	for ( i = 0; i < m_arrLockedKeyArrays.length; i ++ )
 	{
-		if ( _.isEqual( arrKeys, arrLockedKeyArrays[ i ] ) )
+		if ( _.isEqual( arrKeys, m_arrLockedKeyArrays[ i ] ) )
 		{
-			arrLockedKeyArrays.splice( i, 1 );
+			m_arrLockedKeyArrays.splice( i, 1 );
 			return;
 		}
 	}
 }
 
-function exec( arrKeys, proc, next_proc )
+function _execute( arrKeys, procedure, nextProcedure )
 {
 	let bLocked;
 
-	arrLockedKeyArrays.push( arrKeys );
-	console.log("lock acquired", arrKeys);
+	m_arrLockedKeyArrays.push( arrKeys );
+	console.log( "lock acquired", arrKeys );
 
 	//	...
 	bLocked = true;
-	proc
+	procedure
 	(
 		function()
 		{
@@ -74,101 +122,66 @@ function exec( arrKeys, proc, next_proc )
 			}
 
 			bLocked = false;
-			release(arrKeys);
-			console.log("lock released", arrKeys);
+			_release( arrKeys );
+			console.log( "lock released", arrKeys );
 
-			if ( next_proc )
+			if ( nextProcedure )
 			{
-				next_proc.apply( next_proc, arguments );
+				nextProcedure.apply( nextProcedure, arguments );
 			}
 
 			//	...
-			handleQueue();
+			_handleQueue();
 		}
 	);
 }
 
-function handleQueue()
+function _handleQueue()
 {
 	let i;
 	let job;
 
 	//	...
-	console.log("handleQueue "+arrQueuedJobs.length+" items");
-	for ( i = 0; i < arrQueuedJobs.length; i ++ )
+	console.log("_handleQueue "+m_arrQueuedJobs.length+" items");
+	for ( i = 0; i < m_arrQueuedJobs.length; i ++ )
 	{
-		job	= arrQueuedJobs[ i ];
-		if ( isAnyOfKeysLocked( job.arrKeys ) )
+		job	= m_arrQueuedJobs[ i ];
+		if ( _isAnyOfKeysLocked( job.arrKeys ) )
 		{
 			continue;
 		}
 
-		//	do it before exec as exec can trigger another job added, another lock unlocked, another handleQueue called
-		arrQueuedJobs.splice( i, 1 );
+		//	do it before _execute as _execute can trigger another job added, another lock unlocked, another _handleQueue called
+		m_arrQueuedJobs.splice( i, 1 );
 		console.log( "starting job held by keys", job.arrKeys );
 
 		//	...
-		exec( job.arrKeys, job.proc, job.next_proc );
+		_execute( job.arrKeys, job.procedure, job.nextProcedure );
 
 		//	we've just removed one item
 		i--;
 	}
 
-	console.log("handleQueue done "+arrQueuedJobs.length+" items");
+	console.log( "_handleQueue done " + m_arrQueuedJobs.length + " items" );
 }
 
-function lock( arrKeys, proc, next_proc )
-{
-	if ( isAnyOfKeysLocked( arrKeys ) )
-	{
-		console.log( "queuing job held by keys", arrKeys );
-		arrQueuedJobs.push
-		(
-			{
-				arrKeys		: arrKeys,
-				proc		: proc,
-				next_proc	: next_proc,
-				ts		: Date.now()
-			}
-		);
-	}
-	else
-	{
-		exec( arrKeys, proc, next_proc );
-	}
-}
 
-function lockOrSkip( arrKeys, proc, next_proc )
-{
-	if ( isAnyOfKeysLocked( arrKeys ) )
-	{
-		console.log( "skipping job held by keys", arrKeys );
-		if ( next_proc )
-		{
-			next_proc();
-		}
-	}
-	else
-	{
-		exec( arrKeys, proc, next_proc );
-	}
-}
 
-function checkForDeadlocks()
+function _checkForDeadlocks()
 {
 	let i;
 	let job;
 
-	for ( i = 0; i < arrQueuedJobs.length; i ++ )
+	for ( i = 0; i < m_arrQueuedJobs.length; i ++ )
 	{
-		job	= arrQueuedJobs[ i ];
+		job	= m_arrQueuedJobs[ i ];
 		if ( Date.now() - job.ts > 30 * 1000 )
 		{
 			throw Error
 			(
 				"possible deadlock on job " + require('util').inspect(job) + ",\n"
-				+ "proc:" + job.proc.toString() + " \n"
-				+ "all jobs: " + require('util').inspect( arrQueuedJobs, { depth: null } )
+				+ "procedure:" + job.procedure.toString() + " \n"
+				+ "all jobs: " + require('util').inspect( m_arrQueuedJobs, { depth: null } )
 			);
 		}
 	}
@@ -179,7 +192,7 @@ function checkForDeadlocks()
 
 /**
  *	long running locks are normal in multisig scenarios
- *	setInterval(checkForDeadlocks, 1000);
+ *	setInterval(_checkForDeadlocks, 1000);
  */
 setInterval
 (
@@ -189,14 +202,14 @@ setInterval
 		(
 			"queued jobs: " + JSON.stringify
 			(
-				arrQueuedJobs.map
+				m_arrQueuedJobs.map
 				(
 					function( job )
 					{
 						return job.arrKeys;
 					}
 				)
-			) + ", locked keys: " + JSON.stringify( arrLockedKeyArrays )
+			) + ", locked keys: " + JSON.stringify( m_arrLockedKeyArrays )
 		);
 	},
 	10000
