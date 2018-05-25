@@ -81,16 +81,23 @@ function saveUnhandledJointAndDependencies(objJoint, arrMissingParentUnits, peer
 
 
 // handleDependentJoint called for each dependent unit
-function readDependentJointsThatAreReady(unit, handleDependentJoint){
-	//log.consoleLog("readDependentJointsThatAreReady "+unit);
-	var t=Date.now();
-	var from = unit ? "FROM dependencies AS src_deps JOIN dependencies USING(unit)" : "FROM dependencies";
-	var where = unit ? "WHERE src_deps.depends_on_unit="+db.escape(unit) : "";
-	mutex.lock(["dependencies"], function(unlock){
-		db.query(
-			"SELECT dependencies.unit, unhandled_joints.unit AS unit_for_json, \n\
-				SUM(CASE WHEN units.unit IS NULL THEN 1 ELSE 0 END) AS count_missing_parents \n\
-			"+from+" \n\
+function readDependentJointsThatAreReady( unit, handleDependentJoint )
+{
+	//	log.consoleLog("readDependentJointsThatAreReady "+unit);
+	var t		= Date.now();
+	var from	= unit ? "FROM dependencies AS src_deps JOIN dependencies USING(unit)" : "FROM dependencies";
+	var where	= unit ? "WHERE src_deps.depends_on_unit="+db.escape(unit) : "";
+
+	mutex.lock
+	(
+		[ "dependencies" ],
+		function( unlock )
+		{
+			db.query
+			(
+				"SELECT dependencies.unit, unhandled_joints.unit AS unit_for_json, \n\
+					SUM(CASE WHEN units.unit IS NULL THEN 1 ELSE 0 END) AS count_missing_parents \n\
+				" + from + " \n\
 			JOIN unhandled_joints ON dependencies.unit=unhandled_joints.unit \n\
 			LEFT JOIN units ON dependencies.depends_on_unit=units.unit \n\
 			"+where+" \n\

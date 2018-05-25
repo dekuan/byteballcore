@@ -1,27 +1,48 @@
 /*jslint node: true */
 'use strict';
 
-var log			= require( './log.js' );
+var log		= require( './log.js' );
 
 
-/*
-Used for debugging long sequences of calls not captured by stack traces.
-Should be included with bug reports.
-*/
+/**
+ *	Used for debugging long sequences of calls not captured by stack traces.
+ *	Should be included with bug reports.
+ */
+var MAX_LENGTH		= 200;
+var m_arrBreadcrumbs	= [];
 
-var MAX_LENGTH = 200;
-var arrBreadcrumbs = [];
 
-function add(breadcrumb){
-	if (arrBreadcrumbs.length > MAX_LENGTH)
-		arrBreadcrumbs.shift(); // forget the oldest breadcrumbs
-	arrBreadcrumbs.push(Date().toString() + ': ' + breadcrumb);
-	log.consoleLog(breadcrumb);
+
+/**
+ *	add new to the queue
+ */
+function add( breadcrumb )
+{
+	if ( m_arrBreadcrumbs.length > MAX_LENGTH )
+	{
+		//	forget the oldest breadcrumbs
+		m_arrBreadcrumbs.shift();
+	}
+
+	//	...
+	m_arrBreadcrumbs.push( Date().toString() + ': ' + breadcrumb );
+	log.consoleLog( breadcrumb );
 }
 
-function get(){
-	return arrBreadcrumbs;
+
+/**
+ *	get full queue list
+ */
+function get()
+{
+	return m_arrBreadcrumbs;
 }
 
+
+
+
+/**
+ *	exports
+ */
 exports.add = add;
 exports.get = get;

@@ -109,7 +109,7 @@ function sendJustsaying( ws, subject, body )
 
 function sendAllInboundJustsaying( subject, body )
 {
-	m_oWss.clients.forEach
+	m_oWss.arrClients.forEach
 	(
 		function( ws )
 		{
@@ -484,7 +484,7 @@ function findRandomInboundPeer( handleInboundPeer )
 	let arrInboundHosts;
 
 	//	...
-	arrInboundSources	= m_oWss.clients.filter
+	arrInboundSources	= m_oWss.arrClients.filter
 	(
 		function( inbound_ws )
 		{
@@ -860,7 +860,7 @@ function addOutboundPeers( multiplier )
 			return ws.peer;
 		}
 	);
-	arrInboundHosts		= m_oWss.clients.map
+	arrInboundHosts		= m_oWss.arrClients.map
 	(
 		function( ws )
 		{
@@ -1021,12 +1021,12 @@ function getPeerWebSocket( peer )
 		}
 	}
 
-	for ( i = 0; i < m_oWss.clients.length; i ++ )
+	for ( i = 0; i < m_oWss.arrClients.length; i ++ )
 	{
-		if ( m_oWss.clients[ i ].peer === peer )
+		if ( m_oWss.arrClients[ i ].peer === peer )
 		{
 			//	...
-			return m_oWss.clients[ i ];
+			return m_oWss.arrClients[ i ];
 		}
 	}
 
@@ -1292,6 +1292,12 @@ function handleNewPeers( ws, request, arrPeerUrls )
 	async.series( arrQueries );
 }
 
+
+/**
+ *	*
+ *	heartbeat
+ *	about every 3 seconds
+ */
 function heartbeat()
 {
 	let bJustResumed;
@@ -1301,15 +1307,17 @@ function heartbeat()
 	m_nLastHearbeatWakeTs	= Date.now();
 
 	//
-	//	...
+	//	The concat() method is used to merge two or more arrays.
+	//	This method does not change the existing arrays, but instead returns a new array.
 	//
-	m_oWss.clients.concat( m_arrOutboundPeers ).forEach( function( ws )
+	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach( function( ws )
 	{
-		var elapsed_since_last_received;
-		var elapsed_since_last_sent_heartbeat;
+		let elapsed_since_last_received;
+		let elapsed_since_last_sent_heartbeat;
 
 		if ( ws.bSleeping || ws.readyState !== ws.OPEN )
 		{
+			//	web socket is not ready
 			return;
 		}
 
@@ -1387,7 +1395,7 @@ function printConnectionStatus()
 {
 	log.consoleLog
 	(
-		m_oWss.clients.length + " incoming connections, "
+		m_oWss.arrClients.length + " incoming connections, "
 		+ m_arrOutboundPeers.length + " outgoing connections, "
 		+ Object.keys( m_oAssocConnectingOutboundWebSockets ).length + " outgoing connections being opened"
 	);
@@ -1800,7 +1808,7 @@ function havePendingRequest( command )
 	let tag;
 
 	//	...
-	arrPeers = m_oWss.clients.concat( m_arrOutboundPeers );
+	arrPeers = m_oWss.arrClients.concat( m_arrOutboundPeers );
 
 	for ( i = 0; i < arrPeers.length; i++ )
 	{
@@ -1826,7 +1834,7 @@ function havePendingJointRequest( unit )
 	let request;
 
 	//	...
-	arrPeers	= m_oWss.clients.concat( m_arrOutboundPeers );
+	arrPeers	= m_oWss.arrClients.concat( m_arrOutboundPeers );
 
 	for ( i = 0; i < arrPeers.length; i ++ )
 	{
@@ -1929,7 +1937,7 @@ function purgeDependenciesAndNotifyPeers( unit, error, onDone )
 
 function forwardJoint( ws, objJoint )
 {
-	m_oWss.clients.concat( m_arrOutboundPeers ).forEach
+	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach
 	(
 		function( client )
 		{
@@ -2984,7 +2992,7 @@ function broadcastJoint( objJoint )
 		return;
 	}
 
-	m_oWss.clients.concat( m_arrOutboundPeers ).forEach
+	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach
 	(
 		function( client )
 		{
@@ -3723,13 +3731,17 @@ function rerequestLostJointsOfPrivatePayments()
 	//	...
 	db.query
 	(
-		"SELECT DISTINCT unhandled_private_payments.unit FROM unhandled_private_payments LEFT JOIN units USING(unit) WHERE units.unit IS NULL",
+		"SELECT DISTINCT unhandled_private_payments.unit " +
+		"FROM unhandled_private_payments LEFT JOIN units USING(unit) " +
+		"WHERE units.unit IS NULL",
 		function( rows )
 		{
-			var arrUnits;
+			let arrUnits;
 
 			if ( rows.length === 0 )
+			{
 				return;
+			}
 
 			//	...
 			arrUnits = rows.map
@@ -4850,7 +4862,7 @@ function handleRequest( ws, tag, command, params )
 				return sendErrorResponse( ws, tag, 'no subscription_id' );
 			}
 
-			if ( m_oWss.clients.concat( m_arrOutboundPeers ).some( function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
+			if ( m_oWss.arrClients.concat( m_arrOutboundPeers ).some( function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
 			{
 				if ( ws.bOutbound )
 				{
@@ -5135,7 +5147,7 @@ function handleRequest( ws, tag, command, params )
 						function()
 						{
 							//	if the addressee is connected, deliver immediately
-							m_oWss.clients.forEach
+							m_oWss.arrClients.forEach
 							(
 								function( client )
 								{
@@ -5654,7 +5666,7 @@ function startAcceptingConnections()
 
 			log.consoleLog( 'got connection from ' + ws.peer + ", host " + ws.host );
 
-			if ( m_oWss.clients.length >= conf.MAX_INBOUND_CONNECTIONS )
+			if ( m_oWss.arrClients.length >= conf.MAX_INBOUND_CONNECTIONS )
 			{
 				log.consoleLog( "inbound connections maxed out, rejecting new client " + ip );
 
@@ -5789,7 +5801,7 @@ function startRelay()
 	if ( process.browser || ! conf.port )
 	{
 		//	no listener on mobile
-		m_oWss = { clients : [] };
+		m_oWss = { arrClients : [] };
 	}
 	else
 	{
@@ -5897,22 +5909,37 @@ function startRelay()
 	);
 }
 
+/**
+ *	start light client
+ */
 function startLightClient()
 {
-	m_oWss	= { clients: [] };
+	m_oWss	= { arrClients: [] };
 
-	//	...
+	//
+	//	re-request lost joints of private payment
+	//
 	rerequestLostJointsOfPrivatePayments();
 	setInterval
 	(
 		rerequestLostJointsOfPrivatePayments,
 		5 * 1000
 	);
+
+	//
+	//	handle saved private payment
+	//	every 5 seconds
+	//
 	setInterval
 	(
 		handleSavedPrivatePayments,
 		5 * 1000
 	);
+
+	//
+	//	request unfinished post units of saved private elements
+	//	every 12 seconds
+	//
 	setInterval
 	(
 		requestUnfinishedPastUnitsOfSavedPrivateElements,
@@ -5961,7 +5988,7 @@ function closeAllWsConnections()
 
 function isConnected()
 {
-	return ( m_arrOutboundPeers.length + m_oWss.clients.length );
+	return ( m_arrOutboundPeers.length + m_oWss.arrClients.length );
 }
 
 function isCatchingUp()
