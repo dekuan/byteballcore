@@ -142,7 +142,7 @@ function _handleQueue()
 	let job;
 
 	//	...
-	console.log("_handleQueue "+m_arrQueuedJobs.length+" items");
+	console.log( "_handleQueue " + m_arrQueuedJobs.length + " items" );
 	for ( i = 0; i < m_arrQueuedJobs.length; i ++ )
 	{
 		job	= m_arrQueuedJobs[ i ];
