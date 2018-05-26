@@ -2,13 +2,14 @@
 "use strict";
 
 var log			= require( './log.js' );
-var ValidationUtils = require("./validation_utils.js");
-var constants = require("./constants.js");
-var conf = require('./conf.js');
-var Mnemonic = require('bitcore-mnemonic');
+var ValidationUtils	= require( './validation_utils.js' );
+var constants		= require( './constants.js' );
+var conf		= require( './conf.js' );
+var Mnemonic		= require( 'bitcore-mnemonic' );
 
 
-function parseUri(uri, callbacks){
+function parseUri( uri, callbacks )
+{
 	var protocol = conf.program || 'byteball';
 	var re = new RegExp('^'+protocol+':(.+)$', 'i');
 	var arrMatches = uri.match(re);
@@ -117,7 +118,9 @@ function parseUri(uri, callbacks){
 	callbacks.ifOk(objRequest);
 }
 
-function parseQueryString(str, delimiter){
+
+function parseQueryString( str, delimiter )
+{
 	if (!delimiter)
 		delimiter = '&';
 	var arrPairs = str.split(delimiter);
@@ -135,5 +138,9 @@ function parseQueryString(str, delimiter){
 
 
 
-exports.parseQueryString = parseQueryString;
-exports.parseUri = parseUri;
+
+/**
+ *	exports
+ */
+exports.parseQueryString	= parseQueryString;
+exports.parseUri		= parseUri;
