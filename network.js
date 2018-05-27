@@ -5620,6 +5620,9 @@ function startAcceptingConnections()
 	db.query( "DELETE FROM watched_light_units" );
 
 	//
+	//	npm ws
+	//	https://github.com/websockets/ws
+	//
 	//	db.query("DELETE FROM light_peer_witnesses");
 	//	listen for new connections
 	//
@@ -5629,6 +5632,17 @@ function startAcceptingConnections()
 			port	: conf.port
 		}
 	);
+
+	//
+	//	Event 'connection'
+	//		Emitted when the handshake is complete.
+	//
+	//		- socket	{ WebSocket }
+	//		- request	{ http.IncomingMessage }
+	//
+	//		request is the http GET request sent by the client.
+	// 		Useful for parsing authority headers, cookie headers, and other information.
+	//
 	m_oWss.on
 	(
 		'connection',
@@ -5641,7 +5655,7 @@ function startAcceptingConnections()
 			ip = ws.upgradeReq.connection.remoteAddress;
 			if ( ! ip )
 			{
-				log.consoleLog("no ip in accepted connection");
+				log.consoleLog( "no ip in accepted connection" );
 				ws.terminate();
 				return;
 			}
@@ -5682,8 +5696,9 @@ function startAcceptingConnections()
 				"SELECT \n\
 					SUM( CASE WHEN event='invalid' THEN 1 ELSE 0 END ) AS count_invalid, \n\
 					SUM( CASE WHEN event='new_good' THEN 1 ELSE 0 END ) AS count_new_good \n\
-					FROM peer_events WHERE peer_host=? AND event_date>" + db.addTime( "-1 HOUR" ),
+					FROM peer_events WHERE peer_host = ? AND event_date > " + db.addTime( "-1 HOUR" ),
 				[
+					//	remote host/ip connected by this ws
 					ws.host
 				],
 				function( rows )
@@ -5729,7 +5744,9 @@ function startAcceptingConnections()
 						subscribe( ws );
 					}
 
-					//	...
+					//
+					//	emit a event say there was a client connected
+					//
 					eventBus.emit( 'connected', ws );
 				}
 			);
