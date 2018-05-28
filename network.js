@@ -5648,18 +5648,18 @@ function startAcceptingConnections()
 		'connection',
 		function( ws )
 		{
-			let ip;
+			let sRemoteAddress;
 			let bStatsCheckUnderWay;
 
 			//	...
-			ip = ws.upgradeReq.connection.remoteAddress;
-			if ( ! ip )
+			sRemoteAddress = ws.upgradeReq.connection.remoteAddress;
+			if ( ! sRemoteAddress )
 			{
-				log.consoleLog( "no ip in accepted connection" );
+				log.consoleLog( "no ip/sRemoteAddress in accepted connection" );
 				ws.terminate();
 				return;
 			}
-			if ( ws.upgradeReq.headers[ 'x-real-ip' ] && ( ip === '127.0.0.1' || ip.match( /^192\.168\./ ) ) )
+			if ( ws.upgradeReq.headers[ 'x-real-ip' ] && ( sRemoteAddress === '127.0.0.1' || sRemoteAddress.match( /^192\.168\./ ) ) )
 			{
 				//
 				//	TODO
@@ -5667,12 +5667,12 @@ function startAcceptingConnections()
 				//
 
 				//	we are behind a proxy
-				ip = ws.upgradeReq.headers[ 'x-real-ip' ];
+				sRemoteAddress = ws.upgradeReq.headers[ 'x-real-ip' ];
 			}
 
 			//	...
-			ws.peer				= ip + ":" + ws.upgradeReq.connection.remotePort;
-			ws.host				= ip;
+			ws.peer				= sRemoteAddress + ":" + ws.upgradeReq.connection.remotePort;
+			ws.host				= sRemoteAddress;
 			ws.assocPendingRequests		= {};
 			ws.assocInPreparingResponse	= {};
 			ws.bInbound			= true;
@@ -5682,7 +5682,7 @@ function startAcceptingConnections()
 
 			if ( m_oWss.arrClients.length >= conf.MAX_INBOUND_CONNECTIONS )
 			{
-				log.consoleLog( "inbound connections maxed out, rejecting new client " + ip );
+				log.consoleLog( "inbound connections maxed out, rejecting new client " + sRemoteAddress );
 
 				//	1001 doesn't work in cordova
 				ws.close( 1000, "inbound connections maxed out" );
@@ -5691,6 +5691,11 @@ function startAcceptingConnections()
 
 			//	...
 			bStatsCheckUnderWay	= true;
+
+			//
+			//	calculate the counts of elements in status invalid and new_good
+			//	from table [peer_events] by peer_host for a hour ago.
+			//
 			db.query
 			(
 				"SELECT \n\
@@ -5698,26 +5703,31 @@ function startAcceptingConnections()
 					SUM( CASE WHEN event='new_good' THEN 1 ELSE 0 END ) AS count_new_good \n\
 					FROM peer_events WHERE peer_host = ? AND event_date > " + db.addTime( "-1 HOUR" ),
 				[
-					//	remote host/ip connected by this ws
+					//	remote host/sRemoteAddress connected by this ws
 					ws.host
 				],
 				function( rows )
 				{
-					let stats;
+					let oStats;
 
 					//	...
 					bStatsCheckUnderWay	= false;
 
 					//	...
-					stats	= rows[ 0 ];
-					if ( stats.count_invalid )
+					oStats	= rows[ 0 ];
+					if ( oStats.count_invalid )
 					{
-						log.consoleLog( "rejecting new client " + ws.host + " because of bad stats" );
+						//
+						//	CONNECTION WAS REJECTED
+						//	this peer have invalid events before
+						//
+						log.consoleLog( "# rejecting new client " + ws.host + " because of bad stats" );
 						return ws.terminate();
 					}
 
 					//
-					//	welcome the new peer with the list of free joints
+					//	WELCOME THE NEW PEER WITH THE LIST OF FREE JOINTS
+					//
 					//	if (!m_bCatchingUp)
 					//		sendFreeJoints(ws);
 					//
