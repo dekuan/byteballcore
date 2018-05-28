@@ -77,6 +77,7 @@ function readJoint(conn, unit, callbacks)
 	);
 }
 
+
 function readJointDirectly( conn, unit, callbacks, bRetrying )
 {
 	log.consoleLog( "\nreading unit " + unit );
@@ -111,19 +112,19 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 				return callbacks.ifNotFound();
 			}
 
-			var objUnit		= unit_rows[0];
-			var objJoint		= { unit : objUnit };
-			var main_chain_index	= objUnit.main_chain_index;
+			let objUnit		= unit_rows[0];
+			let objJoint		= { unit : objUnit };
+			let main_chain_index	= objUnit.main_chain_index;
 
 			//	delete objUnit.main_chain_index;
 			objUnit.timestamp	= parseInt( objUnit.timestamp );
-			var bFinalBad		= !! objUnit.content_hash;
-			var bStable		= objUnit.is_stable;
+			let bFinalBad		= !! objUnit.content_hash;
+			let bStable		= objUnit.is_stable;
 			delete objUnit.is_stable;
 
 			objectHash.cleanNulls( objUnit );
-			var bVoided		= ( objUnit.content_hash && main_chain_index < min_retrievable_mci );
-			var bRetrievable	= ( main_chain_index >= min_retrievable_mci || main_chain_index === null );
+			let bVoided		= ( objUnit.content_hash && main_chain_index < min_retrievable_mci );
+			let bRetrievable	= ( main_chain_index >= min_retrievable_mci || main_chain_index === null );
 
 			if ( ! conf.bLight && ! objUnit.last_ball && ! isGenesisUnit( unit ) )
 			{
@@ -179,6 +180,9 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 									}
 								);
 
+								//
+								//	call for executing next
+								//
 								callback();
 							}
 						);
@@ -207,6 +211,10 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 									return callback();
 
 								objJoint.ball	= rows[ 0 ].ball;
+
+								//
+								//	call for executing next
+								//
 								callback();
 							}
 						);
@@ -237,6 +245,10 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 										return row.skiplist_unit;
 									}
 								);
+
+								//
+								//	call for executing next
+								//
 								callback();
 							}
 						);
@@ -263,6 +275,9 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 									);
 								}
 
+								//
+								//	call for executing next
+								//
 								callback();
 							}
 						);
@@ -272,6 +287,9 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 						//	earned_headers_commission_recipients
 						if ( bVoided )
 						{
+							//
+							//	call for executing next
+							//
 							return callback();
 						}
 
@@ -290,7 +308,9 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 									objUnit.earned_headers_commission_recipients = rows;
 								}
 
-								//	...
+								//
+								//	call for executing next
+								//
 								callback();
 							}
 						);
@@ -370,6 +390,9 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 									},
 									function()
 									{
+										//
+										//	call for executing next
+										//
 										callback();
 									}
 								);
@@ -692,54 +715,87 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 											break;
 
 										case "asset_attestors":
-											conn.query(
+											conn.query
+											(
 												"SELECT attestor_address, asset FROM asset_attestors \n\
 												WHERE unit=? AND message_index=? ORDER BY attestor_address",
-												[unit, message_index],
-												function(att_rows){
-													if (att_rows.length === 0)
-														throw Error("no attestors?");
-													objMessage.payload = {asset: att_rows[0].asset};
-													if (att_rows.length > 1 
-															&& att_rows.some(function(att_row){ return (att_row.asset !== objMessage.payload.asset) }))
-														throw Error("different assets in attestor list");
-													objMessage.payload.attestors = att_rows.map(function(att_row){ return att_row.attestor_address;});
+												[
+													unit,
+													message_index
+												],
+												function( att_rows )
+												{
+													if ( att_rows.length === 0 )
+														throw Error( "no attestors?" );
+
+													//	...
+													objMessage.payload	= { asset : att_rows[ 0 ].asset };
+													if ( att_rows.length > 1 &&
+														att_rows.some( function( att_row ){ return ( att_row.asset !== objMessage.payload.asset ) } ) )
+													{
+														throw Error( "different assets in attestor list" );
+													}
+
+													//	...
+													objMessage.payload.attestors = att_rows.map
+													(
+														function( att_row )
+														{
+															return att_row.attestor_address;
+														}
+													);
 													addSpendProofs();
 												}
 											);
 											break;
 
 										case "data_feed":
-											conn.query(
-												"SELECT feed_name, `value`, int_value FROM data_feeds WHERE unit=? AND message_index=?", [unit, message_index], 
-												function(df_rows){
-													if (df_rows.length === 0)
-														throw Error("no data feed?");
-													objMessage.payload = {};
-													df_rows.forEach(function(df_row){
-														objMessage.payload[df_row.feed_name] = 
-															(typeof df_row.value === 'string') ? df_row.value : Number(df_row.int_value);
-													});
+											conn.query
+											(
+												"SELECT feed_name, `value`, int_value FROM data_feeds WHERE unit=? AND message_index=?",
+												[
+													unit,
+													message_index
+												],
+												function( df_rows )
+												{
+													if ( df_rows.length === 0 )
+														throw Error( "no data feed?" );
+
+													//	...
+													objMessage.payload	= {};
+													df_rows.forEach
+													(
+														function( df_row )
+														{
+															objMessage.payload[ df_row.feed_name ] =
+															( typeof df_row.value === 'string' )
+																? df_row.value
+																: Number( df_row.int_value );
+														}
+													);
 													addSpendProofs();
 												}
 											);
 											break;
 
 										case "profile":
-										case "attestation": // maybe later we'll store profiles and attestations in some structured form
+										case "attestation":	//	maybe later we'll store profiles and attestations in some structured form
 										case "data":
 										case "definition_template":
-											objMessage.payload = JSON.parse(objMessage.payload);
+											objMessage.payload	= JSON.parse( objMessage.payload );
 											addSpendProofs();
 											break;
 
 										case "payment":
-											objMessage.payload = {};
+											objMessage.payload	= {};
 											var prev_asset;
 											var prev_denomination;
 											
-											var readInputs = function(cb2){
-												conn.query(
+											var readInputs = function( cb2 )
+											{
+												conn.query
+												(
 													"SELECT type, denomination, assets.fixed_denominations, \n\
 														src_unit AS unit, src_message_index AS message_index, src_output_index AS output_index, \n\
 														from_main_chain_index, to_main_chain_index, serial_number, amount, address, asset \n\
@@ -747,67 +803,111 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 													LEFT JOIN assets ON asset=assets.unit \n\
 													WHERE inputs.unit=? AND inputs.message_index=? \n\
 													ORDER BY input_index", 
-													[unit, message_index],
-													function(input_rows){
+													[
+														unit,
+														message_index
+													],
+													function( input_rows )
+													{
 														objMessage.payload.inputs = [];
-														for (var i=0; i<input_rows.length; i++){
-															var input = input_rows[i];
-															if (!input.address && !conf.bLight) // may be NULL for light (light clients are reading units e.g. after receiving payment notification)
-																throw Error("readJoint: input address is NULL");
-															var asset = input.asset;
-															var denomination = input.denomination;
-															if (i>0){
-																if (asset !== prev_asset)
-																	throw Error("different assets in inputs?");
-																if (denomination !== prev_denomination)
-																	throw Error("different denominations in inputs?");
+														for ( var i = 0; i < input_rows.length; i ++ )
+														{
+															var input	= input_rows[ i ];
+															if ( ! input.address && ! conf.bLight )
+															{
+																//	may be NULL for light (light clients are reading units e.g. after receiving payment notification)
+																throw Error( "readJoint: input address is NULL" );
 															}
-															if (i === 0 && asset){
-																objMessage.payload.asset = asset;
-																if (input.fixed_denominations)
+
+															var asset		= input.asset;
+															var denomination	= input.denomination;
+															if ( i > 0 )
+															{
+																if ( asset !== prev_asset )
+																{
+																	throw Error( "different assets in inputs?" );
+																}
+																if ( denomination !== prev_denomination )
+																{
+																	throw Error( "different denominations in inputs?" );
+																}
+															}
+															if ( i === 0 && asset )
+															{
+																objMessage.payload.asset	= asset;
+																if ( input.fixed_denominations )
+																{
 																	objMessage.payload.denomination = denomination;
+																}
 															}
 															delete input.asset;
 															delete input.denomination;
 															delete input.fixed_denominations;
-															objectHash.cleanNulls(input);
-															if (input.type === "transfer" || objUnit.authors.length === 1)
+															objectHash.cleanNulls( input );
+															if ( input.type === "transfer" || objUnit.authors.length === 1 )
+															{
 																delete input.address;
-															if (input.type === "transfer")
+															}
+															if ( input.type === "transfer" )
+															{
 																delete input.type;
-															objMessage.payload.inputs.push(input);
-															if (i === 0){
-																prev_asset = asset;
-																prev_denomination = denomination;
+															}
+															objMessage.payload.inputs.push( input );
+															if ( i === 0 )
+															{
+																prev_asset		= asset;
+																prev_denomination	= denomination;
 															}
 														}
+
+														//	...
 														cb2();
 													}
 												);
 											};
-											var readOutputs = function(cb2){
-												objMessage.payload.outputs = [];
-												conn.query( // we don't select blinding because it's absent on public payments
+
+											var readOutputs = function( cb2 )
+											{
+												objMessage.payload.outputs	= [];
+												conn.query
+												(
+													//	we don't select blinding because it's absent on public payments
 													"SELECT address, amount, asset, denomination \n\
 													FROM outputs WHERE unit=? AND message_index=? ORDER BY output_index", 
-													[unit, message_index],
-													function(output_rows){
-														for (var i=0; i<output_rows.length; i++){
-															var output = output_rows[i];
-															if (output.asset !== prev_asset)
-																throw Error("different assets in outputs?");
-															if (output.denomination !== prev_denomination)
-																throw Error("different denominations in outputs?");
+													[
+														unit,
+														message_index
+													],
+													function( output_rows )
+													{
+														for ( var i = 0; i < output_rows.length; i ++ )
+														{
+															var output = output_rows[ i ];
+															if ( output.asset !== prev_asset )
+															{
+																throw Error( "different assets in outputs?" );
+															}
+															if ( output.denomination !== prev_denomination )
+															{
+																throw Error( "different denominations in outputs?" );
+															}
+
 															delete output.asset;
 															delete output.denomination;
-															objMessage.payload.outputs.push(output);
+															objMessage.payload.outputs.push( output );
 														}
+
+														//	...
 														cb2();
 													}
 												);
 											};
-											async.series(
-												[readInputs, readOutputs], 
+											async.series
+											(
+												[
+													readInputs,
+													readOutputs
+												],
 												addSpendProofs
 											);
 											break;
@@ -832,8 +932,11 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 				if ( ! conf.bLight && ! isCorrectHash( objUnit, unit ) )
 				{
 					if ( bRetrying )
+					{
 						throw Error( "unit hash verification failed, unit: " + unit + ", objUnit: " + JSON.stringify( objUnit ) );
+					}
 
+					//	...
 					log.consoleLog( "unit hash verification failed, will retry" );
 					return setTimeout
 					(
@@ -845,8 +948,11 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 					);
 				}
 				if ( ! conf.bSaveJointJson || ! bStable || ( bFinalBad && bRetrievable ) || bRetrievable )
-					return callbacks.ifFound(objJoint);
+				{
+					return callbacks.ifFound( objJoint );
+				}
 
+				//	...
 				conn.query
 				(
 					"INSERT " + db.getIgnore() + " INTO joints (unit, json) VALUES (?,?)",
@@ -895,7 +1001,9 @@ function readJointWithBall( conn, unit, handleJoint )
 			ifFound : function( objJoint )
 			{
 				if ( objJoint.ball )
+				{
 					return handleJoint( objJoint );
+				}
 
 				//	...
 				conn.query
@@ -907,7 +1015,9 @@ function readJointWithBall( conn, unit, handleJoint )
 					function( rows )
 					{
 						if ( rows.length === 1 )
+						{
 							objJoint.ball = rows[ 0 ].ball;
+						}
 
 						//	...
 						handleJoint( objJoint );
@@ -926,6 +1036,9 @@ function readWitnessList( conn, unit, handleWitnessList, bAllowEmptyList )
 		return handleWitnessList( arrWitnesses );
 	}
 
+	//
+	//	...
+	//
 	conn.query
 	(
 		"SELECT address FROM unit_witnesses WHERE unit=? ORDER BY address",
@@ -967,7 +1080,9 @@ function readWitnesses( conn, unit, handleWitnessList )
 {
 	var arrWitnesses	= assocCachedUnitWitnesses[ unit ];
 	if ( arrWitnesses )
+	{
 		return handleWitnessList( arrWitnesses );
+	}
 
 	//	...
 	conn.query
@@ -1166,86 +1281,160 @@ function readDefinitionAtMci( conn, definition_chash, max_mci, callbacks )
 	);
 }
 
-function readDefinition(conn, definition_chash, callbacks){
-	conn.query("SELECT definition FROM definitions WHERE definition_chash=?", [definition_chash], function(rows){
-		if (rows.length === 0)
-			return callbacks.ifDefinitionNotFound(definition_chash);
-		callbacks.ifFound(JSON.parse(rows[0].definition));
-	});
-}
-
-function readFreeJoints(ifFoundFreeBall, onDone){
-	db.query("SELECT units.unit FROM units LEFT JOIN archived_joints USING(unit) WHERE is_free=1 AND archived_joints.unit IS NULL", function(rows){
-		async.each(rows, function(row, cb){
-			readJoint(db, row.unit, {
-				ifNotFound: function(){
-					throw Error("free ball lost");
-				},
-				ifFound: function(objJoint){
-					ifFoundFreeBall(objJoint);
-					cb();
-				}
-			});
-		}, onDone);
-	});
-}
-
-function isGenesisUnit(unit){
-	return (unit === constants.GENESIS_UNIT);
-}
-
-function isGenesisBall(ball){
-	return (ball === genesis_ball);
-}
-
-
-
-
-
-
-function readUnitProps(conn, unit, handleProps){
-	if (assocStableUnits[unit])
-		return handleProps(assocStableUnits[unit]);
-	conn.query(
-		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free, is_stable, witnessed_level FROM units WHERE unit=?", 
-		[unit], 
-		function(rows){
-			if (rows.length !== 1)
-				throw Error("not 1 row");
-			var props = rows[0];
-			if (props.is_stable)
-				assocStableUnits[unit] = props;
-			else{
-				var props2 = _.cloneDeep(assocUnstableUnits[unit]);
-				if (!props2)
-					throw Error("no unstable props of "+unit);
-				delete props2.parent_units;
-				if (!_.isEqual(props, props2))
-					throw Error("different props of "+unit+", mem: "+JSON.stringify(props2)+", db: "+JSON.stringify(props));
+function readDefinition( conn, definition_chash, callbacks )
+{
+	conn.query
+	(
+		"SELECT definition FROM definitions WHERE definition_chash = ?",
+		[
+			definition_chash
+		],
+		function( rows )
+		{
+			if ( rows.length === 0 )
+			{
+				return callbacks.ifDefinitionNotFound( definition_chash );
 			}
-			handleProps(props);
+
+			callbacks.ifFound( JSON.parse( rows[ 0 ].definition ) );
 		}
 	);
 }
 
-function readPropsOfUnits(conn, earlier_unit, arrLaterUnits, handleProps){
-	var bEarlierInLaterUnits = (arrLaterUnits.indexOf(earlier_unit) !== -1);
-	conn.query(
-		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free FROM units WHERE unit IN(?, ?)", 
-		[earlier_unit, arrLaterUnits], 
-		function(rows){
-			if (rows.length !== arrLaterUnits.length + (bEarlierInLaterUnits ? 0 : 1))
-				throw Error("wrong number of rows for earlier "+earlier_unit+", later "+arrLaterUnits);
-			var objEarlierUnitProps, arrLaterUnitProps = [];
-			for (var i=0; i<rows.length; i++){
-				if (rows[i].unit === earlier_unit)
-					objEarlierUnitProps = rows[i];
-				else
-					arrLaterUnitProps.push(rows[i]);
+function readFreeJoints( ifFoundFreeBall, onDone )
+{
+	db.query
+	(
+		"SELECT units.unit FROM units LEFT JOIN archived_joints USING(unit) WHERE is_free=1 AND archived_joints.unit IS NULL",
+		function( rows )
+		{
+			async.each
+			(
+				rows,
+				function( row, cb )
+				{
+					readJoint
+					(
+						db,
+						row.unit,
+						{
+							ifNotFound : function()
+							{
+								throw Error( "free ball lost" );
+							},
+							ifFound : function( objJoint )
+							{
+								ifFoundFreeBall( objJoint );
+								cb();
+							}
+						}
+					);
+				},
+				onDone
+			);
+		}
+	);
+}
+
+function isGenesisUnit( unit )
+{
+	return ( unit === constants.GENESIS_UNIT );
+}
+
+function isGenesisBall( ball )
+{
+	return ( ball === genesis_ball );
+}
+
+
+
+function readUnitProps( conn, unit, handleProps )
+{
+	if ( assocStableUnits[ unit ] )
+	{
+		return handleProps( assocStableUnits[ unit ] );
+	}
+
+	//	...
+	conn.query
+	(
+		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free, is_stable, witnessed_level FROM units WHERE unit=?", 
+		[
+			unit
+		],
+		function( rows )
+		{
+			if ( rows.length !== 1 )
+			{
+				throw Error( "not 1 row" );
 			}
-			if (bEarlierInLaterUnits)
-				arrLaterUnitProps.push(objEarlierUnitProps);
-			handleProps(objEarlierUnitProps, arrLaterUnitProps);
+
+			var props = rows[0];
+			if ( props.is_stable )
+			{
+				assocStableUnits[ unit ]	= props;
+			}
+			else
+			{
+				var props2	= _.cloneDeep( assocUnstableUnits[ unit ] );
+				if ( ! props2 )
+				{
+					throw Error( "no unstable props of " + unit );
+				}
+
+				//	...
+				delete props2.parent_units;
+				if ( ! _.isEqual( props, props2 ) )
+				{
+					throw Error( "different props of " + unit + ", mem: " + JSON.stringify( props2 ) + ", db: " + JSON.stringify( props ) );
+				}
+			}
+
+			//	...
+			handleProps( props );
+		}
+	);
+}
+
+function readPropsOfUnits( conn, earlier_unit, arrLaterUnits, handleProps )
+{
+	var bEarlierInLaterUnits	= ( arrLaterUnits.indexOf( earlier_unit ) !== -1 );
+	conn.query
+	(
+		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free FROM units WHERE unit IN(?, ?)", 
+		[
+			earlier_unit,
+			arrLaterUnits
+		],
+		function( rows )
+		{
+			if ( rows.length !== arrLaterUnits.length + ( bEarlierInLaterUnits ? 0 : 1 ) )
+			{
+				throw Error( "wrong number of rows for earlier " + earlier_unit + ", later " + arrLaterUnits );
+			}
+
+			var objEarlierUnitProps;
+			var arrLaterUnitProps = [];
+
+			for ( var i = 0; i < rows.length; i ++ )
+			{
+				if ( rows[ i ].unit === earlier_unit )
+				{
+					objEarlierUnitProps	= rows[ i ];
+				}
+				else
+				{
+					arrLaterUnitProps.push( rows[ i ] );
+				}
+			}
+
+			if ( bEarlierInLaterUnits )
+			{
+				arrLaterUnitProps.push( objEarlierUnitProps );
+			}
+
+			//	...
+			handleProps( objEarlierUnitProps, arrLaterUnitProps );
 		}
 	);
 }
@@ -1470,78 +1659,157 @@ function updateMinRetrievableMciAfterStabilizingMci( conn, last_stable_mci, hand
 }
 
 
-function initializeMinRetrievableMci(){
-	db.query(
+function initializeMinRetrievableMci()
+{
+	db.query
+	(
 		"SELECT MAX(lb_units.main_chain_index) AS min_retrievable_mci \n\
 		FROM units JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
 		WHERE units.is_on_main_chain=1 AND units.is_stable=1", 
-		function(rows){
-			if (rows.length !== 1)
-				throw Error("MAX() no rows?");
-			min_retrievable_mci = rows[0].min_retrievable_mci;
-			if (min_retrievable_mci === null)
-				min_retrievable_mci = 0;
+		function( rows )
+		{
+			if ( rows.length !== 1 )
+			{
+				throw Error( "MAX() no rows?" );
+			}
+
+			//	...
+			min_retrievable_mci	= rows[ 0 ].min_retrievable_mci;
+			if ( min_retrievable_mci === null )
+			{
+				min_retrievable_mci	= 0;
+			}
 		}
 	);
 }
 
 
-function archiveJointAndDescendantsIfExists(from_unit){
-	log.consoleLog('will archive if exists from unit '+from_unit);
-	db.query("SELECT 1 FROM units WHERE unit=?", [from_unit], function(rows){
-		if (rows.length > 0)
-			archiveJointAndDescendants(from_unit);
-	});
+function archiveJointAndDescendantsIfExists( from_unit )
+{
+	log.consoleLog( 'will archive if exists from unit ' + from_unit );
+	db.query
+	(
+		"SELECT 1 FROM units WHERE unit=?",
+		[
+			from_unit
+		],
+		function( rows )
+		{
+			if ( rows.length > 0 )
+			{
+				archiveJointAndDescendants( from_unit );
+			}
+		}
+	);
 }
 
-function archiveJointAndDescendants(from_unit){
-	db.executeInTransaction(function doWork(conn, cb){
-		
-		function addChildren(arrParentUnits){
-			conn.query("SELECT DISTINCT child_unit FROM parenthoods WHERE parent_unit IN(?)", [arrParentUnits], function(rows){
-				if (rows.length === 0)
-					return archive();
-				var arrChildUnits = rows.map(function(row){ return row.child_unit; });
-				arrUnits = arrUnits.concat(arrChildUnits);
-				addChildren(arrChildUnits);
-			});
+
+function archiveJointAndDescendants( from_unit )
+{
+	db.executeInTransaction
+	(
+		function doWork( conn, cb )
+		{
+			function addChildren( arrParentUnits )
+			{
+				conn.query
+				(
+					"SELECT DISTINCT child_unit FROM parenthoods WHERE parent_unit IN(?)",
+					[
+						arrParentUnits
+					],
+					function( rows )
+					{
+						if ( rows.length === 0 )
+							return archive();
+
+						var arrChildUnits	= rows.map
+						(
+							function( row )
+							{
+								return row.child_unit;
+							}
+						);
+
+						//	...
+						arrUnits	= arrUnits.concat( arrChildUnits );
+						addChildren( arrChildUnits );
+					}
+				);
+			}
+
+			function archive()
+			{
+				//	does not affect the order
+				arrUnits	= _.uniq( arrUnits );
+				arrUnits.reverse();
+				log.consoleLog('will archive', arrUnits);
+				var arrQueries = [];
+
+				//	...
+				async.eachSeries
+				(
+					arrUnits,
+					function( unit, cb2 )
+					{
+						readJoint
+						(
+							conn,
+							unit,
+							{
+								ifNotFound : function()
+								{
+									throw Error( "unit to be archived not found: " + unit );
+								},
+								ifFound : function( objJoint )
+								{
+									archiving.generateQueriesToArchiveJoint
+									(
+										conn,
+										objJoint,
+										'uncovered',
+										arrQueries,
+										cb2
+									);
+								}
+							}
+						);
+					},
+					function()
+					{
+						conn.addQuery
+						(
+							arrQueries,
+							"DELETE FROM known_bad_joints"
+						);
+						log.consoleLog('will execute '+arrQueries.length+' queries to archive');
+
+						async.series
+						(
+							arrQueries,
+							function()
+							{
+								arrUnits.forEach
+								(
+									forgetUnit
+								);
+								cb();
+							}
+						);
+					}
+				);
+			}
+
+			//	...
+			log.consoleLog( 'will archive from unit ' + from_unit );
+			var arrUnits	= [ from_unit ];
+			addChildren( [ from_unit ] );
+		},
+		function onDone()
+		{
+			log.consoleLog( 'done archiving from unit ' + from_unit );
 		}
-		
-		function archive(){
-			arrUnits = _.uniq(arrUnits); // does not affect the order
-			arrUnits.reverse();
-			log.consoleLog('will archive', arrUnits);
-			var arrQueries = [];
-			async.eachSeries(
-				arrUnits,
-				function(unit, cb2){
-					readJoint(conn, unit, {
-						ifNotFound: function(){
-							throw Error("unit to be archived not found: "+unit);
-						},
-						ifFound: function(objJoint){
-							archiving.generateQueriesToArchiveJoint(conn, objJoint, 'uncovered', arrQueries, cb2);
-						}
-					});
-				},
-				function(){
-					conn.addQuery(arrQueries, "DELETE FROM known_bad_joints");
-					log.consoleLog('will execute '+arrQueries.length+' queries to archive');
-					async.series(arrQueries, function(){
-						arrUnits.forEach(forgetUnit);
-						cb();
-					});
-				}
-			);
-		}
-		
-		log.consoleLog('will archive from unit '+from_unit);
-		var arrUnits = [from_unit];
-		addChildren([from_unit]);
-	},
-	function onDone(){
-		log.consoleLog('done archiving from unit '+from_unit);
-	});
+	);
 }
 
 
@@ -1553,157 +1821,313 @@ function archiveJointAndDescendants(from_unit){
 //_______________________________________________________________________________________________
 // Assets
 
-function readAssetInfo(conn, asset, handleAssetInfo){
-	var objAsset = assocCachedAssetInfos[asset];
-	if (objAsset)
-		return handleAssetInfo(objAsset);
-	conn.query(
+function readAssetInfo( conn, asset, handleAssetInfo )
+{
+	var objAsset = assocCachedAssetInfos[ asset ];
+	if ( objAsset )
+	{
+		return handleAssetInfo( objAsset );
+	}
+
+	//	...
+	conn.query
+	(
 		"SELECT assets.*, main_chain_index, sequence, is_stable, address AS definer_address, unit AS asset \n\
 		FROM assets JOIN units USING(unit) JOIN unit_authors USING(unit) WHERE unit=?", 
-		[asset], 
-		function(rows){
-			if (rows.length > 1)
-				throw Error("more than one asset?");
-			if (rows.length === 0)
-				return handleAssetInfo(null);
-			var objAsset = rows[0];
-			if (objAsset.issue_condition)
-				objAsset.issue_condition = JSON.parse(objAsset.issue_condition);
-			if (objAsset.transfer_condition)
-				objAsset.transfer_condition = JSON.parse(objAsset.transfer_condition);
-			if (objAsset.is_stable) // cache only if stable
-				assocCachedAssetInfos[asset] = objAsset;
-			handleAssetInfo(objAsset);
+		[
+			asset
+		],
+		function( rows )
+		{
+			if ( rows.length > 1 )
+				throw Error( "more than one asset?" );
+			if ( rows.length === 0 )
+				return handleAssetInfo( null );
+
+			var objAsset	 = rows[ 0 ];
+
+			if ( objAsset.issue_condition )
+				objAsset.issue_condition	= JSON.parse( objAsset.issue_condition );
+			if ( objAsset.transfer_condition )
+				objAsset.transfer_condition	= JSON.parse( objAsset.transfer_condition );
+			if ( objAsset.is_stable )
+			{
+				//	cache only if stable
+				assocCachedAssetInfos[ asset ] = objAsset;
+			}
+
+			//	...
+			handleAssetInfo( objAsset );
 		}
 	);
 }
 
-function readAsset(conn, asset, last_ball_mci, handleAsset){
-	if (last_ball_mci === null){
-		if (conf.bLight)
+function readAsset( conn, asset, last_ball_mci, handleAsset )
+{
+	if ( last_ball_mci === null )
+	{
+		if ( conf.bLight )
+		{
 			last_ball_mci = MAX_INT32;
+		}
 		else
-			return readLastStableMcIndex(conn, function(last_stable_mci){
-				readAsset(conn, asset, last_stable_mci, handleAsset);
-			});
+		{
+			return readLastStableMcIndex
+			(
+				conn,
+				function( last_stable_mci )
+				{
+					readAsset( conn, asset, last_stable_mci, handleAsset );
+				}
+			);
+		}
 	}
-	readAssetInfo(conn, asset, function(objAsset){
-		if (!objAsset)
-			return handleAsset("asset "+asset+" not found");
-		if (objAsset.main_chain_index > last_ball_mci)
-			return handleAsset("asset definition must be before last ball");
-		if (objAsset.sequence !== "good")
-			return handleAsset("asset definition is not serial");
-		if (!objAsset.spender_attested)
-			return handleAsset(null, objAsset);
 
-		// find latest list of attestors
-		conn.query(
-			"SELECT MAX(level) AS max_level FROM asset_attestors CROSS JOIN units USING(unit) \n\
-			WHERE asset=? AND main_chain_index<=? AND is_stable=1 AND sequence='good'", 
-			[asset, last_ball_mci],
-			function(latest_rows){
-				var max_level = latest_rows[0].max_level;
-				if (!max_level)
-					throw Error("no max level of asset attestors");
-
-				// read the list
-				conn.query(
-					"SELECT attestor_address FROM asset_attestors CROSS JOIN units USING(unit) \n\
-					WHERE asset=? AND level=? AND main_chain_index<=? AND is_stable=1 AND sequence='good'",
-					[asset, max_level, last_ball_mci],
-					function(att_rows){
-						if (att_rows.length === 0)
-							throw Error("no attestors?");
-						objAsset.arrAttestorAddresses = att_rows.map(function(att_row){ return att_row.attestor_address; });
-						handleAsset(null, objAsset);
-					}
-				);
+	readAssetInfo
+	(
+		conn,
+		asset,
+		function( objAsset )
+		{
+			if ( ! objAsset )
+			{
+				return handleAsset( "asset " + asset + " not found" );
 			}
-		);
-	});
+			if ( objAsset.main_chain_index > last_ball_mci )
+			{
+				return handleAsset( "asset definition must be before last ball" );
+			}
+			if ( objAsset.sequence !== "good" )
+			{
+				return handleAsset( "asset definition is not serial" );
+			}
+			if ( ! objAsset.spender_attested )
+			{
+				return handleAsset( null, objAsset );
+			}
+
+			//	find latest list of attestors
+			conn.query
+			(
+				"SELECT MAX(level) AS max_level FROM asset_attestors CROSS JOIN units USING(unit) \n\
+				WHERE asset=? AND main_chain_index<=? AND is_stable=1 AND sequence='good'",
+				[
+					asset,
+					last_ball_mci
+				],
+				function( latest_rows )
+				{
+					var max_level	= latest_rows[ 0 ].max_level;
+					if ( ! max_level )
+					{
+						throw Error( "no max level of asset attestors" );
+					}
+
+					//	read the list
+					conn.query
+					(
+						"SELECT attestor_address FROM asset_attestors CROSS JOIN units USING(unit) \n\
+						WHERE asset=? AND level=? AND main_chain_index<=? AND is_stable=1 AND sequence='good'",
+						[
+							asset,
+							max_level,
+							last_ball_mci
+						],
+						function( att_rows )
+						{
+							if ( att_rows.length === 0 )
+							{
+								throw Error( "no attestors?" );
+							}
+
+							//	...
+							objAsset.arrAttestorAddresses	= att_rows.map
+							(
+								function( att_row )
+								{
+									return att_row.attestor_address;
+								}
+							);
+
+							//	...
+							handleAsset( null, objAsset );
+						}
+					);
+				}
+			);
+		}
+	);
 }
 
-// filter only those addresses that are attested (doesn't work for light clients)
-function filterAttestedAddresses(conn, objAsset, last_ball_mci, arrAddresses, handleAttestedAddresses){
-	conn.query(
+
+/**
+ *	filter only those addresses that are attested (doesn't work for light clients)
+ */
+function filterAttestedAddresses( conn, objAsset, last_ball_mci, arrAddresses, handleAttestedAddresses )
+{
+	conn.query
+	(
 		"SELECT DISTINCT address FROM attestations CROSS JOIN units USING(unit) \n\
 		WHERE attestor_address IN(?) AND address IN(?) AND main_chain_index<=? AND is_stable=1 AND sequence='good' \n\
 			AND main_chain_index>IFNULL( \n\
 				(SELECT main_chain_index FROM address_definition_changes JOIN units USING(unit) \n\
 				WHERE address_definition_changes.address=attestations.address ORDER BY main_chain_index DESC LIMIT 1), \n\
 			0)",
-		[objAsset.arrAttestorAddresses, arrAddresses, last_ball_mci],
-		function(addr_rows){
-			var arrAttestedAddresses = addr_rows.map(function(addr_row){ return addr_row.address; });
-			handleAttestedAddresses(arrAttestedAddresses);
+		[
+			objAsset.arrAttestorAddresses,
+			arrAddresses,
+			last_ball_mci
+		],
+		function( addr_rows )
+		{
+			var arrAttestedAddresses = addr_rows.map
+			(
+				function( addr_row )
+				{
+					return addr_row.address;
+				}
+			);
+			handleAttestedAddresses( arrAttestedAddresses );
 		}
 	);
 }
 
-// note that light clients cannot check attestations
-function loadAssetWithListOfAttestedAuthors(conn, asset, last_ball_mci, arrAuthorAddresses, handleAsset){
-	readAsset(conn, asset, last_ball_mci, function(err, objAsset){
-		if (err)
-			return handleAsset(err);
-		if (!objAsset.spender_attested)
-			return handleAsset(null, objAsset);
-		filterAttestedAddresses(conn, objAsset, last_ball_mci, arrAuthorAddresses, function(arrAttestedAddresses){
-			objAsset.arrAttestedAddresses = arrAttestedAddresses;
-			handleAsset(null, objAsset);
-		});
-	});
+/**
+ *	note that light clients cannot check attestations
+ */
+function loadAssetWithListOfAttestedAuthors( conn, asset, last_ball_mci, arrAuthorAddresses, handleAsset )
+{
+	readAsset
+	(
+		conn,
+		asset,
+		last_ball_mci,
+		function( err, objAsset )
+		{
+			if ( err )
+			{
+				return handleAsset( err );
+			}
+			if ( ! objAsset.spender_attested )
+			{
+				return handleAsset( null, objAsset );
+			}
+
+			filterAttestedAddresses
+			(
+				conn,
+				objAsset,
+				last_ball_mci,
+				arrAuthorAddresses,
+				function( arrAttestedAddresses )
+				{
+					objAsset.arrAttestedAddresses = arrAttestedAddresses;
+					handleAsset( null, objAsset );
+				}
+			);
+		}
+	);
 }
 
-function findWitnessListUnit(conn, arrWitnesses, last_ball_mci, handleWitnessListUnit){
-	conn.query(
+function findWitnessListUnit( conn, arrWitnesses, last_ball_mci, handleWitnessListUnit )
+{
+	conn.query
+	(
 		"SELECT witness_list_hashes.witness_list_unit \n\
 		FROM witness_list_hashes CROSS JOIN units ON witness_list_hashes.witness_list_unit=unit \n\
 		WHERE witness_list_hash=? AND sequence='good' AND is_stable=1 AND main_chain_index<=?", 
-		[objectHash.getBase64Hash(arrWitnesses), last_ball_mci], 
-		function(rows){
-			handleWitnessListUnit((rows.length === 0) ? null : rows[0].witness_list_unit);
+		[
+			objectHash.getBase64Hash( arrWitnesses ),
+			last_ball_mci
+		],
+		function( rows )
+		{
+			handleWitnessListUnit
+			(
+				( rows.length === 0 )
+					? null
+					: rows[0].witness_list_unit
+			);
 		}
 	);
 }
 
-function sliceAndExecuteQuery(query, params, largeParam, callback) {
-	if (typeof largeParam !== 'object' || largeParam.length === 0) return callback([]);
-	var CHUNK_SIZE = 200;
-	var length = largeParam.length;
-	var arrParams = [];
-	var newParams;
-	var largeParamPosition = params.indexOf(largeParam);
+function sliceAndExecuteQuery( query, params, largeParam, callback )
+{
+	if ( typeof largeParam !== 'object' || largeParam.length === 0 )
+	{
+		return callback( [] );
+	}
 
-	for (var offset = 0; offset < length; offset += CHUNK_SIZE) {
-		newParams = params.slice(0);
-		newParams[largeParamPosition] = largeParam.slice(offset, offset + CHUNK_SIZE);
-		arrParams.push(newParams);
+	var CHUNK_SIZE		= 200;
+	var length		= largeParam.length;
+	var arrParams		= [];
+	var newParams;
+	var largeParamPosition	= params.indexOf( largeParam );
+
+	for ( var offset = 0; offset < length; offset += CHUNK_SIZE )
+	{
+		newParams	= params.slice( 0 );
+		newParams[ largeParamPosition ]	= largeParam.slice( offset, offset + CHUNK_SIZE );
+		arrParams.push( newParams );
 	}
 
 	var result = [];
-	async.eachSeries(arrParams, function(params, cb) {
-		db.query(query, params, function(rows) {
-			result = result.concat(rows);
-			cb();
-		});
-	}, function() {
-		callback(result);
-	});
+	async.eachSeries
+	(
+		arrParams,
+		function( params, cb )
+		{
+			db.query
+			(
+				query,
+				params,
+				function( rows )
+				{
+					result = result.concat(rows);
+					cb();
+				}
+			);
+		},
+		function()
+		{
+			callback( result );
+		}
+	);
 }
 
-function filterNewOrUnstableUnits(arrUnits, handleFilteredUnits){
-	sliceAndExecuteQuery("SELECT unit FROM units WHERE unit IN(?) AND is_stable=1", [arrUnits], arrUnits, function(rows) {
-		var arrKnownStableUnits = rows.map(function(row){ return row.unit; });
-		var arrNewOrUnstableUnits = _.difference(arrUnits, arrKnownStableUnits);
-		handleFilteredUnits(arrNewOrUnstableUnits);
-	});
+function filterNewOrUnstableUnits( arrUnits, handleFilteredUnits )
+{
+	sliceAndExecuteQuery
+	(
+		"SELECT unit FROM units WHERE unit IN(?) AND is_stable=1",
+		[
+			arrUnits
+		],
+		arrUnits,
+		function( rows )
+		{
+			var arrKnownStableUnits		= rows.map
+			(
+				function( row )
+				{
+					return row.unit;
+				}
+			);
+			var arrNewOrUnstableUnits	= _.difference( arrUnits, arrKnownStableUnits );
+			handleFilteredUnits( arrNewOrUnstableUnits );
+		}
+	);
 }
 
-// for unit that is not saved to the db yet
-function determineBestParent(conn, objUnit, arrWitnesses, handleBestParent){
-	// choose best parent among compatible parents only
-	conn.query(
+/**
+ *	for unit that is not saved to the db yet
+ */
+function determineBestParent( conn, objUnit, arrWitnesses, handleBestParent )
+{
+	//	choose best parent among compatible parents only
+	conn.query
+	(
 		"SELECT unit \n\
 		FROM units AS parent_units \n\
 		WHERE unit IN(?) \n\
@@ -1716,184 +2140,340 @@ function determineBestParent(conn, objUnit, arrWitnesses, handleBestParent){
 			level-witnessed_level ASC, \n\
 			unit ASC \n\
 		LIMIT 1", 
-		[objUnit.parent_units, objUnit.witness_list_unit, 
-		arrWitnesses, constants.COUNT_WITNESSES - constants.MAX_WITNESS_LIST_MUTATIONS], 
-		function(rows){
-			if (rows.length !== 1)
-				return handleBestParent(null);
-			var best_parent_unit = rows[0].unit;
-			handleBestParent(best_parent_unit);
+		[
+			objUnit.parent_units,
+			objUnit.witness_list_unit,
+			arrWitnesses,
+			constants.COUNT_WITNESSES - constants.MAX_WITNESS_LIST_MUTATIONS
+		],
+		function( rows )
+		{
+			if ( rows.length !== 1 )
+			{
+				return handleBestParent( null );
+			}
+
+			var best_parent_unit	= rows[0].unit;
+			handleBestParent( best_parent_unit );
 		}
 	);
 }
 
-function determineIfHasWitnessListMutationsAlongMc(conn, objUnit, last_ball_unit, arrWitnesses, handleResult){
-	if (!objUnit.parent_units) // genesis
+function determineIfHasWitnessListMutationsAlongMc( conn, objUnit, last_ball_unit, arrWitnesses, handleResult )
+{
+	if ( ! objUnit.parent_units )
+	{
+		//	genesis
 		return handleResult();
-	buildListOfMcUnitsWithPotentiallyDifferentWitnesslists(conn, objUnit, last_ball_unit, arrWitnesses, function(bHasBestParent, arrMcUnits){
-		if (!bHasBestParent)
-			return handleResult("no compatible best parent");
-		log.consoleLog("###### MC units ", arrMcUnits);
-		if (arrMcUnits.length === 0)
-			return handleResult();
-		conn.query(
-			"SELECT units.unit, COUNT(*) AS count_matching_witnesses \n\
-			FROM units CROSS JOIN unit_witnesses ON (units.unit=unit_witnesses.unit OR units.witness_list_unit=unit_witnesses.unit) AND address IN(?) \n\
-			WHERE units.unit IN(?) \n\
-			GROUP BY units.unit \n\
-			HAVING count_matching_witnesses<?",
-			[arrWitnesses, arrMcUnits, constants.COUNT_WITNESSES - constants.MAX_WITNESS_LIST_MUTATIONS],
-			function(rows){
-				log.consoleLog(rows);
-				if (rows.length > 0)
-					return handleResult("too many ("+(constants.COUNT_WITNESSES - rows[0].count_matching_witnesses)+") witness list mutations relative to MC unit "+rows[0].unit);
-				handleResult();
-			}
-		);
-	});
+	}
+
+	buildListOfMcUnitsWithPotentiallyDifferentWitnesslists
+	(
+		conn,
+		objUnit,
+		last_ball_unit,
+		arrWitnesses,
+		function( bHasBestParent, arrMcUnits )
+		{
+			if ( ! bHasBestParent )
+				return handleResult( "no compatible best parent" );
+
+			log.consoleLog( "###### MC units ", arrMcUnits );
+			if ( arrMcUnits.length === 0 )
+				return handleResult();
+
+			//	...
+			conn.query
+			(
+				"SELECT units.unit, COUNT(*) AS count_matching_witnesses \n\
+				FROM units CROSS JOIN unit_witnesses ON (units.unit=unit_witnesses.unit OR units.witness_list_unit=unit_witnesses.unit) AND address IN(?) \n\
+				WHERE units.unit IN(?) \n\
+				GROUP BY units.unit \n\
+				HAVING count_matching_witnesses<?",
+				[
+					arrWitnesses,
+					arrMcUnits,
+					constants.COUNT_WITNESSES - constants.MAX_WITNESS_LIST_MUTATIONS
+				],
+				function( rows )
+				{
+					log.consoleLog( rows );
+					if ( rows.length > 0 )
+					{
+						return handleResult( "too many (" + ( constants.COUNT_WITNESSES - rows[ 0 ].count_matching_witnesses ) + ") witness list mutations relative to MC unit " + rows[ 0 ].unit );
+					}
+
+					//	...
+					handleResult();
+				}
+			);
+		}
+	);
 }
 
-// the MC for this function is the MC built from this unit, not our current MC
-function buildListOfMcUnitsWithPotentiallyDifferentWitnesslists(conn, objUnit, last_ball_unit, arrWitnesses, handleList){
 
-	function addAndGoUp(unit){
-		readStaticUnitProps(conn, unit, function(props){
-			// the parent has the same witness list and the parent has already passed the MC compatibility test
-			if (objUnit.witness_list_unit && objUnit.witness_list_unit === props.witness_list_unit)
-				return handleList(true, arrMcUnits);
-			else
-				arrMcUnits.push(unit);
-			if (unit === last_ball_unit)
-				return handleList(true, arrMcUnits);
-			if (!props.best_parent_unit)
-				throw Error("no best parent of unit "+unit+"?");
-			addAndGoUp(props.best_parent_unit);
-		});
+/**
+ *	the MC for this function is the MC built from this unit, not our current MC
+ */
+function buildListOfMcUnitsWithPotentiallyDifferentWitnesslists( conn, objUnit, last_ball_unit, arrWitnesses, handleList )
+{
+	function addAndGoUp( unit )
+	{
+		readStaticUnitProps
+		(
+			conn,
+			unit,
+			function( props )
+			{
+				//	the parent has the same witness list and the parent has already passed the MC compatibility test
+				if ( objUnit.witness_list_unit && objUnit.witness_list_unit === props.witness_list_unit )
+					return handleList( true, arrMcUnits );
+				else
+					arrMcUnits.push( unit );
+
+				if ( unit === last_ball_unit )
+					return handleList( true, arrMcUnits );
+				if ( ! props.best_parent_unit )
+					throw Error( "no best parent of unit " + unit + "?" );
+
+				//	...
+				addAndGoUp( props.best_parent_unit );
+			}
+		);
 	}
 
 	var arrMcUnits = [];
-	determineBestParent(conn, objUnit, arrWitnesses, function(best_parent_unit){
-		if (!best_parent_unit)
-			return handleList(false);
-		addAndGoUp(best_parent_unit);
-	});
-}
+	determineBestParent
+	(
+		conn,
+		objUnit,
+		arrWitnesses,
+		function( best_parent_unit )
+		{
+			if ( ! best_parent_unit )
+				return handleList( false );
 
-
-function readStaticUnitProps(conn, unit, handleProps){
-	var props = assocCachedUnits[unit];
-	if (props)
-		return handleProps(props);
-	conn.query("SELECT level, witnessed_level, best_parent_unit, witness_list_unit FROM units WHERE unit=?", [unit], function(rows){
-		if (rows.length !== 1)
-			throw Error("not 1 unit");
-		props = rows[0];
-		assocCachedUnits[unit] = props;
-		handleProps(props);
-	});
-}
-
-function readUnitAuthors(conn, unit, handleAuthors){
-	var arrAuthors = assocCachedUnitAuthors[unit];
-	if (arrAuthors)
-		return handleAuthors(arrAuthors);
-	conn.query("SELECT address FROM unit_authors WHERE unit=?", [unit], function(rows){
-		if (rows.length === 0)
-			throw Error("no authors");
-		var arrAuthors2 = rows.map(function(row){ return row.address; }).sort();
-	//	if (arrAuthors && arrAuthors.join('-') !== arrAuthors2.join('-'))
-	//		throw Error('cache is corrupt');
-		assocCachedUnitAuthors[unit] = arrAuthors2;
-		handleAuthors(arrAuthors2);
-	});
-}
-
-function isKnownUnit(unit){
-	return (assocCachedUnits[unit] || assocKnownUnits[unit]) ? true : false;
-}
-
-function setUnitIsKnown(unit){
-	return assocKnownUnits[unit] = true;
-}
-
-function forgetUnit(unit){
-	delete assocKnownUnits[unit];
-	delete assocCachedUnits[unit];
-	delete assocCachedUnitAuthors[unit];
-	delete assocCachedUnitWitnesses[unit];
-	delete assocUnstableUnits[unit];
-	delete assocStableUnits[unit];
-}
-
-function shrinkCache(){
-	if (Object.keys(assocCachedAssetInfos).length > MAX_ITEMS_IN_CACHE)
-		assocCachedAssetInfos = {};
-	log.consoleLog(Object.keys(assocUnstableUnits).length+" unstable units");
-	var arrKnownUnits = Object.keys(assocKnownUnits);
-	var arrPropsUnits = Object.keys(assocCachedUnits);
-	var arrStableUnits = Object.keys(assocStableUnits);
-	var arrAuthorsUnits = Object.keys(assocCachedUnitAuthors);
-	var arrWitnessesUnits = Object.keys(assocCachedUnitWitnesses);
-	if (arrPropsUnits.length < MAX_ITEMS_IN_CACHE && arrAuthorsUnits.length < MAX_ITEMS_IN_CACHE && arrWitnessesUnits.length < MAX_ITEMS_IN_CACHE && arrKnownUnits.length < MAX_ITEMS_IN_CACHE && arrStableUnits.length < MAX_ITEMS_IN_CACHE)
-		return log.consoleLog('cache is small, will not shrink');
-	var arrUnits = _.union(arrPropsUnits, arrAuthorsUnits, arrWitnessesUnits, arrKnownUnits, arrStableUnits);
-	log.consoleLog('will shrink cache, total units: '+arrUnits.length);
-	readLastStableMcIndex(db, function(last_stable_mci){
-		var CHUNK_SIZE = 500; // there is a limit on the number of query params
-		for (var offset=0; offset<arrUnits.length; offset+=CHUNK_SIZE){
-			// filter units that became stable more than 100 MC indexes ago
-			db.query(
-				"SELECT unit FROM units WHERE unit IN(?) AND main_chain_index<? AND main_chain_index!=0", 
-				[arrUnits.slice(offset, offset+CHUNK_SIZE), last_stable_mci-100], 
-				function(rows){
-					log.consoleLog('will remove '+rows.length+' units from cache');
-					rows.forEach(function(row){
-						delete assocKnownUnits[row.unit];
-						delete assocCachedUnits[row.unit];
-						delete assocStableUnits[row.unit];
-						delete assocCachedUnitAuthors[row.unit];
-						delete assocCachedUnitWitnesses[row.unit];
-					});
-				}
-			);
+			//	...
+			addAndGoUp( best_parent_unit );
 		}
-	});
+	);
 }
 
-function initUnstableUnits(onDone){
-	db.query(
+
+function readStaticUnitProps( conn, unit, handleProps )
+{
+	var props = assocCachedUnits[ unit ];
+	if ( props )
+	{
+		return handleProps( props );
+	}
+
+	//	...
+	conn.query
+	(
+		"SELECT level, witnessed_level, best_parent_unit, witness_list_unit FROM units WHERE unit=?",
+		[
+			unit
+		],
+		function( rows )
+		{
+			if ( rows.length !== 1 )
+			{
+				throw Error( "not 1 unit" );
+			}
+
+			//	...
+			props	= rows[0];
+			assocCachedUnits[ unit ]	= props;
+			handleProps( props );
+		}
+	);
+}
+
+function readUnitAuthors( conn, unit, handleAuthors )
+{
+	var arrAuthors = assocCachedUnitAuthors[ unit ];
+	if ( arrAuthors )
+	{
+		return handleAuthors( arrAuthors );
+	}
+
+	//	...
+	conn.query
+	(
+		"SELECT address FROM unit_authors WHERE unit=?",
+		[
+			unit
+		],
+		function( rows )
+		{
+			if ( rows.length === 0 )
+				throw Error( "no authors" );
+
+			var arrAuthors2 = rows.map
+			(
+				function( row )
+				{
+					return row.address;
+				}
+			).sort();
+		//	if (arrAuthors && arrAuthors.join('-') !== arrAuthors2.join('-'))
+		//		throw Error('cache is corrupt');
+			assocCachedUnitAuthors[ unit ] = arrAuthors2;
+			handleAuthors( arrAuthors2 );
+		}
+	);
+}
+
+function isKnownUnit( unit )
+{
+	return ( assocCachedUnits[ unit ] || assocKnownUnits[ unit ] ) ? true : false;
+}
+
+function setUnitIsKnown( unit )
+{
+	return assocKnownUnits[ unit ] = true;
+}
+
+function forgetUnit( unit )
+{
+	delete assocKnownUnits[ unit ];
+	delete assocCachedUnits[ unit ];
+	delete assocCachedUnitAuthors[ unit ];
+	delete assocCachedUnitWitnesses[ unit ];
+	delete assocUnstableUnits[ unit ];
+	delete assocStableUnits[ unit ];
+}
+
+function shrinkCache()
+{
+	if ( Object.keys( assocCachedAssetInfos ).length > MAX_ITEMS_IN_CACHE )
+	{
+		assocCachedAssetInfos = {};
+	}
+
+	//	...
+	log.consoleLog( Object.keys( assocUnstableUnits ).length + " unstable units" );
+
+	var arrKnownUnits	= Object.keys(assocKnownUnits);
+	var arrPropsUnits	= Object.keys(assocCachedUnits);
+	var arrStableUnits	= Object.keys(assocStableUnits);
+	var arrAuthorsUnits	= Object.keys(assocCachedUnitAuthors);
+	var arrWitnessesUnits	= Object.keys(assocCachedUnitWitnesses);
+
+	if ( arrPropsUnits.length < MAX_ITEMS_IN_CACHE &&
+		arrAuthorsUnits.length < MAX_ITEMS_IN_CACHE &&
+		arrWitnessesUnits.length < MAX_ITEMS_IN_CACHE &&
+		arrKnownUnits.length < MAX_ITEMS_IN_CACHE &&
+		arrStableUnits.length < MAX_ITEMS_IN_CACHE )
+	{
+		return log.consoleLog( 'cache is small, will not shrink' );
+	}
+
+	var arrUnits	= _.union( arrPropsUnits, arrAuthorsUnits, arrWitnessesUnits, arrKnownUnits, arrStableUnits );
+	log.consoleLog( 'will shrink cache, total units: ' + arrUnits.length );
+
+	readLastStableMcIndex
+	(
+		db,
+		function( last_stable_mci )
+		{
+			//	there is a limit on the number of query params
+			var CHUNK_SIZE	= 500;
+
+			for ( var offset = 0; offset < arrUnits.length; offset += CHUNK_SIZE )
+			{
+				//	filter units that became stable more than 100 MC indexes ago
+				db.query
+				(
+					"SELECT unit FROM units WHERE unit IN(?) AND main_chain_index<? AND main_chain_index!=0",
+					[
+						arrUnits.slice( offset, offset + CHUNK_SIZE ),
+						last_stable_mci - 100
+					],
+					function( rows )
+					{
+						log.consoleLog( 'will remove ' + rows.length + ' units from cache' );
+
+						rows.forEach
+						(
+							function( row )
+							{
+								delete assocKnownUnits[ row.unit ];
+								delete assocCachedUnits[ row.unit ];
+								delete assocStableUnits[ row.unit ];
+								delete assocCachedUnitAuthors[ row.unit ];
+								delete assocCachedUnitWitnesses[ row.unit ];
+							}
+						);
+					}
+				);
+			}
+		}
+	);
+}
+
+
+function initUnstableUnits( onDone )
+{
+	db.query
+	(
 		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free, is_stable, witnessed_level \n\
 		FROM units WHERE is_stable=0 ORDER BY +level",
-		function(rows){
-		//	assocUnstableUnits = {};
-			rows.forEach(function(row){
-				row.parent_units = [];
-				assocUnstableUnits[row.unit] = row;
-			});
+		function( rows )
+		{
+			//	assocUnstableUnits = {};
+			rows.forEach
+			(
+				function( row )
+				{
+					row.parent_units = [];
+					assocUnstableUnits[ row.unit ] = row;
+				}
+			);
+
 			log.consoleLog('initUnstableUnits 1 done');
-			if (Object.keys(assocUnstableUnits).length === 0)
+			if ( Object.keys(assocUnstableUnits).length === 0 )
+			{
 				return onDone ? onDone() : null;
-			db.query(
-				"SELECT parent_unit, child_unit FROM parenthoods WHERE child_unit IN("+Object.keys(assocUnstableUnits).map(db.escape)+")", 
-				function(prows){
-					prows.forEach(function(prow){
-						assocUnstableUnits[prow.child_unit].parent_units.push(prow.parent_unit);
-					});
-					log.consoleLog('initUnstableUnits done');
-					if (onDone)
+			}
+
+			db.query
+			(
+				"SELECT parent_unit, child_unit FROM parenthoods WHERE child_unit IN(" + Object.keys( assocUnstableUnits ).map( db.escape ) + ")",
+				function( prows )
+				{
+					prows.forEach
+					(
+						function( prow )
+						{
+							assocUnstableUnits[ prow.child_unit ].parent_units.push( prow.parent_unit );
+						}
+					);
+
+					log.consoleLog( 'initUnstableUnits done' );
+					if ( onDone )
+					{
 						onDone();
+					}
 				}
 			);
 		}
 	);
 }
 
-function resetUnstableUnits(onDone)
+function resetUnstableUnits( onDone )
 {
-	Object.keys(assocUnstableUnits).forEach(function(unit){
-		delete assocUnstableUnits[unit];
-	});
-	initUnstableUnits(onDone);
+	Object.keys( assocUnstableUnits).forEach
+	(
+		function( unit )
+		{
+			delete assocUnstableUnits[ unit ];
+		}
+	);
+
+	//	...
+	initUnstableUnits( onDone );
 }
 
 

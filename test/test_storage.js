@@ -2,23 +2,105 @@
  *	test for storage
  */
 let assert      = require( 'assert' );
-var async	= require('async');
+var async	= require( 'async' );
+
+
+//
+// let arrResultList	= [];
+// async.series
+// (
+// 	[
+// 		function( pfnCallback )
+// 		{
+// 			arrResultList.push( 1 );
+// 			console.log( 'task[ 0 ] . ' + JSON.stringify( arrResultList ) );
+//
+// 			//	...
+// 			return pfnCallback();
+// 		},
+// 		function( pfnCallback )
+// 		{
+// 			arrResultList.push( 2 );
+// 			console.log( 'task[ 1 ] . ' + JSON.stringify( arrResultList ) );
+//
+// 			//	...
+// 			return pfnCallback();
+// 		},
+// 		function( pfnCallback )
+// 		{
+// 			arrResultList.push( 3 );
+// 			console.log( 'task[ 2 ] . ' + JSON.stringify( arrResultList ) );
+//
+// 			//	...
+// 			return pfnCallback();
+// 		}
+// 	],
+// 	function( err )
+// 	{
+// 		arrResultList.push( 4 );
+// 		console.log( err, 'callback . ' + JSON.stringify( arrResultList ) );
+// 	}
+// );
 
 
 
-/**
- *      test
- */
 describe( 'storage.js', function()
 {
-	describe( 'global testing', function()
+	describe( 'any testing', function()
 	{
-		describe( 'async.series', function()
+		describe( 'async.series', async function()
 		{
-			let sChallenge	= crypto.randomBytes( 30 ).toString( "base64" );
-			it ( 'it should be a random string with length 40: ' + sChallenge, function()
+			let arrResultList	= [];
+
+			async.series
+			(
+				[
+					function( pfnCallback )
+					{
+						arrResultList.push( 1 );
+						pfnCallback();
+
+						it ( 'task[ 0 ] . ' + JSON.stringify( arrResultList ), function( pfnDone )
+						{
+							pfnDone();
+						});
+					},
+					function( pfnCallback )
+					{
+						arrResultList.push( 2 );
+						pfnCallback();
+
+						it ( 'task[ 1 ] . ' + JSON.stringify( arrResultList ), function( pfnDone )
+						{
+							pfnDone();
+						});
+					},
+					function( pfnCallback )
+					{
+						arrResultList.push( 3 );
+						pfnCallback();
+
+						it ( 'task[ 2 ] . ' + JSON.stringify( arrResultList ), function( pfnDone )
+						{
+							pfnDone();
+						});
+					}
+				],
+				function( err )
+				{
+					arrResultList.push( 4 );
+
+					it ( 'callback . ' + JSON.stringify( arrResultList ), function( pfnDone )
+					{
+						pfnDone();
+					});
+				}
+			);
+
+			it ( 'arrResultList should be a array with length 4 : ' + JSON.stringify( arrResultList ), function( pfnDone )
 			{
-				assert.equal( typeof sChallenge === 'string' && 40 === sChallenge.length, true );
+				assert.equal( Array.isArray( arrResultList ), true );
+				pfnDone();
 			});
 		});
 	});
