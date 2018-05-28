@@ -18,8 +18,8 @@ var profiler		= require('./profiler.js');
 var count_writes			= 0;
 var count_units_in_prev_analyze		= 0;
 
-var start_time	= 0;
-var prev_time	= 0;
+var start_time				= 0;
+var prev_time				= 0;
 
 
 
