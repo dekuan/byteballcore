@@ -31,91 +31,173 @@ function mark_end(tag, id) {
 	timers[tag][id] = 0;
 }
 
-function start(){
-	if (start_ts)
+function start()
+{
+	if ( start_ts )
+	{
 		throw Error("profiler already started");
+	}
+
+	//	...
 	start_ts = Date.now();
 }
 
-function stop(tag){
-	if (!start_ts)
-		throw Error("profiler not started");
-	if (!times[tag])
-		times[tag] = 0;
-	times[tag] += Date.now() - start_ts;
+function stop( tag )
+{
+	if ( ! start_ts )
+	{
+		throw Error( "profiler not started" );
+	}
+	if ( ! times[ tag ] )
+	{
+		times[ tag ] = 0;
+	}
+
+	//	...
+	times[ tag ] += ( Date.now() - start_ts );
 	start_ts = 0;
 }
 
-function print(){
-	log.consoleLog("\nProfiling results:");
-	var total = 0;
-	for (var tag in times)
-		total += times[tag];
-	for (var tag in times){
-		log.consoleLog(
-			pad_right(tag+": ", 33) + 
-			pad_left(times[tag], 5) + ', ' + 
-			pad_left((times[tag]/count).toFixed(2), 5) + ' per unit, ' + 
-			pad_left((100*times[tag]/total).toFixed(2), 5) + '%'
+function print()
+{
+	let total	= 0;
+	let tag;
+
+	//	...
+	log.consoleLog( "\nProfiling results:" );
+
+	for ( tag in times )
+	{
+		total += times[ tag ];
+	}
+
+	for ( tag in times )
+	{
+		log.consoleLog
+		(
+			pad_right( tag + ": ", 33 ) +
+			pad_left( times[ tag ], 5 ) + ', ' +
+			pad_left( ( times[ tag ] / count ).toFixed( 2 ), 5 ) + ' per unit, ' +
+			pad_left( ( 100 * times[ tag ] / total ).toFixed( 2 ), 5 ) + '%'
 		);
 	}
-	log.consoleLog('total: '+total);
-	log.consoleLog(total/count+' per unit');
+
+	//	...
+	log.consoleLog( 'total: ' + total );
+	log.consoleLog( ( total / count ) + ' per unit' );
 }
 
-function print_results() {
-	log.consoleLog("\nBenchmarking results:");
-	for (var tag in timers_results) {
-		var results = timers_results[tag];
-		var sum = 0, max = 0, min = 999999999999;
-		for (var i = 0; i < results.length; i++) {
-			var v = results[i];
-			sum += v;
-			if (v > max) max = v;
-			if (v < min) min = v;
+function print_results()
+{
+	let tag;
+	var results;
+	var sum;
+	var max;
+	var min;
+	var i;
+	var v;
+
+	log.consoleLog( "\nBenchmarking results:" );
+
+	for ( tag in timers_results )
+	{
+		results	= timers_results[ tag ];
+		sum	= 0;
+		max	= 0;
+		min	= 999999999999;
+
+		for ( i = 0; i < results.length; i++ )
+		{
+			v	= results[i];
+			sum	+= v;
+
+			if ( v > max )
+			{
+				max = v;
+			}
+			if ( v < min )
+			{
+				min = v;
+			}
 		}
-		log.consoleLog(tag.padding(50) + ": avg:" + Math.round(sum / results.length).toString().padding(8) + "max:" + Math.round(max).toString().padding(8) + "min:" + Math.round(min).toString().padding(8) + "records:" + results.length);
+
+		log.consoleLog
+		(
+			tag.padding( 50 ) + ": "
+			+ "avg:" + Math.round( sum / results.length ).toString().padding( 8 )
+			+ "max:" + Math.round( max ).toString().padding( 8 )
+			+ "min:" + Math.round( min ).toString().padding( 8 )
+			+ "records:" + results.length
+		);
 	}
-	log.consoleLog("\n\nStart time: " + profiler_start_ts + ", End time: " + Date.now() + " Elapsed ms:" + (Date.now() - profiler_start_ts));
+
+	//	...
+	log.consoleLog
+	(
+		"\n\nStart time: " + profiler_start_ts
+		+ ", End time: " + Date.now()
+		+ " Elapsed ms:" + ( Date.now() - profiler_start_ts )
+	);
 }
 
-function pad_right(str, len){
-	if (str.length >= len)
+function pad_right( str, len )
+{
+	if ( str.length >= len )
 		return str;
-	return str + ' '.repeat(len - str.length);
+
+	//	...
+	return str + ' '.repeat( len - str.length );
 }
 
-function pad_left(str, len){
+function pad_left( str, len )
+{
+	//	...
 	str = str+'';
-	if (str.length >= len)
+
+	if ( str.length >= len )
+	{
 		return str;
-	return ' '.repeat(len - str.length) + str;
+	}
+
+	return ' '.repeat( len - str.length ) + str;
 }
 
-function increment(){
+function increment()
+{
 	count++;
 }
 
-process.on('SIGINT', function(){
-	log.consoleLog = clog;
-	log.consoleLog("received sigint");
-	//print();
-	print_results();
-	process.exit();
-});
 
-String.prototype.padding = function(n, c)
+
+process.on
+(
+	'SIGINT',
+	function()
+	{
+		log.consoleLog	= clog;
+		log.consoleLog( "received sigint" );
+		//print();
+		print_results();
+		process.exit();
+	}
+);
+
+String.prototype.padding = function( n, c )
 {
         var val = this.valueOf();
-        if ( Math.abs(n) <= val.length ) {
+        if ( Math.abs( n ) <= val.length )
+        {
                 return val;
         }
-        var m = Math.max((Math.abs(n) - this.length) || 0, 0);
-        var pad = Array(m + 1).join(String(c || ' ').charAt(0));
+
+        var m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
+        var pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
 //      var pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
-        return (n < 0) ? pad + val : val + pad;
-//      return (n < 0) ? val + pad : pad + val;
+        return ( n < 0 ) ? pad + val : val + pad;
+//      return ( n < 0 ) ? val + pad : pad + val;
 };
+
+
 
 var clog = log.consoleLog;
 //log.consoleLog = function(){};
@@ -123,12 +205,12 @@ var clog = log.consoleLog;
 //exports.start = start;
 //exports.stop = stop;
 //exports.increment = increment;
-exports.print = print;
-exports.mark_start = mark_start;
-exports.mark_end = mark_end;
+exports.print		= print;
+exports.mark_start	= mark_start;
+exports.mark_end	= mark_end;
 
 
-exports.start = function(){};
-exports.stop = function(){};
-exports.increment = function(){};
-//exports.print = function(){};
+exports.start		= function(){};
+exports.stop		= function(){};
+exports.increment	= function(){};
+//exports.print		= function(){};
