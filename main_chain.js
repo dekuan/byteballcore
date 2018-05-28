@@ -44,45 +44,68 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	{
 		function handleProps( props )
 		{
-			if (props.best_parent_unit === null)
-				throw Error("best parent is null");
-			log.consoleLog("unit "+unit+", best parent "+props.best_parent_unit+", wlevel "+props.witnessed_level);
-			handleUnit(props.best_parent_unit);
+			if ( props.best_parent_unit === null )
+				throw Error( "best parent is null" );
+
+			//	...
+			log.consoleLog( "unit " + unit + ", best parent " + props.best_parent_unit + ", wlevel " + props.witnessed_level );
+			handleUnit( props.best_parent_unit );
 		}
 
 		function readLastUnitProps( handleLastUnitProps )
 		{
-			conn.query("SELECT unit AS best_parent_unit, witnessed_level \n\
+			conn.query
+			(
+				"SELECT unit AS best_parent_unit, witnessed_level \n\
 				FROM units WHERE is_free=1 \n\
 				ORDER BY witnessed_level DESC, \n\
 					level-witnessed_level ASC, \n\
 					unit ASC \n\
 				LIMIT 5",
-				function(rows){
-					if (rows.length === 0)
-						throw Error("no free units?");
-					if (rows.length > 1){
-						var arrParents = rows.map(function(row){ return row.best_parent_unit; });
-						arrAllParents = arrParents;
-						for (var i=0; i<arrRetreatingUnits.length; i++){
-							var n = arrParents.indexOf(arrRetreatingUnits[i]);
-							if (n >= 0)
-								return handleLastUnitProps(rows[n]);
+				function( rows )
+				{
+					if ( rows.length === 0 )
+					{
+						throw Error( "no free units?" );
+					}
+					if ( rows.length > 1 )
+					{
+						var arrParents	= rows.map
+						(
+							function( row )
+							{
+								return row.best_parent_unit;
+							}
+						);
+						arrAllParents	= arrParents;
+						for ( var i = 0; i < arrRetreatingUnits.length; i ++ )
+						{
+							var n = arrParents.indexOf( arrRetreatingUnits[ i ] );
+							if ( n >= 0 )
+							{
+								return handleLastUnitProps( rows[ n ] );
+							}
 						}
 					}
+
 					/*
 					// override when adding +5ntioHT58jcFb8oVc+Ff4UvO5UvYGRcrGfYIofGUW8= which caused witnessed level to significantly retreat
 					if (rows.length === 2 && (rows[1].best_parent_unit === '+5ntioHT58jcFb8oVc+Ff4UvO5UvYGRcrGfYIofGUW8=' || rows[1].best_parent_unit === 'C/aPdM0sODPLC3NqJPWdZlqmV8B4xxf2N/+HSEi0sKU=' || rows[1].best_parent_unit === 'sSev6hvQU86SZBemy9CW2lJIko2jZDoY55Lm3zf2QU4=') && (rows[0].best_parent_unit === '3XJT1iK8FpFeGjwWXd9+Yu7uJp7hM692Sfbb5zdqWCE=' || rows[0].best_parent_unit === 'TyY/CY8xLGvJhK6DaBumj2twaf4y4jPC6umigAsldIA=' || rows[0].best_parent_unit === 'VKX2Nsx2W1uQYT6YajMGHAntwNuSMpAAlxF7Y98tKj8='))
 						return handleLastUnitProps(rows[1]);
 					*/
-					handleLastUnitProps(rows[0]);
+					handleLastUnitProps( rows[ 0 ] );
 				}
 			);
 		}
-	
-		unit ? storage.readStaticUnitProps(conn, unit, handleProps) : readLastUnitProps(handleProps);
+
+		//	...
+		unit
+			?
+			storage.readStaticUnitProps( conn, unit, handleProps )
+			:
+			readLastUnitProps( handleProps );
 	}
-	
+
 	function goUpFromUnit( unit )
 	{
 		if ( storage.isGenesisUnit( unit ) )
@@ -103,40 +126,68 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					if ( ! objBestParentUnitProps2 )
 					{
 						if ( storage.isGenesisUnit( best_parent_unit ) )
-							objBestParentUnitProps2 = storage.assocStableUnits[best_parent_unit];
+						{
+							objBestParentUnitProps2 = storage.assocStableUnits[ best_parent_unit ];
+						}
 						else
-							throw Error("unstable unit not found: "+best_parent_unit);
+						{
+							throw Error( "unstable unit not found: " + best_parent_unit );
+						}
 					}
 
+					//	...
 					var objBestParentUnitPropsForCheck	 = _.cloneDeep( objBestParentUnitProps2 );
 					delete objBestParentUnitPropsForCheck.parent_units;
 
 					if ( ! _.isEqual( objBestParentUnitPropsForCheck, objBestParentUnitProps ) )
-						throwError( "different props, db: "+JSON.stringify(objBestParentUnitProps)+", unstable: "+JSON.stringify(objBestParentUnitProps2));
+					{
+						throwError
+						(
+							"different props, db: "
+							+ JSON.stringify( objBestParentUnitProps )
+							+ ", unstable: "
+							+ JSON.stringify( objBestParentUnitProps2 )
+						);
+					}
 
 					if ( ! objBestParentUnitProps.is_on_main_chain )
 					{
 						conn.query
 						(
 							"UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?",
-							[ best_parent_unit ],
+							[
+								best_parent_unit
+							],
 							function()
 							{
-								objBestParentUnitProps2.is_on_main_chain = 1;
-								objBestParentUnitProps2.main_chain_index = null;
-								arrNewMcUnits.push(best_parent_unit);
-								profiler.stop('mc-goUpFromUnit');
-								goUpFromUnit(best_parent_unit);
+								objBestParentUnitProps2.is_on_main_chain	= 1;
+								objBestParentUnitProps2.main_chain_index	= null;
+
+								arrNewMcUnits.push( best_parent_unit );
+								profiler.stop( 'mc-goUpFromUnit' );
+								goUpFromUnit( best_parent_unit );
 							}
 						);
 					}
 					else
 					{
-						profiler.stop('mc-goUpFromUnit');
-						if (unit === null)
-							updateLatestIncludedMcIndex(objBestParentUnitProps.main_chain_index, false);
+						profiler.stop( 'mc-goUpFromUnit' );
+						if ( unit === null )
+						{
+							updateLatestIncludedMcIndex
+							(
+								objBestParentUnitProps.main_chain_index,
+								false
+							);
+						}
 						else
-							checkNotRebuildingStableMainChainAndGoDown(objBestParentUnitProps.main_chain_index, best_parent_unit);
+						{
+							checkNotRebuildingStableMainChainAndGoDown
+							(
+								objBestParentUnitProps.main_chain_index,
+								best_parent_unit
+							);
+						}
 					}
 				}
 			);
@@ -145,20 +196,48 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 	function checkNotRebuildingStableMainChainAndGoDown( last_main_chain_index, last_main_chain_unit )
 	{
-		log.consoleLog("checkNotRebuildingStableMainChainAndGoDown "+from_unit);
+		log.consoleLog( "checkNotRebuildingStableMainChainAndGoDown " + from_unit );
 		profiler.start();
-		conn.query(
+
+		//	...
+		conn.query
+		(
 			"SELECT unit FROM units WHERE is_on_main_chain=1 AND main_chain_index>? AND is_stable=1", 
-			[last_main_chain_index],
-			function(rows){
-				profiler.stop('mc-checkNotRebuilding');
-				if (rows.length > 0)
-					throw Error("removing stable units "+rows.map(function(row){return row.unit}).join(', ')+" from MC after adding "+last_added_unit+" with all parents "+arrAllParents.join(', '));
-				goDownAndUpdateMainChainIndex(last_main_chain_index, last_main_chain_unit);
+			[
+				last_main_chain_index
+			],
+			function( rows )
+			{
+				profiler.stop( 'mc-checkNotRebuilding' );
+				if ( rows.length > 0 )
+				{
+					throw Error
+					(
+						"removing stable units " +
+						rows.map
+						(
+							function( row )
+							{
+								return row.unit;
+							}
+						).join( ', ' )
+						+ " from MC after adding "
+						+ last_added_unit
+						+ " with all parents "
+						+ arrAllParents.join( ', ' )
+					);
+				}
+
+				//	...
+				goDownAndUpdateMainChainIndex
+				(
+					last_main_chain_index,
+					last_main_chain_unit
+				);
 			}
 		);
 	}
-	
+
 	function goDownAndUpdateMainChainIndex( last_main_chain_index, last_main_chain_unit )
 	{
 		profiler.start();
@@ -171,48 +250,66 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			],
 			function()
 			{
-				for ( var unit in storage.assocUnstableUnits )
+				for ( let unit in storage.assocUnstableUnits )
 				{
-					var o = storage.assocUnstableUnits[unit];
-					if (o.main_chain_index > last_main_chain_index)
+					let o = storage.assocUnstableUnits[ unit ];
+					if ( o.main_chain_index > last_main_chain_index )
 					{
-						o.is_on_main_chain = 0;
-						o.main_chain_index = null;
+						o.is_on_main_chain	= 0;
+						o.main_chain_index	= null;
 					}
 				}
 
-				var main_chain_index = last_main_chain_index;
-				var main_chain_unit = last_main_chain_unit;
+				//	...
+				let main_chain_index	= last_main_chain_index;
+				let main_chain_unit	= last_main_chain_unit;
 
 				conn.query
 				(
 					"SELECT unit FROM units WHERE is_on_main_chain=1 AND main_chain_index IS NULL ORDER BY level",
-					function(rows)
+					function( rows )
 					{
-						if (rows.length === 0)
+						if ( rows.length === 0 )
 						{
 							//if (last_main_chain_index > 0)
-								throw Error("no unindexed MC units after adding "+last_added_unit);
+								throw Error( "no unindexed MC units after adding " + last_added_unit );
 							//else{
 							//    log.consoleLog("last MC=0, no unindexed MC units");
 							//    return updateLatestIncludedMcIndex(last_main_chain_index, true);
 							//}
 						}
 
-						var arrDbNewMcUnits = rows.map(function(row){ return row.unit; });
+						let arrDbNewMcUnits = rows.map
+						(
+							function( row )
+							{
+								return row.unit;
+							}
+						);
 						arrNewMcUnits.reverse();
 
 						if ( ! _.isEqual( arrNewMcUnits, arrDbNewMcUnits ) )
-							throwError("different new MC units, arr: " + JSON.stringify( arrNewMcUnits ) + ", db: " + JSON.stringify( arrDbNewMcUnits ) );
+						{
+							throwError
+							(
+								"different new MC units, arr: "
+								+ JSON.stringify( arrNewMcUnits )
+								+ ", db: "
+								+ JSON.stringify( arrDbNewMcUnits )
+							);
+						}
 
 						async.eachSeries
 						(
 							rows, 
 							function( row, cb )
 							{
-								main_chain_index++;
-								var arrUnits = [row.unit];
-								
+								//	...
+								main_chain_index ++;
+
+								//	...
+								let arrUnits = [ row.unit ];
+
 								function goUp( arrStartUnits )
 								{
 									conn.query
@@ -225,20 +322,51 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 										],
 										function( rows )
 										{
-											var arrNewStartUnits = rows.map(function(row){ return row.unit; });
-											var arrNewStartUnits2 = [];
-											arrStartUnits.forEach(function(start_unit){
-												storage.assocUnstableUnits[start_unit].parent_units.forEach(function(parent_unit){
-													if (storage.assocUnstableUnits[parent_unit] && storage.assocUnstableUnits[parent_unit].main_chain_index === null && arrNewStartUnits2.indexOf(parent_unit) === -1)
-														arrNewStartUnits2.push(parent_unit);
-												});
-											});
-											if (!_.isEqual(arrNewStartUnits.sort(), arrNewStartUnits2.sort()))
-												throwError("different new start units, arr: "+JSON.stringify(arrNewStartUnits2)+", db: "+JSON.stringify(arrNewStartUnits));
-											if (arrNewStartUnits.length === 0)
+											let arrNewStartUnits	= rows.map
+											(
+												function( row )
+												{
+													return row.unit;
+												}
+											);
+											let arrNewStartUnits2	= [];
+											arrStartUnits.forEach
+											(
+												function( start_unit )
+												{
+													storage.assocUnstableUnits[ start_unit ].parent_units.forEach
+													(
+														function( parent_unit )
+														{
+															if ( storage.assocUnstableUnits[ parent_unit ] &&
+																storage.assocUnstableUnits[ parent_unit ].main_chain_index === null &&
+																arrNewStartUnits2.indexOf( parent_unit ) === -1 )
+															{
+																arrNewStartUnits2.push( parent_unit );
+															}
+														}
+													);
+												}
+											);
+
+											if ( ! _.isEqual( arrNewStartUnits.sort(), arrNewStartUnits2.sort() ) )
+											{
+												throwError
+												(
+													"different new start units, arr: "
+													+ JSON.stringify( arrNewStartUnits2 )
+													+ ", db: "
+													+ JSON.stringify( arrNewStartUnits )
+												);
+											}
+											if ( arrNewStartUnits.length === 0 )
+											{
 												return updateMc();
-											arrUnits = arrUnits.concat(arrNewStartUnits);
-											goUp(arrNewStartUnits);
+											}
+
+											//	...
+											arrUnits = arrUnits.concat( arrNewStartUnits );
+											goUp( arrNewStartUnits );
 										}
 									);
 								}
