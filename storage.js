@@ -1,20 +1,19 @@
 /*jslint node: true */
 "use strict";
 
-var async		= require('async');
-var _			= require('lodash');
+var async		= require( 'async' );
+var _			= require( 'lodash' );
 var log			= require( './log.js' );
-var db			= require('./db.js');
-var conf		= require('./conf.js');
-var objectHash		= require("./object_hash.js");
-var constants		= require("./constants.js");
-var mutex		= require('./mutex.js');
-var archiving		= require('./archiving.js');
-var profiler		= require('./profiler.js');
+var db			= require( './db.js' );
+var conf		= require( './conf.js' );
+var objectHash		= require( './object_hash.js' );
+var constants		= require( './constants.js' );
+var mutex		= require( './mutex.js' );
+var archiving		= require( './archiving.js' );
+var profiler		= require( './profiler.js' );
 
 
 var MAX_INT32			= Math.pow( 2, 31 ) - 1;
-
 var genesis_ball		= objectHash.getBallHash( constants.GENESIS_UNIT );
 
 var MAX_ITEMS_IN_CACHE		= 300;
@@ -28,9 +27,6 @@ var assocUnstableUnits		= {};
 var assocStableUnits		= {};
 
 var min_retrievable_mci		= null;
-
-
-
 
 
 
