@@ -1580,311 +1580,610 @@ function validateAuthentifiers( conn, address, this_asset, arrDefinition, objUni
 						params.push( value );
 					}
 				}
-				else{
-					index = 'byNameIntValue';
-					value_condition = 'int_value'+relation+'?';
-					params.push(value);
+				else
+				{
+					index		= 'byNameIntValue';
+					value_condition	= 'int_value' + relation + '?';
+					params.push( value );
 				}
-				params.push(objValidationState.last_ball_mci, min_mci);
-				conn.query(
-					"SELECT 1 FROM data_feeds "+db.forceIndex(index)+" CROSS JOIN units USING(unit) CROSS JOIN unit_authors USING(unit) \n\
-					WHERE address IN(?) AND feed_name=? AND "+value_condition+" \n\
+
+				//	...
+				params.push( objValidationState.last_ball_mci, min_mci );
+				conn.query
+				(
+					"SELECT 1 FROM data_feeds " + db.forceIndex( index ) + " CROSS JOIN units USING(unit) CROSS JOIN unit_authors USING(unit) \n\
+					WHERE address IN(?) AND feed_name=? AND " + value_condition + " \n\
 						AND main_chain_index<=? AND main_chain_index>=? AND sequence='good' AND is_stable=1 LIMIT 1",
 					params,
-					function(rows){
-						log.consoleLog(op+" "+feed_name+" "+rows.length);
-						cb2(rows.length > 0);
+					function( rows )
+					{
+						log.consoleLog( op + " " + feed_name + " " + rows.length );
+
+						//	...
+						cb2( rows.length > 0 );
 					}
 				);
 				break;
-				
+
 			case 'in merkle':
-				// ['in merkle', [['BASE32'], 'data feed name', 'expected value']]
-				if (!assocAuthentifiers[path])
-					return cb2(false);
-				arrUsedPaths.push(path);
-				var arrAddresses = args[0];
-				var feed_name = args[1];
-				var element = args[2];
-				var min_mci = args[3] || 0;
-				var serialized_proof = assocAuthentifiers[path];
-				var proof = merkle.deserializeMerkleProof(serialized_proof);
-				if (!merkle.verifyMerkleProof(element, proof)){
-					fatal_error = "bad merkle proof at path "+path;
-					return cb2(false);
+				//	['in merkle', [['BASE32'], 'data feed name', 'expected value']]
+				if ( ! assocAuthentifiers[ path ] )
+				{
+					return cb2( false );
 				}
-				conn.query(
+
+				//	...
+				arrUsedPaths.push( path );
+
+				//	...
+				var arrAddresses	= args[ 0 ];
+				var feed_name		= args[ 1 ];
+				var element		= args[ 2 ];
+				var min_mci		= args[ 3 ] || 0;
+				var serialized_proof	= assocAuthentifiers[ path ];
+				var proof		= merkle.deserializeMerkleProof( serialized_proof );
+
+				if ( ! merkle.verifyMerkleProof( element, proof ) )
+				{
+					fatal_error = "bad merkle proof at path " + path;
+					return cb2( false );
+				}
+
+				//	...
+				conn.query
+				(
 					"SELECT 1 FROM data_feeds CROSS JOIN units USING(unit) JOIN unit_authors USING(unit) \n\
 					WHERE address IN(?) AND feed_name=? AND value=? AND main_chain_index<=? AND main_chain_index>=? AND sequence='good' AND is_stable=1 \n\
 					LIMIT 1",
-					[arrAddresses, feed_name, proof.root, objValidationState.last_ball_mci, min_mci],
-					function(rows){
-						if (rows.length === 0)
-							fatal_error = "merkle proof at path "+path+" not found";
-						cb2(rows.length > 0);
+					[
+						arrAddresses,
+						feed_name,
+						proof.root,
+						objValidationState.last_ball_mci,
+						min_mci
+					],
+					function( rows )
+					{
+						if ( rows.length === 0 )
+						{
+							fatal_error = "merkle proof at path " + path + " not found";
+						}
+
+						//	...
+						cb2( rows.length > 0 );
+					}
+				);
+				break;
+
+			case 'mci':
+				var relation	= args[ 0 ];
+				var mci		= args[ 1 ];
+
+				//	...
+				switch( relation )
+				{
+					case '>':
+						return cb2( objValidationState.last_ball_mci > mci );
+					case '>=':
+						return cb2( objValidationState.last_ball_mci >= mci );
+					case '<':
+						return cb2( objValidationState.last_ball_mci < mci );
+					case '<=':
+						return cb2( objValidationState.last_ball_mci <= mci );
+					case '=':
+						return cb2( objValidationState.last_ball_mci === mci );
+					default:
+						throw Error( 'unknown relation in mci: ' + relation );
+				}
+				break;
+
+			case 'age':
+				var relation	= args[ 0 ];
+				var age		= args[ 1 ];
+
+				augmentMessagesAndContinue
+				(
+					function()
+					{
+						var arrSrcUnits	= [];
+
+						for ( var i = 0; i < objValidationState.arrAugmentedMessages.length; i ++ )
+						{
+							var message	= objValidationState.arrAugmentedMessages[ i ];
+							if ( message.app !== 'payment' || ! message.payload )
+							{
+								continue;
+							}
+
+							var inputs = message.payload.inputs;
+							for ( var j = 0; j < inputs.length; j++ )
+							{
+								var input = inputs[j];
+								if ( input.type !== 'transfer' )
+								{
+									// assume age is satisfied for issue, headers commission, and witnessing commission
+									continue;
+								}
+								if ( ! input.address )
+								{
+									// augment should add it
+									throw Error( 'no input address' );
+								}
+								if ( input.address === address && arrSrcUnits.indexOf(input.unit) === -1 )
+								{
+									arrSrcUnits.push( input.unit );
+								}
+							}
+						}
+
+						if ( arrSrcUnits.length === 0 )
+						{
+							//	not spending anything from our address
+							return cb2( false );
+						}
+
+						//	...
+						conn.query
+						(
+							"SELECT 1 FROM units \n\
+							WHERE unit IN(?) AND ?" + relation + "main_chain_index AND main_chain_index<=? AND +sequence='good' AND is_stable=1",
+							[
+								arrSrcUnits,
+								objValidationState.last_ball_mci - age,
+								objValidationState.last_ball_mci
+							],
+							function( rows )
+							{
+								var bSatisfies	= ( rows.length === arrSrcUnits.length );
+								log.consoleLog( op + " " + bSatisfies );
+								cb2( bSatisfies );
+							}
+						);
+					}
+				);
+				break;
+
+			case 'has':
+			case 'has one':
+				//	['has', {what: 'input', asset: 'asset or base', type: 'transfer'|'issue', own_funds: true, amount_at_least: 123, amount_at_most: 123, amount: 123, address: 'BASE32'}]
+				//	when an address is included (referenced from another address), own_funds refers to outer address' funds
+				augmentMessagesAndEvaluateFilter
+				(
+					op,
+					args,
+					function( res )
+					{
+						log.consoleLog( op + " " + res, args );
+						cb2( res );
+					}
+				);
+				break;
+
+			case 'has equal':
+			case 'has one equal':
+				//	['has equal', {equal_fields: ['address', 'amount'], search_criteria: [{what: 'output', asset: 'asset1', address: 'BASE32'}, {what: 'input', asset: 'asset2', type: 'issue', own_funds: true, address: 'ANOTHERBASE32'}]}]
+				augmentMessagesAndEvaluateFilter
+				(
+					"has",
+					args.search_criteria[ 0 ],
+					function( res1, arrFirstObjects )
+					{
+						if ( ! res1 )
+						{
+							return cb2( false );
+						}
+
+						//	...
+						augmentMessagesAndEvaluateFilter
+						(
+							"has",
+							args.search_criteria[ 1 ],
+							function( res2, arrSecondObjects )
+							{
+								if ( ! res2 )
+								{
+									return cb2( false );
+								}
+
+								//	...
+								var count_equal_pairs	= 0;
+								for ( var i = 0; i < arrFirstObjects.length; i++ )
+								{
+									for ( var j = 0; j < arrSecondObjects.length; j++ )
+									{
+										if ( ! args.equal_fields.some( function( field ) { return (arrFirstObjects[i][field] !== arrSecondObjects[j][field]); } ) )
+										{
+											count_equal_pairs ++;
+										}
+									}
+								}
+
+								if ( count_equal_pairs === 0 )
+								{
+									return cb2( false );
+								}
+								if ( op === "has one equal" && count_equal_pairs === 1 )
+								{
+									return cb2( true );
+								}
+								if ( op === "has equal" && count_equal_pairs > 0 )
+								{
+									return cb2( true );
+								}
+
+								//	...
+								cb2( false );
+							}
+						);
 					}
 				);
 				break;
 				
-			case 'mci':
-				var relation = args[0];
-				var mci = args[1];
-				switch(relation){
-					case '>': return cb2(objValidationState.last_ball_mci > mci);
-					case '>=': return cb2(objValidationState.last_ball_mci >= mci);
-					case '<': return cb2(objValidationState.last_ball_mci < mci);
-					case '<=': return cb2(objValidationState.last_ball_mci <= mci);
-					case '=': return cb2(objValidationState.last_ball_mci === mci);
-					default: throw Error('unknown relation in mci: '+relation);
-				}
-				break;
-				
-			case 'age':
-				var relation = args[0];
-				var age = args[1];
-				augmentMessagesAndContinue(function(){
-					var arrSrcUnits = [];
-					for (var i=0; i<objValidationState.arrAugmentedMessages.length; i++){
-						var message = objValidationState.arrAugmentedMessages[i];
-						if (message.app !== 'payment' || !message.payload)
-							continue;
-						var inputs = message.payload.inputs;
-						for (var j=0; j<inputs.length; j++){
-							var input = inputs[j];
-							if (input.type !== 'transfer') // assume age is satisfied for issue, headers commission, and witnessing commission
-								continue;
-							if (!input.address) // augment should add it
-								throw Error('no input address');
-							if (input.address === address && arrSrcUnits.indexOf(input.unit) === -1)
-								arrSrcUnits.push(input.unit);
-						}
-					}
-					if (arrSrcUnits.length === 0) // not spending anything from our address
-						return cb2(false);
-					conn.query(
-						"SELECT 1 FROM units \n\
-						WHERE unit IN(?) AND ?"+relation+"main_chain_index AND main_chain_index<=? AND +sequence='good' AND is_stable=1",
-						[arrSrcUnits, objValidationState.last_ball_mci - age, objValidationState.last_ball_mci],
-						function(rows){
-							var bSatisfies = (rows.length === arrSrcUnits.length);
-							log.consoleLog(op+" "+bSatisfies);
-							cb2(bSatisfies);
-						}
-					);
-				});
-				break;
-				
-			case 'has':
-			case 'has one':
-				// ['has', {what: 'input', asset: 'asset or base', type: 'transfer'|'issue', own_funds: true, amount_at_least: 123, amount_at_most: 123, amount: 123, address: 'BASE32'}]
-				// when an address is included (referenced from another address), own_funds refers to outer address' funds
-				augmentMessagesAndEvaluateFilter(op, args, function(res){
-					log.consoleLog(op+" "+res, args);
-					cb2(res);
-				});
-				break;
-				
-			case 'has equal':
-			case 'has one equal':
-				// ['has equal', {equal_fields: ['address', 'amount'], search_criteria: [{what: 'output', asset: 'asset1', address: 'BASE32'}, {what: 'input', asset: 'asset2', type: 'issue', own_funds: true, address: 'ANOTHERBASE32'}]}]
-				augmentMessagesAndEvaluateFilter("has", args.search_criteria[0], function(res1, arrFirstObjects){
-					if (!res1)
-						return cb2(false);
-					augmentMessagesAndEvaluateFilter("has", args.search_criteria[1], function(res2, arrSecondObjects){
-						if (!res2)
-							return cb2(false);
-						var count_equal_pairs = 0;
-						for (var i=0; i<arrFirstObjects.length; i++)
-							for (var j=0; j<arrSecondObjects.length; j++)
-								if (!args.equal_fields.some(function(field){ return (arrFirstObjects[i][field] !== arrSecondObjects[j][field]); }))
-									count_equal_pairs++;
-						if (count_equal_pairs === 0)
-							return cb2(false);
-						if (op === "has one equal" && count_equal_pairs === 1)
-							return cb2(true);
-						if (op === "has equal" && count_equal_pairs > 0)
-							return cb2(true);
-						cb2(false);
-					});
-				});
-				break;
-				
 			case 'sum':
-				// ['sum', {filter: {what: 'input', asset: 'asset or base', type: 'transfer'|'issue', own_funds: true, address: 'BASE32'}, at_least: 123, at_most: 123, equals: 123}]
-				augmentMessagesAndEvaluateFilter("has", args.filter, function(res, arrFoundObjects){
-					var sum = 0;
-					if (res)
-						for (var i=0; i<arrFoundObjects.length; i++)
-							sum += arrFoundObjects[i].amount;
-					log.consoleLog("sum="+sum);
-					if (typeof args.equals === "number" && sum === args.equals)
-						return cb2(true);
-					if (typeof args.at_least === "number" && sum >= args.at_least)
-						return cb2(true);
-					if (typeof args.at_most === "number" && sum <= args.at_most)
-						return cb2(true);
-					cb2(false);
-				});
+				//	['sum', {filter: {what: 'input', asset: 'asset or base', type: 'transfer'|'issue', own_funds: true, address: 'BASE32'}, at_least: 123, at_most: 123, equals: 123}]
+				augmentMessagesAndEvaluateFilter
+				(
+					"has",
+					args.filter,
+					function( res, arrFoundObjects )
+					{
+						let sum	= 0;
+						if ( res )
+						{
+							for ( let i = 0; i < arrFoundObjects.length; i ++ )
+							{
+								sum += arrFoundObjects[ i ].amount;
+							}
+						}
+
+						//	...
+						log.consoleLog( "sum=" + sum );
+
+						if ( typeof args.equals === "number" && sum === args.equals )
+						{
+							return cb2( true );
+						}
+						if ( typeof args.at_least === "number" && sum >= args.at_least )
+						{
+							return cb2( true );
+						}
+						if ( typeof args.at_most === "number" && sum <= args.at_most )
+						{
+							return cb2( true );
+						}
+
+						//	...
+						cb2( false );
+					}
+				);
 				break;
 				
 			case 'has definition change':
-				// ['has definition change', ['BASE32', 'BASE32']]
-				var changed_address = args[0];
-				var new_definition_chash = args[1];
-				if (changed_address === 'this address')
+				//	['has definition change', ['BASE32', 'BASE32']]
+				var changed_address		= args[ 0 ];
+				var new_definition_chash	= args[ 1 ];
+
+				if ( changed_address === 'this address' )
+				{
 					changed_address = address;
-				if (new_definition_chash === 'this address')
+				}
+				if ( new_definition_chash === 'this address' )
+				{
 					new_definition_chash = address;
-				cb2(objUnit.messages.some(function(message){
-					if (message.app !== 'address_definition_change')
-						return false;
-					if (!message.payload)
-						return false;
-					if (message.payload.definition_chash !== new_definition_chash)
-						return false;
-					var address = message.payload.address || objUnit.authors[0].address;
-					return (address === changed_address);
-				}));
+				}
+
+				//	...
+				cb2
+				(
+					objUnit.messages.some
+					(
+						function( message )
+						{
+							if ( message.app !== 'address_definition_change' )
+							{
+								return false;
+							}
+							if ( ! message.payload )
+							{
+								return false;
+							}
+							if ( message.payload.definition_chash !== new_definition_chash )
+							{
+								return false;
+							}
+
+							//	...
+							var address = message.payload.address || objUnit.authors[0].address;
+							return ( address === changed_address );
+						}
+					)
+				);
 				break;
-				
 		}
-	}
-	
-	
-	function augmentMessagesAndContinue(next){
-		if (!objValidationState.arrAugmentedMessages)
-			augmentMessages(next);
-		else
-			next();
-	}
-	
-	function augmentMessagesAndEvaluateFilter(op, filter, handleResult){
-		function doEvaluateFilter(){
-			//log.consoleLog("augmented: ", objValidationState.arrAugmentedMessages[0].payload);
-			evaluateFilter(op, filter, handleResult);
-		}
-		if (!objValidationState.arrAugmentedMessages && filter.what === "input" && (filter.address || "own_funds" in filter || typeof filter.amount === "number" || typeof filter.amount_at_least === "number" || typeof filter.amount_at_most === "number"))
-			augmentMessages(doEvaluateFilter);
-		else
-			doEvaluateFilter();
-	}
-	
-	
-	function evaluateFilter(op, filter, handleResult){
-		var filter_address = filter.address;
-		if (filter_address === 'this address')
-			filter_address = address;
-		var arrFoundObjects = [];
-		for (var i=0; i<objUnit.messages.length; i++){
-			var message = objUnit.messages[i];
-			if (message.app !== "payment" || !message.payload) // we consider only public payments
-				continue;
-			var payload = message.payload;
-			if (filter.asset){
-				if (filter.asset === "base"){
-					if (payload.asset)
-						continue;
-				}
-				else if (filter.asset === "this asset"){
-					if (payload.asset !== this_asset)
-						continue;
-				}
-				else{
-					if (payload.asset !== filter.asset)
-						continue;
-				}
-			}
-			if (filter.what === "input"){
-				for (var j=0; j<payload.inputs.length; j++){
-					var input = payload.inputs[j];
-					if (input.type === "headers_commission" || input.type === "witnessing")
-						continue;
-					if (filter.type){
-						var type = input.type || "transfer";
-						if (type !== filter.type)
-							continue;
-					}
-					if (filter.own_funds && objValidationState.arrAugmentedMessages[i].payload.inputs[j].address !== address)
-						continue;
-					if (filter.own_funds === false && objValidationState.arrAugmentedMessages[i].payload.inputs[j].address === address)
-						continue;
-					if (filter_address && objValidationState.arrAugmentedMessages[i].payload.inputs[j].address !== filter_address)
-						continue;
-					if (filter.amount && objValidationState.arrAugmentedMessages[i].payload.inputs[j].amount !== filter.amount)
-						continue;
-					if (filter.amount_at_least && objValidationState.arrAugmentedMessages[i].payload.inputs[j].amount < filter.amount_at_least)
-						continue;
-					if (filter.amount_at_most && objValidationState.arrAugmentedMessages[i].payload.inputs[j].amount > filter.amount_at_most)
-						continue;
-					arrFoundObjects.push(objValidationState.arrAugmentedMessages[i].payload.inputs[j]);
-				}
-			} // input
-			else if (filter.what === "output"){
-				for (var j=0; j<payload.outputs.length; j++){
-					var output = payload.outputs[j];
-					if (filter_address && output.address !== filter_address)
-						continue;
-					if (filter.amount && output.amount !== filter.amount)
-						continue;
-					if (filter.amount_at_least && output.amount < filter.amount_at_least)
-						continue;
-					if (filter.amount_at_most && output.amount > filter.amount_at_most)
-						continue;
-					arrFoundObjects.push(output);
-				}
-			} // output
-		}
-		if (arrFoundObjects.length === 0)
-			return handleResult(false);
-		if (op === "has one" && arrFoundObjects.length === 1)
-			return handleResult(true);
-		if (op === "has" && arrFoundObjects.length > 0)
-			return handleResult(true, arrFoundObjects);
-		handleResult(false);
 	}
 
-	
-	function augmentMessages(onDone){
-		log.consoleLog("augmenting");
-		var arrAuthorAddresses = objUnit.authors.map(function(author){ return author.address; });
-		objValidationState.arrAugmentedMessages = _.cloneDeep(objUnit.messages);
-		async.eachSeries(
+	function augmentMessagesAndContinue( next )
+	{
+		if ( ! objValidationState.arrAugmentedMessages )
+		{
+			augmentMessages( next );
+		}
+		else
+		{
+			next();
+		}
+	}
+
+	function augmentMessagesAndEvaluateFilter( op, filter, handleResult )
+	{
+		function doEvaluateFilter()
+		{
+			//	log.consoleLog("augmented: ", objValidationState.arrAugmentedMessages[0].payload);
+			evaluateFilter( op, filter, handleResult );
+		}
+
+		if ( ! objValidationState.arrAugmentedMessages &&
+			filter.what === "input" &&
+			(
+				filter.address ||
+				"own_funds" in filter ||
+				typeof filter.amount === "number" ||
+				typeof filter.amount_at_least === "number" ||
+				typeof filter.amount_at_most === "number"
+			) )
+		{
+			augmentMessages( doEvaluateFilter );
+		}
+		else
+		{
+			doEvaluateFilter();
+		}
+	}
+
+	function evaluateFilter( op, filter, handleResult )
+	{
+		var filter_address	= filter.address;
+
+		if ( filter_address === 'this address' )
+		{
+			filter_address = address;
+		}
+
+		//	...
+		var arrFoundObjects = [];
+
+		for ( var i = 0; i < objUnit.messages.length; i++ )
+		{
+			var message	= objUnit.messages[ i ];
+			if ( message.app !== "payment" || ! message.payload )
+			{
+				//	we consider only public payments
+				continue;
+			}
+
+			var payload = message.payload;
+			if ( filter.asset )
+			{
+				if ( filter.asset === "base" )
+				{
+					if ( payload.asset )
+					{
+						continue;
+					}
+				}
+				else if ( filter.asset === "this asset" )
+				{
+					if ( payload.asset !== this_asset )
+					{
+						continue;
+					}
+				}
+				else
+				{
+					if ( payload.asset !== filter.asset )
+					{
+						continue;
+					}
+				}
+			}
+			if ( filter.what === "input" )
+			{
+				for ( var j = 0; j < payload.inputs.length; j++ )
+				{
+					var input	= payload.inputs[ j ];
+
+					if ( input.type === "headers_commission" || input.type === "witnessing" )
+					{
+						continue;
+					}
+					if ( filter.type )
+					{
+						var type = input.type || "transfer";
+						if ( type !== filter.type )
+						{
+							continue;
+						}
+					}
+					if ( filter.own_funds &&
+						objValidationState.arrAugmentedMessages[ i ].payload.inputs[ j ].address !== address )
+					{
+						continue;
+					}
+					if ( filter.own_funds === false &&
+						objValidationState.arrAugmentedMessages[ i ].payload.inputs[ j ].address === address )
+					{
+						continue;
+					}
+					if ( filter_address &&
+						objValidationState.arrAugmentedMessages[ i ].payload.inputs[ j ].address !== filter_address )
+					{
+						continue;
+					}
+					if ( filter.amount &&
+						objValidationState.arrAugmentedMessages[ i ].payload.inputs[ j ].amount !== filter.amount )
+					{
+						continue;
+					}
+					if ( filter.amount_at_least &&
+						objValidationState.arrAugmentedMessages[i].payload.inputs[j].amount < filter.amount_at_least)
+					{
+						continue;
+					}
+					if (filter.amount_at_most &&
+						objValidationState.arrAugmentedMessages[i].payload.inputs[j].amount > filter.amount_at_most)
+					{
+						continue;
+					}
+
+					//	...
+					arrFoundObjects.push
+					(
+						objValidationState.arrAugmentedMessages[ i ].payload.inputs[ j ]
+					);
+				}
+				// input
+
+			}
+			else if ( filter.what === "output" )
+			{
+				for ( var j = 0; j < payload.outputs.length; j++ )
+				{
+					var output	= payload.outputs[ j ];
+					if ( filter_address &&
+						output.address !== filter_address )
+					{
+						continue;
+					}
+					if ( filter.amount && output.amount !== filter.amount )
+					{
+						continue;
+					}
+					if ( filter.amount_at_least &&
+						output.amount < filter.amount_at_least )
+					{
+						continue;
+					}
+					if ( filter.amount_at_most &&
+						output.amount > filter.amount_at_most )
+					{
+						continue;
+					}
+
+					//	...
+					arrFoundObjects.push( output );
+				}
+
+				// output
+
+			}
+		}
+
+		if ( arrFoundObjects.length === 0 )
+		{
+			return handleResult( false );
+		}
+		if ( op === "has one" && arrFoundObjects.length === 1 )
+		{
+			return handleResult( true );
+		}
+		if ( op === "has" && arrFoundObjects.length > 0 )
+		{
+			return handleResult( true, arrFoundObjects );
+		}
+
+		//	...
+		handleResult( false );
+	}
+
+	function augmentMessages( onDone )
+	{
+		log.consoleLog( "augmenting" );
+		var arrAuthorAddresses	= objUnit.authors.map
+		(
+			function( author )
+			{
+				return author.address;
+			}
+		);
+		objValidationState.arrAugmentedMessages	= _.cloneDeep( objUnit.messages );
+
+		//	...
+		async.eachSeries
+		(
 			objValidationState.arrAugmentedMessages,
-			function(message, cb3){
-				if (message.app !== 'payment' || !message.payload) // we are looking only for public payments
+			function( message, cb3 )
+			{
+				if ( message.app !== 'payment' || ! message.payload )
+				{
+					//	we are looking only for public payments
 					return cb3();
-				var payload = message.payload;
-				if (!payload.inputs) // skip now, will choke when checking the message
+				}
+
+				//	...
+				var payload	= message.payload;
+				if ( ! payload.inputs )
+				{
+					//	skip now, will choke when checking the message
 					return cb3();
+				}
+
+				//	...
 				log.consoleLog("augmenting inputs");
-				async.eachSeries(
+				async.eachSeries
+				(
 					payload.inputs,
-					function(input, cb4){
-						log.consoleLog("input", input);
-						if (input.type === "issue"){
-							if (!input.address)
-								input.address = arrAuthorAddresses[0];
+					function( input, cb4 )
+					{
+						log.consoleLog( "input", input );
+						if ( input.type === "issue" )
+						{
+							if ( ! input.address )
+							{
+								input.address = arrAuthorAddresses[ 0 ];
+							}
+
+							//	...
 							cb4();
 						}
-						else if (!input.type){
-							input.type = "transfer";
-							conn.query(
+						else if ( ! input.type )
+						{
+							input.type	= "transfer";
+
+							//	...
+							conn.query
+							(
 								"SELECT amount, address FROM outputs WHERE unit=? AND message_index=? AND output_index=?", 
-								[input.unit, input.message_index, input.output_index],
-								function(rows){
-									if (rows.length === 1){
-										log.consoleLog("src", rows[0]);
-										input.amount = rows[0].amount;
-										input.address = rows[0].address;
-									} // else will choke when checking the message
+								[
+									input.unit,
+									input.message_index,
+									input.output_index
+								],
+								function( rows )
+								{
+									if ( rows.length === 1 )
+									{
+										log.consoleLog( "src", rows[ 0 ] );
+
+										//	...
+										input.amount	= rows[ 0 ].amount;
+										input.address	= rows[ 0 ].address;
+									}
 									else
-										log.consoleLog(rows.length+" src outputs found");
+									{
+										//	else will choke when checking the message
+										log.consoleLog( rows.length + " src outputs found" );
+									}
+
+									//	...
 									cb4();
 								}
 							);
 						}
-						else // ignore headers commissions and witnessing
+						else
+						{
+							//	ignore headers commissions and witnessing
 							cb4();
+						}
 					},
 					cb3
 				);
@@ -1892,102 +2191,178 @@ function validateAuthentifiers( conn, address, this_asset, arrDefinition, objUni
 			onDone
 		);
 	}
-	
-	var bAssetCondition = (assocAuthentifiers === null);
-	if (bAssetCondition && address || !bAssetCondition && this_asset)
-		throw Error("incompatible params");
-	var fatal_error = null;
-	var arrUsedPaths = [];
-	
-	// we need to re-validate the definition every time, not just the first time we see it, because:
-	// 1. in case a referenced address was redefined, complexity might change and exceed the limit
-	// 2. redefinition of a referenced address might introduce loops that will drive complexity to infinity
-	// 3. if an inner address was redefined by keychange but the definition for the new keyset not supplied before last ball, the address 
-	// becomes temporarily unusable
-	validateDefinition(conn, arrDefinition, objUnit, objValidationState, Object.keys(assocAuthentifiers), bAssetCondition, function(err){
-		if (err)
-			return cb(err);
-		//log.consoleLog("eval def");
-		evaluate(arrDefinition, 'r', function(res){
-			if (fatal_error)
-				return cb(fatal_error);
-			if (!bAssetCondition && arrUsedPaths.length !== Object.keys(assocAuthentifiers).length)
-				return cb("some authentifiers are not used, res="+res+", used="+arrUsedPaths+", passed="+JSON.stringify(assocAuthentifiers));
-			cb(null, res);
-		});
-	});
+
+	//	...
+	var bAssetCondition	= ( assocAuthentifiers === null );
+	if ( bAssetCondition && address || ! bAssetCondition && this_asset )
+	{
+		throw Error( "incompatible params" );
+	}
+
+	var fatal_error		= null;
+	var arrUsedPaths	= [];
+
+	//
+	//	we need to re-validate the definition every time, not just the first time we see it, because:
+	//	1. in case a referenced address was redefined, complexity might change and exceed the limit
+	//	2. redefinition of a referenced address might introduce loops that will drive complexity to infinity
+	//	3. if an inner address was redefined by keychange but the definition for the new keyset not supplied before last ball, the address
+	// 	becomes temporarily unusable
+	//
+	validateDefinition
+	(
+		conn,
+		arrDefinition,
+		objUnit,
+		objValidationState,
+		Object.keys( assocAuthentifiers ),
+		bAssetCondition,
+		function( err )
+		{
+			if ( err )
+				return cb( err );
+
+			//log.consoleLog("eval def");
+			evaluate
+			(
+				arrDefinition,
+				'r',
+				function( res )
+				{
+					if ( fatal_error )
+					{
+						return cb( fatal_error );
+					}
+
+					if ( ! bAssetCondition &&
+						arrUsedPaths.length !== Object.keys( assocAuthentifiers ).length )
+					{
+						return cb( "some authentifiers are not used, res=" + res + ", used=" + arrUsedPaths + ", passed=" + JSON.stringify( assocAuthentifiers ) );
+					}
+
+					//	...
+					cb( null, res );
+				}
+			);
+		}
+	);
 }
 
-function replaceInTemplate(arrTemplate, params){
-	function replaceInVar(x){
-		switch (typeof x){
+function replaceInTemplate( arrTemplate, params )
+{
+	function replaceInVar( x )
+	{
+		switch ( typeof x )
+		{
 			case 'number': 
 			case 'boolean': 
 				return x;
 			case 'string':
-				// searching for pattern "$name"
-				if (x.charAt(0) !== '$')
+				//	searching for pattern "$name"
+				if ( x.charAt( 0 ) !== '$' )
+				{
 					return x;
-				var name = x.substring(1);
-				if (!(name in params))
-					throw new NoVarException("variable "+name+" not specified, template "+JSON.stringify(arrTemplate)+", params "+JSON.stringify(params));
-				return params[name]; // may change type if params[name] is not a string
+				}
+
+				//	...
+				var name = x.substring( 1 );
+				if ( ! ( name in params ) )
+				{
+					throw new NoVarException
+					(
+						"variable " + name + " not specified, template " +
+						JSON.stringify( arrTemplate ) + ", params " +
+						JSON.stringify( params )
+					);
+				}
+
+				// may change type if params[name] is not a string
+				return params[ name ];
+
 			case 'object':
-				if (Array.isArray(x))
-					for (var i=0; i<x.length; i++)
-						x[i] = replaceInVar(x[i]);
+				if ( Array.isArray( x ) )
+				{
+					for ( var i = 0; i < x.length; i ++ )
+					{
+						x[ i ] = replaceInVar( x[ i ] );
+					}
+				}
 				else
-					for (var key in x)
-						x[key] = replaceInVar(x[key]);
+				{
+					for ( var key in x )
+					{
+						x[ key ] = replaceInVar( x[ key ] );
+					}
+				}
+
+				//	...
 				return x;
 			default:
-				throw Error("unknown type");
+				throw Error( "unknown type" );
 		}
 	}
-	return replaceInVar(_.cloneDeep(arrTemplate));
+
+	//	...
+	return replaceInVar( _.cloneDeep( arrTemplate ) );
 }
 
-function NoVarException(error){
-	this.error = error;
-	this.toString = function(){
+function NoVarException( error )
+{
+	this.error	= error;
+	this.toString	= function()
+	{
 		return this.error;
 	};
 }
 
-function hasReferences(arrDefinition){
+function hasReferences( arrDefinition )
+{
+	function evaluate( arr )
+	{
+		var op		= arr[ 0 ];
+		var args	= arr[ 1 ];
 	
-	function evaluate(arr){
-		var op = arr[0];
-		var args = arr[1];
-	
-		switch(op){
+		switch( op )
+		{
 			case 'or':
 			case 'and':
-				for (var i=0; i<args.length; i++)
-					if (evaluate(args[i]))
+				for ( var i = 0; i < args.length; i++ )
+				{
+					if ( evaluate( args[ i ] ) )
+					{
 						return true;
+					}
+				}
 				return false;
 				
 			case 'r of set':
-				for (var i=0; i<args.set.length; i++)
-					if (evaluate(args.set[i]))
+				for ( var i = 0; i < args.set.length; i++ )
+				{
+					if ( evaluate( args.set[ i ] ) )
+					{
 						return true;
+					}
+				}
 				return false;
 				
 			case 'weighted and':
-				for (var i=0; i<args.set.length; i++)
-					if (evaluate(args.set[i].value))
+				for ( var i = 0; i < args.set.length; i++ )
+				{
+					if ( evaluate( args.set[ i ].value ) )
+					{
 						return true;
+					}
+				}
 				return false;
-				
+
 			case 'sig':
 			case 'hash':
 			case 'cosigned by':
 				return false;
 				
 			case 'not':
-				return evaluate(args);
-				
+				return evaluate( args );
+
 			case 'address':
 			case 'definition template':
 			case 'seen address':
@@ -2004,16 +2379,22 @@ function hasReferences(arrDefinition){
 				return true;
 				
 			default:
-				throw Error("unknown op: "+op);
+				throw Error( "unknown op: " + op );
 		}
 	}
-	
-	return evaluate(arrDefinition);
+
+	//	...
+	return evaluate( arrDefinition );
 }
 
-exports.validateDefinition = validateDefinition;
-exports.evaluateAssetCondition = evaluateAssetCondition;
-exports.validateAuthentifiers = validateAuthentifiers;
-exports.hasReferences = hasReferences;
-exports.replaceInTemplate = replaceInTemplate;
 
+
+
+/**
+ *	exports
+ */
+exports.validateDefinition		= validateDefinition;
+exports.evaluateAssetCondition		= evaluateAssetCondition;
+exports.validateAuthentifiers		= validateAuthentifiers;
+exports.hasReferences			= hasReferences;
+exports.replaceInTemplate		= replaceInTemplate;
