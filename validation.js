@@ -288,18 +288,21 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
+						profiler.stop( 'validation-checkDuplicate' );
 						profiler.start();
+
 						checkDuplicate(conn, objUnit.unit, cb);
 					},
 					function( cb )
 					{
-						profiler.stop('validation-checkDuplicate');
+						profiler.stop( 'validation-checkDuplicate' );
 						profiler.start();
+
 						objUnit.content_hash ? cb() : validateHeadersCommissionRecipients(objUnit, cb);
 					},
 					function( cb )
 					{
-						profiler.stop('validation-hc-recipients');
+						profiler.stop( 'validation-hc-recipients' );
 						profiler.start();
 
 						! objUnit.parent_units
@@ -308,7 +311,7 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop('validation-hash-tree');
+						profiler.stop( 'validation-hash-tree' );
 						profiler.start();
 
 						! objUnit.parent_units
@@ -317,7 +320,7 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop('validation-parents');
+						profiler.stop( 'validation-parents' );
 						profiler.start();
 
 						! objJoint.skiplist_units
@@ -326,24 +329,32 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop('validation-skiplist');
+						profiler.stop( 'validation-skiplist' );
+
+						//	...
 						validateWitnesses( conn, objUnit, objValidationState, cb );
 					},
 					function( cb )
 					{
 						profiler.start();
+
+						//	...
 						validateAuthors( conn, objUnit.authors, objUnit, objValidationState, cb );
 					},
 					function( cb )
 					{
-						profiler.stop('validation-authors');
+						profiler.stop( 'validation-authors' );
 						profiler.start();
-						objUnit.content_hash ? cb() : validateMessages( conn, objUnit.messages, objUnit, objValidationState, cb );
+
+						//	...
+						objUnit.content_hash
+							? cb()
+							: validateMessages( conn, objUnit.messages, objUnit, objValidationState, cb );
 					}
 				],
 				function( err )
 				{
-					profiler.stop('validation-messages');
+					profiler.stop( 'validation-messages' );
 
 					if ( err )
 					{
