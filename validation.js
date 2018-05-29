@@ -19,7 +19,7 @@ var constants			= require( './constants.js' );
 var ValidationUtils		= require( './validation_utils.js' );
 var Definition			= require( './definition.js' );
 var conf			= require( './conf.js' );
-var profiler			= require( './profiler.js' );
+var profilerex			= require( './profilerex.js' );
 var breadcrumbs			= require( './breadcrumbs.js' );
 
 var MAX_INT32			= Math.pow( 2, 31 ) - 1;
@@ -270,6 +270,8 @@ function validate( objJoint, callbacks )
 				[
 					function( cb )
 					{
+						profilerex.begin( 'validation-takeConnectionFromPool' );
+
 						db.takeConnectionFromPool
 						(
 							function( new_conn )
@@ -288,22 +290,24 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-checkDuplicate' );
-						profiler.start();
+						profilerex.end( 'validation-takeConnectionFromPool' );
+						profilerex.begin( 'validation-checkDuplicate' );
 
-						checkDuplicate(conn, objUnit.unit, cb);
+						checkDuplicate( conn, objUnit.unit, cb );
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-checkDuplicate' );
-						profiler.start();
+						profilerex.end( 'validation-checkDuplicate' );
+						profilerex.begin( 'validation-validateHeadersCommissionRecipients' );
 
-						objUnit.content_hash ? cb() : validateHeadersCommissionRecipients(objUnit, cb);
+						objUnit.content_hash
+							? cb()
+							: validateHeadersCommissionRecipients(objUnit, cb);
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-hc-recipients' );
-						profiler.start();
+						profilerex.end( 'validation-validateHeadersCommissionRecipients' );
+						profilerex.begin( 'validation-validateHashTree' );
 
 						! objUnit.parent_units
 							? cb()
@@ -311,8 +315,8 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-hash-tree' );
-						profiler.start();
+						profilerex.end( 'validation-validateHashTree' );
+						profilerex.begin( 'validation-validateParents' );
 
 						! objUnit.parent_units
 							? cb()
@@ -320,8 +324,8 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-parents' );
-						profiler.start();
+						profilerex.end( 'validation-validateParents' );
+						profilerex.begin( 'validation-validateSkiplist' );
 
 						! objJoint.skiplist_units
 							? cb()
@@ -329,22 +333,24 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-skiplist' );
+						profilerex.end( 'validation-validateSkiplist' );
+						profilerex.begin( 'validation-validateWitnesses' );
 
 						//	...
 						validateWitnesses( conn, objUnit, objValidationState, cb );
 					},
 					function( cb )
 					{
-						profiler.start();
+						profilerex.end( 'validation-validateWitnesses' );
+						profilerex.begin( 'validation-validateAuthors' );
 
 						//	...
 						validateAuthors( conn, objUnit.authors, objUnit, objValidationState, cb );
 					},
 					function( cb )
 					{
-						profiler.stop( 'validation-authors' );
-						profiler.start();
+						profilerex.end( 'validation-validateAuthors' );
+						profilerex.begin( 'validation-validateMessages' );
 
 						//	...
 						objUnit.content_hash
@@ -354,7 +360,7 @@ function validate( objJoint, callbacks )
 				],
 				function( err )
 				{
-					profiler.stop( 'validation-messages' );
+					profilerex.end( 'validation-validateMessages' );
 
 					if ( err )
 					{
@@ -400,7 +406,7 @@ function validate( objJoint, callbacks )
 					}
 					else
 					{
-						profiler.start();
+						profilerex.begin( 'validation-COMMIT' );
 
 						//	...
 						conn.query
@@ -408,7 +414,9 @@ function validate( objJoint, callbacks )
 							"COMMIT", function()
 							{
 								conn.release();
-								profiler.stop( 'validation-commit' );
+
+								//	...
+								profilerex.end( 'validation-COMMIT' );
 
 								if ( objJoint.unsigned )
 								{
@@ -1021,7 +1029,7 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 
 	function checkNoReferencesInWitnessAddressDefinitions( arrWitnesses )
 	{
-		profiler.start();
+		profilerex.begin( 'validation-checkNoReferencesInWitnessAddressDefinitions' );
 
 		//	correct the query planner
 		var cross	= ( conf.storage === 'sqlite' ) ? 'CROSS' : '';
@@ -1055,7 +1063,9 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 			],
 			function( rows )
 			{
-				profiler.stop( 'validation-witnesses-no-refs' );
+				//profiler.stop( 'validation-witnesses-no-refs' );
+				profilerex.end( 'validation-checkNoReferencesInWitnessAddressDefinitions' );
+
 				( rows.length > 0 )
 					? callback( "some witnesses have references in their addresses" )
 					: checkWitnessedLevelDidNotRetreat( arrWitnesses );
@@ -1100,7 +1110,8 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 
 
 	//	...
-	profiler.start();
+	profilerex.begin( 'validation-witnesses-read-list' );
+
 	var last_ball_unit	= objUnit.last_ball_unit;
 
 	if ( typeof objUnit.witness_list_unit === "string" )
@@ -1146,7 +1157,7 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 						}
 
 						//	...
-						profiler.stop( 'validation-witnesses-read-list' );
+						profilerex.end( 'validation-witnesses-read-list' );
 						validateWitnessListMutations( arrWitnesses );
 					},
 					true
@@ -1186,6 +1197,10 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 			return;
 		}
 
+
+		//	...
+		profilerex.begin( 'validation-witnesses-stable' );
+
 		//	check that all witnesses are already known and their units are good and stable
 		conn.query
 		(
@@ -1205,7 +1220,9 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 				}
 
 				//	...
-				profiler.stop( 'validation-witnesses-stable' );
+				profilerex.end( 'validation-witnesses-stable' );
+
+				//	...
 				validateWitnessListMutations( objUnit.witnesses );
 			}
 		);

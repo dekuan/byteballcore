@@ -8,14 +8,34 @@ let m_oData		= {};
 let m_oDefaultItem	= {
 	count		: 0,
 	time_start	: 0,
-	time_end	: 0,
 	time_used	: 0,
 	qps		: 0
 };
 
 
 //	...
-function tick( sTag )
+function begin( sTag )
+{
+	//	...
+	sTag	= String( sTag );
+
+	if ( 0 === sTag.length )
+	{
+		throw Error( "profiler, ex, invalid tag " );
+	}
+
+	if ( ! m_oData.hasOwnProperty( sTag ) )
+	{
+		m_oData[ sTag ]	= _.cloneDeep( m_oDefaultItem );
+	}
+
+	//	...
+	m_oData[ sTag ].time_start	= Date.now();
+	m_oData[ sTag ].time_used	= 0;
+	m_oData[ sTag ].qps		= 0;
+}
+
+function end( sTag )
 {
 	//	...
 	sTag	= String( sTag );
@@ -33,10 +53,12 @@ function tick( sTag )
 
 	//	...
 	m_oData[ sTag ].count ++;
-	m_oData[ sTag ].time_end	= Date.now();
-	m_oData[ sTag ].time_used	= m_oData[ sTag ].time_end - m_oData[ sTag ].time_start;
+	m_oData[ sTag ].time_used	= Date.now() - m_oData[ sTag ].time_start;
 	m_oData[ sTag ].qps		= ( m_oData[ sTag ].time_used / m_oData[ sTag ].count ).toFixed( 2 );
 }
+
+
+
 
 function print()
 {
@@ -141,5 +163,6 @@ setInterval
 );
 
 
-exports.tick		= tick;	//	function(){};
+exports.begin		= begin;	//	function(){};
+exports.end		= end;		//	function(){};
 exports.print		= print;
