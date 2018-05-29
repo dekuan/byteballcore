@@ -2297,6 +2297,7 @@ function replaceInTemplate( arrTemplate, params )
 
 				//	...
 				return x;
+
 			default:
 				throw Error( "unknown type" );
 		}

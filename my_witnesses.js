@@ -182,6 +182,6 @@ function insertWitnesses( arrWitnesses, onDone )
 /**
  *	exports
  */
-exports.readMyWitnesses	= readMyWitnesses;
-exports.replaceWitness	= replaceWitness;
-exports.insertWitnesses	= insertWitnesses;
+exports.readMyWitnesses		= readMyWitnesses;
+exports.replaceWitness		= replaceWitness;
+exports.insertWitnesses		= insertWitnesses;
