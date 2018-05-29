@@ -291,344 +291,733 @@ function validate( objJoint, callbacks )
 						profiler.start();
 						checkDuplicate(conn, objUnit.unit, cb);
 					},
-				function(cb){
-					profiler.stop('validation-checkDuplicate');
-					profiler.start();
-					objUnit.content_hash ? cb() : validateHeadersCommissionRecipients(objUnit, cb);
-				},
-				function(cb){
-					profiler.stop('validation-hc-recipients');
-					profiler.start();
-					!objUnit.parent_units
-						? cb()
-						: validateHashTree(conn, objJoint, objValidationState, cb);
-				},
-				function(cb){
-					profiler.stop('validation-hash-tree');
-					profiler.start();
-					!objUnit.parent_units
-						? cb()
-						: validateParents(conn, objJoint, objValidationState, cb);
-				},
-				function(cb){
-					profiler.stop('validation-parents');
-					profiler.start();
-					!objJoint.skiplist_units
-						? cb()
-						: validateSkiplist(conn, objJoint.skiplist_units, cb);
-				},
-				function(cb){
-					profiler.stop('validation-skiplist');
-					validateWitnesses(conn, objUnit, objValidationState, cb);
-				},
-				function(cb){
-					profiler.start();
-					validateAuthors(conn, objUnit.authors, objUnit, objValidationState, cb);
-				},
-				function(cb){
-					profiler.stop('validation-authors');
-					profiler.start();
-					objUnit.content_hash ? cb() : validateMessages(conn, objUnit.messages, objUnit, objValidationState, cb);
+					function( cb )
+					{
+						profiler.stop('validation-checkDuplicate');
+						profiler.start();
+						objUnit.content_hash ? cb() : validateHeadersCommissionRecipients(objUnit, cb);
+					},
+					function( cb )
+					{
+						profiler.stop('validation-hc-recipients');
+						profiler.start();
+
+						! objUnit.parent_units
+							? cb()
+							: validateHashTree( conn, objJoint, objValidationState, cb );
+					},
+					function( cb )
+					{
+						profiler.stop('validation-hash-tree');
+						profiler.start();
+
+						! objUnit.parent_units
+							? cb()
+							: validateParents( conn, objJoint, objValidationState, cb );
+					},
+					function( cb )
+					{
+						profiler.stop('validation-parents');
+						profiler.start();
+
+						! objJoint.skiplist_units
+							? cb()
+							: validateSkiplist( conn, objJoint.skiplist_units, cb );
+					},
+					function( cb )
+					{
+						profiler.stop('validation-skiplist');
+						validateWitnesses( conn, objUnit, objValidationState, cb );
+					},
+					function( cb )
+					{
+						profiler.start();
+						validateAuthors( conn, objUnit.authors, objUnit, objValidationState, cb );
+					},
+					function( cb )
+					{
+						profiler.stop('validation-authors');
+						profiler.start();
+						objUnit.content_hash ? cb() : validateMessages( conn, objUnit.messages, objUnit, objValidationState, cb );
+					}
+				],
+				function( err )
+				{
+					profiler.stop('validation-messages');
+
+					if ( err )
+					{
+						conn.query
+						(
+							"ROLLBACK",
+							function()
+							{
+								conn.release();
+								unlock();
+
+								if ( typeof err === "object" )
+								{
+									if ( err.error_code === "unresolved_dependency" )
+									{
+										callbacks.ifNeedParentUnits( err.arrMissingUnits );
+									}
+									else if ( err.error_code === "need_hash_tree" )
+									{
+										//	need to download hash tree to catch up
+										callbacks.ifNeedHashTree();
+									}
+									else if ( err.error_code === "invalid_joint" )
+									{
+										//	ball found in hash tree but with another unit
+										callbacks.ifJointError( err.message );
+									}
+									else if ( err.error_code === "transient" )
+									{
+										callbacks.ifTransientError( err.message );
+									}
+									else
+									{
+										throw Error( "unknown error code" );
+									}
+								}
+								else
+								{
+									callbacks.ifUnitError( err );
+								}
+							}
+						);
+					}
+					else
+					{
+						profiler.start();
+
+						//	...
+						conn.query
+						(
+							"COMMIT", function()
+							{
+								conn.release();
+								profiler.stop( 'validation-commit' );
+
+								if ( objJoint.unsigned )
+								{
+									unlock();
+									callbacks.ifOkUnsigned( objValidationState.sequence === 'good' );
+								}
+								else
+								{
+									callbacks.ifOk( objValidationState, unlock );
+								}
+							}
+						);
+					}
 				}
-			], 
-			function(err){
-				profiler.stop('validation-messages');
-				if(err){
-					conn.query("ROLLBACK", function(){
-						conn.release();
-						unlock();
-						if (typeof err === "object"){
-							if (err.error_code === "unresolved_dependency")
-								callbacks.ifNeedParentUnits(err.arrMissingUnits);
-							else if (err.error_code === "need_hash_tree") // need to download hash tree to catch up
-								callbacks.ifNeedHashTree();
-							else if (err.error_code === "invalid_joint") // ball found in hash tree but with another unit
-								callbacks.ifJointError(err.message);
-							else if (err.error_code === "transient")
-								callbacks.ifTransientError(err.message);
-							else
-								throw Error("unknown error code");
-						}
-						else
-							callbacks.ifUnitError(err);
-					});
-				}
-				else{
-					profiler.start();
-					conn.query("COMMIT", function(){
-						conn.release();
-						profiler.stop('validation-commit');
-						if (objJoint.unsigned){
-							unlock();
-							callbacks.ifOkUnsigned(objValidationState.sequence === 'good');
-						}
-						else
-							callbacks.ifOk(objValidationState, unlock);
-					});
-				}
-			}
-		); // async.series
-		
-	});
-	
+			);	//	async.series
+		}
+	);
 }
+
+
 
 
 
 //  ----------------    
 
 
-function checkDuplicate(conn, unit, cb){
-	conn.query("SELECT 1 FROM units WHERE unit=?", [unit], function(rows){
-		if (rows.length === 0) 
-			return cb();
-		cb("unit "+unit+" already exists");
-	});
-}
-
-function validateHashTree(conn, objJoint, objValidationState, callback){
-	if (!objJoint.ball)
-		return callback();
-	var objUnit = objJoint.unit;
-	conn.query("SELECT unit FROM hash_tree_balls WHERE ball=?", [objJoint.ball], function(rows){
-		if (rows.length === 0) 
-			return callback({error_code: "need_hash_tree", message: "ball "+objJoint.ball+" is not known in hash tree"});
-		if (rows[0].unit !== objUnit.unit)
-			return callback(createJointError("ball "+objJoint.ball+" unit "+objUnit.unit+" contradicts hash tree"));
-		conn.query(
-			"SELECT ball FROM hash_tree_balls WHERE unit IN(?) \n\
-			UNION \n\
-			SELECT ball FROM balls WHERE unit IN(?) \n\
-			ORDER BY ball",
-			[objUnit.parent_units, objUnit.parent_units],
-			function(prows){
-				if (prows.length !== objUnit.parent_units.length)
-					return callback(createJointError("some parents not found in balls nor in hash tree")); // while the child is found in hash tree
-				var arrParentBalls = prows.map(function(prow){ return prow.ball; });
-				if (!objJoint.skiplist_units)
-					return validateBallHash();
-				conn.query(
-					"SELECT ball FROM hash_tree_balls WHERE unit IN(?) \n\
-					UNION \n\
-					SELECT ball FROM balls WHERE unit IN(?) \n\
-					ORDER BY ball", 
-					[objJoint.skiplist_units, objJoint.skiplist_units], 
-					function(srows){
-						if (srows.length !== objJoint.skiplist_units.length)
-							return callback(createJointError("some skiplist balls not found"));
-						objValidationState.arrSkiplistBalls = srows.map(function(srow){ return srow.ball; });
-						validateBallHash();
-					}
-				);
-			
-				function validateBallHash(){
-					var hash = objectHash.getBallHash(objUnit.unit, arrParentBalls, objValidationState.arrSkiplistBalls, !!objUnit.content_hash);
-					if (hash !== objJoint.ball)
-						return callback(createJointError("ball hash is wrong"));
-					callback();
-				}
+function checkDuplicate( conn, unit, cb )
+{
+	conn.query
+	(
+		"SELECT 1 FROM units WHERE unit=?",
+		[
+			unit
+		],
+		function( rows )
+		{
+			if ( rows.length === 0 )
+			{
+				return cb();
 			}
-		);
-	});
-}
 
-// we cannot verify that skiplist units lie on MC if they are unstable yet, 
-// but if they don't, we'll get unmatching ball hash when the current unit reaches stability
-function validateSkiplist(conn, arrSkiplistUnits, callback){
-	var prev = "";
-	async.eachSeries(
-		arrSkiplistUnits,
-		function(skiplist_unit, cb){
-			//if (skiplist_unit.charAt(0) !== "0")
-			//    return cb("skiplist unit doesn't start with 0");
-			if (skiplist_unit <= prev)
-				return cb(createJointError("skiplist units not ordered"));
-			conn.query("SELECT unit, is_stable, is_on_main_chain, main_chain_index FROM units WHERE unit=?", [skiplist_unit], function(rows){
-				if (rows.length === 0)
-					return cb("skiplist unit "+skiplist_unit+" not found");
-				var objSkiplistUnitProps = rows[0];
-				// if not stable, can't check that it is on MC as MC is not stable in its area yet
-				if (objSkiplistUnitProps.is_stable === 1){
-					if (objSkiplistUnitProps.is_on_main_chain !== 1)
-						return cb("skiplist unit "+skiplist_unit+" is not on MC");
-					if (objSkiplistUnitProps.main_chain_index % 10 !== 0)
-						return cb("skiplist unit "+skiplist_unit+" MCI is not divisible by 10");
-				}
-				// we can't verify the choice of skiplist unit.
-				// If we try to find a skiplist unit now, we might find something matching on unstable part of MC.
-				// Again, we have another check when we reach stability
-				cb();
-			});
-		},
-		callback
+			cb( "unit " + unit + " already exists" );
+		}
 	);
 }
 
-function validateParents(conn, objJoint, objValidationState, callback){
-	
-	// avoid merging the obvious nonserials
-	function checkNoSameAddressInDifferentParents(){
-		if (objUnit.parent_units.length === 1)
-			return checkLastBallDidNotRetreat();
-		conn.query("SELECT address, COUNT(*) AS c FROM unit_authors WHERE unit IN(?) GROUP BY address HAVING c>1", [objUnit.parent_units], function(rows){
-			if (rows.length > 0)
-				return callback("some addresses found more than once in parents, e.g. "+rows[0].address);
-			return checkLastBallDidNotRetreat();
-		});
+function validateHashTree( conn, objJoint, objValidationState, callback )
+{
+	if ( ! objJoint.ball )
+	{
+		return callback();
 	}
-	
-	function checkLastBallDidNotRetreat(){
-		conn.query(
-			"SELECT MAX(lb_units.main_chain_index) AS max_parent_last_ball_mci \n\
-			FROM units JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
-			WHERE units.unit IN(?)",
-			[objUnit.parent_units],
-			function(rows){
-				var max_parent_last_ball_mci = rows[0].max_parent_last_ball_mci;
-				if (max_parent_last_ball_mci > objValidationState.last_ball_mci)
-					return callback("last ball mci must not retreat, parents: "+objUnit.parent_units.join(', '));
-				callback();
-			}
-		);
-	}
-	
+
 	var objUnit = objJoint.unit;
-	if (objUnit.parent_units.length > constants.MAX_PARENTS_PER_UNIT) // anti-spam
-		return callback("too many parents: "+objUnit.parent_units.length);
-	// obsolete: when handling a ball, we can't trust parent list before we verify ball hash
-	// obsolete: when handling a fresh unit, we can begin trusting parent list earlier, after we verify parents_hash
-	var createError = objJoint.ball ? createJointError : function(err){ return err; };
-	// after this point, we can trust parent list as it either agrees with parents_hash or agrees with hash tree
-	// hence, there are no more joint errors, except unordered parents or skiplist units
-	var last_ball = objUnit.last_ball;
-	var last_ball_unit = objUnit.last_ball_unit;
-	var prev = "";
-	var arrMissingParentUnits = [];
-	var arrPrevParentUnitProps = [];
-	objValidationState.max_parent_limci = 0;
-	var join = objJoint.ball ? 'LEFT JOIN balls USING(unit) LEFT JOIN hash_tree_balls ON units.unit=hash_tree_balls.unit' : '';
-	var field = objJoint.ball ? ', IFNULL(balls.ball, hash_tree_balls.ball) AS ball' : '';
-	async.eachSeries(
-		objUnit.parent_units, 
-		function(parent_unit, cb){
-			if (parent_unit <= prev)
-				return cb(createError("parent units not ordered"));
-			prev = parent_unit;
-			conn.query("SELECT units.*"+field+" FROM units "+join+" WHERE units.unit=?", [parent_unit], function(rows){
-				if (rows.length === 0){
-					arrMissingParentUnits.push(parent_unit);
-					return cb();
-				}
-				var objParentUnitProps = rows[0];
-				// already checked in validateHashTree that the parent ball is known, that's why we throw
-				if (objJoint.ball && objParentUnitProps.ball === null)
-					throw Error("no ball corresponding to parent unit "+parent_unit);
-				if (objParentUnitProps.latest_included_mc_index > objValidationState.max_parent_limci)
-					objValidationState.max_parent_limci = objParentUnitProps.latest_included_mc_index;
-				async.eachSeries(
-					arrPrevParentUnitProps, 
-					function(objPrevParentUnitProps, cb2){
-						graph.compareUnitsByProps(conn, objPrevParentUnitProps, objParentUnitProps, function(result){
-							(result === null) ? cb2() : cb2("parent unit "+parent_unit+" is related to one of the other parent units");
-						});
-					},
-					function(err){
-						if (err)
-							return cb(err);
-						arrPrevParentUnitProps.push(objParentUnitProps);
-						cb();
+
+	//	...
+	conn.query
+	(
+		"SELECT unit FROM hash_tree_balls WHERE ball=?",
+		[
+			objJoint.ball
+		],
+		function( rows )
+		{
+			if ( rows.length === 0 )
+			{
+				return callback
+				(
+					{
+						error_code	: "need_hash_tree",
+						message		: "ball " + objJoint.ball + " is not known in hash tree"
 					}
 				);
-			});
-		}, 
-		function(err){
-			if (err)
-				return callback(err);
-			if (arrMissingParentUnits.length > 0){
-				conn.query("SELECT error FROM known_bad_joints WHERE unit IN(?)", [arrMissingParentUnits], function(rows){
-					(rows.length > 0)
-						? callback("some of the unit's parents are known bad: "+rows[0].error)
-						: callback({error_code: "unresolved_dependency", arrMissingUnits: arrMissingParentUnits});
-				});
-				return;
 			}
-			// this is redundant check, already checked in validateHashTree()
-			if (objJoint.ball){
-				var arrParentBalls = arrPrevParentUnitProps.map(function(objParentUnitProps){ return objParentUnitProps.ball; }).sort();
-				//if (arrParentBalls.indexOf(null) === -1){
-					var hash = objectHash.getBallHash(objUnit.unit, arrParentBalls, objValidationState.arrSkiplistBalls, !!objUnit.content_hash);
-					if (hash !== objJoint.ball)
-						throw Error("ball hash is wrong"); // shouldn't happen, already validated in validateHashTree()
-				//}
+			if ( rows[ 0 ].unit !== objUnit.unit )
+			{
+				return callback
+				(
+					createJointError( "ball " + objJoint.ball + " unit " + objUnit.unit + " contradicts hash tree" )
+				);
 			}
-			conn.query(
-				"SELECT is_stable, is_on_main_chain, main_chain_index, ball, (SELECT MAX(main_chain_index) FROM units) AS max_known_mci \n\
-				FROM units LEFT JOIN balls USING(unit) WHERE unit=?", 
-				[last_ball_unit], 
-				function(rows){
-					if (rows.length !== 1) // at the same time, direct parents already received
-						return callback("last ball unit "+last_ball_unit+" not found");
-					var objLastBallUnitProps = rows[0];
-					// it can be unstable and have a received (not self-derived) ball
-					//if (objLastBallUnitProps.ball !== null && objLastBallUnitProps.is_stable === 0)
-					//    throw "last ball "+last_ball+" is unstable";
-					if (objLastBallUnitProps.ball === null && objLastBallUnitProps.is_stable === 1)
-						throw Error("last ball unit "+last_ball_unit+" is stable but has no ball");
-					if (objLastBallUnitProps.is_on_main_chain !== 1)
-						return callback("last ball "+last_ball+" is not on MC");
-					if (objLastBallUnitProps.ball && objLastBallUnitProps.ball !== last_ball)
-						return callback("last_ball "+last_ball+" and last_ball_unit "+last_ball_unit+" do not match");
-					objValidationState.last_ball_mci = objLastBallUnitProps.main_chain_index;
-					objValidationState.max_known_mci = objLastBallUnitProps.max_known_mci;
-					if (objValidationState.max_parent_limci < objValidationState.last_ball_mci)
-						return callback("last ball unit "+last_ball_unit+" is not included in parents, unit "+objUnit.unit);
-					if (objLastBallUnitProps.is_stable === 1){
-						// if it were not stable, we wouldn't have had the ball at all
-						if (objLastBallUnitProps.ball !== last_ball)
-							return callback("stable: last_ball "+last_ball+" and last_ball_unit "+last_ball_unit+" do not match");
-						if (objValidationState.last_ball_mci <= 1300000)
-							return checkNoSameAddressInDifferentParents();
+
+			//	...
+			conn.query
+			(
+				"SELECT ball FROM hash_tree_balls WHERE unit IN(?) \n\
+				UNION \n\
+				SELECT ball FROM balls WHERE unit IN(?) \n\
+				ORDER BY ball",
+				[
+					objUnit.parent_units,
+					objUnit.parent_units
+				],
+				function( prows )
+				{
+					if ( prows.length !== objUnit.parent_units.length )
+					{
+						//	while the child is found in hash tree
+						return callback
+						(
+							createJointError( "some parents not found in balls nor in hash tree" )
+						);
 					}
-					// Last ball is not stable yet in our view. Check if it is stable in view of the parents
-					main_chain.determineIfStableInLaterUnitsAndUpdateStableMcFlag(conn, last_ball_unit, objUnit.parent_units, objLastBallUnitProps.is_stable, function(bStable){
-						/*if (!bStable && objLastBallUnitProps.is_stable === 1){
-							var eventBus = require('./event_bus.js');
-							eventBus.emit('nonfatal_error', "last ball is stable, but not stable in parents, unit "+objUnit.unit, new Error());
-							return checkNoSameAddressInDifferentParents();
+
+					var arrParentBalls = prows.map
+					(
+						function( prow )
+						{
+							return prow.ball;
 						}
-						else */if (!bStable)
-							return callback(objUnit.unit+": last ball unit "+last_ball_unit+" is not stable in view of your parents "+objUnit.parent_units);
-						conn.query("SELECT ball FROM balls WHERE unit=?", [last_ball_unit], function(ball_rows){
-							if (ball_rows.length === 0)
-								throw Error("last ball unit "+last_ball_unit+" just became stable but ball not found");
-							if (ball_rows[0].ball !== last_ball)
-								return callback("last_ball "+last_ball+" and last_ball_unit "+last_ball_unit
-												+" do not match after advancing stability point");
-							checkNoSameAddressInDifferentParents();
-						});
-					});
+					);
+					if ( ! objJoint.skiplist_units )
+					{
+						return validateBallHash();
+					}
+
+					//	...
+					conn.query
+					(
+						"SELECT ball FROM hash_tree_balls WHERE unit IN(?) \n\
+						UNION \n\
+						SELECT ball FROM balls WHERE unit IN(?) \n\
+						ORDER BY ball",
+						[
+							objJoint.skiplist_units,
+							objJoint.skiplist_units
+						],
+						function( srows )
+						{
+							if ( srows.length !== objJoint.skiplist_units.length )
+							{
+								return callback
+								(
+									createJointError( "some skiplist balls not found" )
+								);
+							}
+
+							//	...
+							objValidationState.arrSkiplistBalls	= srows.map
+							(
+								function( srow )
+								{
+									return srow.ball;
+								}
+							);
+
+							//	...
+							validateBallHash();
+						}
+					);
+
+					function validateBallHash()
+					{
+						var hash = objectHash.getBallHash
+						(
+							objUnit.unit,
+							arrParentBalls,
+							objValidationState.arrSkiplistBalls,
+							!! objUnit.content_hash
+						);
+
+						if ( hash !== objJoint.ball )
+						{
+							return callback( createJointError( "ball hash is wrong" ) );
+						}
+
+						//	...
+						callback();
+					}
 				}
 			);
 		}
 	);
 }
 
-function validateWitnesses(conn, objUnit, objValidationState, callback){
+/**
+ *	we cannot verify that skiplist units lie on MC if they are unstable yet,
+ *	but if they don't, we'll get unmatching ball hash when the current unit reaches stability
+ */
+function validateSkiplist( conn, arrSkiplistUnits, callback )
+{
+	var prev = "";
 
-	function validateWitnessListMutations(arrWitnesses){
-		if (!objUnit.parent_units) // genesis
-			return callback();
-		storage.determineIfHasWitnessListMutationsAlongMc(conn, objUnit, last_ball_unit, arrWitnesses, function(err){
-			if (err && objValidationState.last_ball_mci >= 512000) // do not enforce before the || bug was fixed
-				return callback(err);
-			checkNoReferencesInWitnessAddressDefinitions(arrWitnesses);
-		});
+	//	...
+	async.eachSeries
+	(
+		arrSkiplistUnits,
+		function( skiplist_unit, cb )
+		{
+			//	if (skiplist_unit.charAt(0) !== "0")
+			//		return cb("skiplist unit doesn't start with 0");
+			if ( skiplist_unit <= prev )
+			{
+				return cb( createJointError( "skiplist units not ordered" ) );
+			}
+
+			//	...
+			conn.query
+			(
+				"SELECT unit, is_stable, is_on_main_chain, main_chain_index FROM units WHERE unit=?",
+				[
+					skiplist_unit
+				],
+				function( rows )
+				{
+					if ( rows.length === 0 )
+					{
+						return cb( "skiplist unit " + skiplist_unit + " not found" );
+					}
+
+					var objSkiplistUnitProps	= rows[ 0 ];
+
+					//	if not stable, can't check that it is on MC as MC is not stable in its area yet
+					if ( objSkiplistUnitProps.is_stable === 1 )
+					{
+						if ( objSkiplistUnitProps.is_on_main_chain !== 1 )
+						{
+							return cb( "skiplist unit " + skiplist_unit + " is not on MC" );
+						}
+						if ( objSkiplistUnitProps.main_chain_index % 10 !== 0 )
+						{
+							return cb( "skiplist unit " + skiplist_unit + " MCI is not divisible by 10" );
+						}
+					}
+
+					//
+					//	we can't verify the choice of skiplist unit.
+					//	If we try to find a skiplist unit now, we might find something matching on unstable part of MC.
+					//	Again, we have another check when we reach stability
+					//
+					cb();
+				}
+			);
+		},
+		callback
+	);
+}
+
+
+function validateParents( conn, objJoint, objValidationState, callback )
+{
+	//	avoid merging the obvious nonserials
+	function checkNoSameAddressInDifferentParents()
+	{
+		if ( objUnit.parent_units.length === 1 )
+		{
+			return checkLastBallDidNotRetreat();
+		}
+
+		//	...
+		conn.query
+		(
+			"SELECT address, COUNT(*) AS c FROM unit_authors WHERE unit IN(?) GROUP BY address HAVING c>1",
+			[
+				objUnit.parent_units
+			],
+			function( rows )
+			{
+				if ( rows.length > 0 )
+				{
+					return callback( "some addresses found more than once in parents, e.g. " + rows[ 0 ].address );
+				}
+
+				//	...
+				return checkLastBallDidNotRetreat();
+			}
+		);
 	}
-	
-	function checkNoReferencesInWitnessAddressDefinitions(arrWitnesses){
+
+	function checkLastBallDidNotRetreat()
+	{
+		conn.query
+		(
+			"SELECT MAX(lb_units.main_chain_index) AS max_parent_last_ball_mci \n\
+			FROM units JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
+			WHERE units.unit IN(?)",
+			[
+				objUnit.parent_units
+			],
+			function( rows )
+			{
+				var max_parent_last_ball_mci	= rows[ 0 ].max_parent_last_ball_mci;
+
+				if ( max_parent_last_ball_mci > objValidationState.last_ball_mci )
+				{
+					return callback( "last ball mci must not retreat, parents: " + objUnit.parent_units.join( ', ' ) );
+				}
+
+				//	...
+				callback();
+			}
+		);
+	}
+
+	//
+	//	...
+	//
+	var objUnit	= objJoint.unit;
+	if ( objUnit.parent_units.length > constants.MAX_PARENTS_PER_UNIT )
+	{
+		//	anti-spam
+		return callback( "too many parents: " + objUnit.parent_units.length );
+	}
+
+	//
+	//	obsolete: when handling a ball, we can't trust parent list before we verify ball hash
+	//	obsolete: when handling a fresh unit, we can begin trusting parent list earlier, after we verify parents_hash
+	//
+	var createError	= objJoint.ball
+		?
+		createJointError
+		: function( err )
+		{
+			return err;
+		};
+
+	//
+	//	after this point, we can trust parent list as it either agrees with parents_hash or agrees with hash tree
+	//	hence, there are no more joint errors, except unordered parents or skiplist units
+	//
+	var last_ball			= objUnit.last_ball;
+	var last_ball_unit		= objUnit.last_ball_unit;
+	var prev			= "";
+	var arrMissingParentUnits	= [];
+	var arrPrevParentUnitProps	= [];
+
+	objValidationState.max_parent_limci	= 0;
+	var join	= objJoint.ball ? 'LEFT JOIN balls USING(unit) LEFT JOIN hash_tree_balls ON units.unit=hash_tree_balls.unit' : '';
+	var field	= objJoint.ball ? ', IFNULL(balls.ball, hash_tree_balls.ball) AS ball' : '';
+
+	//	...
+	async.eachSeries
+	(
+		objUnit.parent_units, 
+		function( parent_unit, cb )
+		{
+			if ( parent_unit <= prev )
+			{
+				return cb( createError( "parent units not ordered" ) );
+			}
+
+			//	...
+			prev	= parent_unit;
+
+			//	...
+			conn.query
+			(
+				"SELECT units.*" + field + " FROM units " + join + " WHERE units.unit=?",
+				[
+					parent_unit
+				],
+				function( rows )
+				{
+					if ( rows.length === 0 )
+					{
+						arrMissingParentUnits.push( parent_unit );
+						return cb();
+					}
+
+					var objParentUnitProps	= rows[0];
+
+					//	already checked in validateHashTree that the parent ball is known, that's why we throw
+					if ( objJoint.ball && objParentUnitProps.ball === null )
+					{
+						throw Error( "no ball corresponding to parent unit " + parent_unit );
+					}
+					if ( objParentUnitProps.latest_included_mc_index > objValidationState.max_parent_limci )
+					{
+						objValidationState.max_parent_limci = objParentUnitProps.latest_included_mc_index;
+					}
+
+					//	...
+					async.eachSeries
+					(
+						arrPrevParentUnitProps,
+						function( objPrevParentUnitProps, cb2 )
+						{
+							graph.compareUnitsByProps
+							(
+								conn,
+								objPrevParentUnitProps,
+								objParentUnitProps,
+								function( result )
+								{
+									( result === null )
+										?
+										cb2()
+										: cb2( "parent unit " + parent_unit + " is related to one of the other parent units" );
+								}
+							);
+						},
+						function( err )
+						{
+							if ( err )
+							{
+								return cb( err );
+							}
+
+							//	...
+							arrPrevParentUnitProps.push( objParentUnitProps );
+							cb();
+						}
+					);
+				}
+			);
+		}, 
+		function( err )
+		{
+			if ( err )
+			{
+				return callback( err );
+			}
+
+			if ( arrMissingParentUnits.length > 0 )
+			{
+				conn.query
+				(
+					"SELECT error FROM known_bad_joints WHERE unit IN(?)",
+					[
+						arrMissingParentUnits
+					],
+					function( rows )
+					{
+						( rows.length > 0 )
+							? callback
+							(
+								"some of the unit's parents are known bad: " + rows[ 0 ].error
+							)
+							: callback
+							(
+								{
+									error_code	: "unresolved_dependency",
+									arrMissingUnits	: arrMissingParentUnits
+								}
+							);
+					}
+				);
+				return;
+			}
+
+			//	this is redundant check, already checked in validateHashTree()
+			if ( objJoint.ball )
+			{
+				var arrParentBalls = arrPrevParentUnitProps.map
+				(
+					function( objParentUnitProps )
+					{
+						return objParentUnitProps.ball;
+					}
+				).sort();
+				//if (arrParentBalls.indexOf(null) === -1){
+				var hash = objectHash.getBallHash
+				(
+					objUnit.unit,
+					arrParentBalls,
+					objValidationState.arrSkiplistBalls,
+					!! objUnit.content_hash
+				);
+				if ( hash !== objJoint.ball )
+				{
+					//	shouldn't happen, already validated in validateHashTree()
+					throw Error( "ball hash is wrong" );
+				}
+				//}
+			}
+
+			//	...
+			conn.query
+			(
+				"SELECT is_stable, is_on_main_chain, main_chain_index, ball, (SELECT MAX(main_chain_index) FROM units) AS max_known_mci \n\
+				FROM units LEFT JOIN balls USING(unit) WHERE unit=?", 
+				[
+					last_ball_unit
+				],
+				function( rows )
+				{
+					if ( rows.length !== 1 )
+					{
+						//	at the same time, direct parents already received
+						return callback( "last ball unit " + last_ball_unit + " not found" );
+					}
+
+					var objLastBallUnitProps	= rows[ 0 ];
+
+					//
+					//	it can be unstable and have a received (not self-derived) ball
+					//	if (objLastBallUnitProps.ball !== null && objLastBallUnitProps.is_stable === 0)
+					//		throw "last ball "+last_ball+" is unstable";
+					//
+					if ( objLastBallUnitProps.ball === null &&
+						objLastBallUnitProps.is_stable === 1 )
+					{
+						throw Error( "last ball unit " + last_ball_unit + " is stable but has no ball" );
+					}
+					if ( objLastBallUnitProps.is_on_main_chain !== 1 )
+					{
+						return callback( "last ball " + last_ball + " is not on MC" );
+					}
+					if ( objLastBallUnitProps.ball && objLastBallUnitProps.ball !== last_ball )
+					{
+						return callback( "last_ball " + last_ball + " and last_ball_unit " + last_ball_unit + " do not match" );
+					}
+
+					//	...
+					objValidationState.last_ball_mci	= objLastBallUnitProps.main_chain_index;
+					objValidationState.max_known_mci	= objLastBallUnitProps.max_known_mci;
+					if ( objValidationState.max_parent_limci < objValidationState.last_ball_mci )
+					{
+						return callback( "last ball unit " + last_ball_unit + " is not included in parents, unit " + objUnit.unit );
+					}
+					if ( objLastBallUnitProps.is_stable === 1 )
+					{
+						//	if it were not stable, we wouldn't have had the ball at all
+						if ( objLastBallUnitProps.ball !== last_ball )
+						{
+							return callback( "stable: last_ball " + last_ball + " and last_ball_unit " + last_ball_unit + " do not match" );
+						}
+						if ( objValidationState.last_ball_mci <= 1300000 )
+						{
+							return checkNoSameAddressInDifferentParents();
+						}
+					}
+
+					//	Last ball is not stable yet in our view. Check if it is stable in view of the parents
+					main_chain.determineIfStableInLaterUnitsAndUpdateStableMcFlag
+					(
+						conn,
+						last_ball_unit,
+						objUnit.parent_units,
+						objLastBallUnitProps.is_stable,
+						function( bStable )
+						{
+							/*if (!bStable && objLastBallUnitProps.is_stable === 1){
+								var eventBus = require('./event_bus.js');
+								eventBus.emit('nonfatal_error', "last ball is stable, but not stable in parents, unit "+objUnit.unit, new Error());
+								return checkNoSameAddressInDifferentParents();
+							}
+							else */
+							if ( ! bStable )
+							{
+								return callback
+								(
+									objUnit.unit + ": last ball unit " + last_ball_unit + " is not stable in view of your parents " + objUnit.parent_units
+								);
+							}
+
+							//	...
+							conn.query
+							(
+								"SELECT ball FROM balls WHERE unit=?",
+								[
+									last_ball_unit
+								],
+								function( ball_rows )
+								{
+									if ( ball_rows.length === 0 )
+										throw Error( "last ball unit " + last_ball_unit + " just became stable but ball not found" );
+
+									if ( ball_rows[ 0 ].ball !== last_ball )
+									{
+										return callback
+										(
+											"last_ball " + last_ball + " and last_ball_unit "
+											+ last_ball_unit + " do not match after advancing stability point"
+										);
+									}
+
+									//	...
+									checkNoSameAddressInDifferentParents();
+								}
+							);
+						}
+					);
+				}
+			);
+		}
+	);
+}
+
+function validateWitnesses( conn, objUnit, objValidationState, callback )
+{
+	function validateWitnessListMutations( arrWitnesses )
+	{
+		if ( ! objUnit.parent_units )
+		{
+			//	genesis
+			return callback();
+		}
+
+		//	...
+		storage.determineIfHasWitnessListMutationsAlongMc
+		(
+			conn,
+			objUnit,
+			last_ball_unit,
+			arrWitnesses,
+			function( err )
+			{
+				if ( err && objValidationState.last_ball_mci >= 512000 )
+				{
+					// do not enforce before the || bug was fixed
+					return callback( err );
+				}
+
+				//	...
+				checkNoReferencesInWitnessAddressDefinitions( arrWitnesses );
+			}
+		);
+	}
+
+	function checkNoReferencesInWitnessAddressDefinitions( arrWitnesses )
+	{
 		profiler.start();
-		var cross = (conf.storage === 'sqlite') ? 'CROSS' : ''; // correct the query planner
-		conn.query(
+
+		//	correct the query planner
+		var cross	= ( conf.storage === 'sqlite' ) ? 'CROSS' : '';
+
+		//	...
+		conn.query
+		(
 			"SELECT 1 \n\
 			FROM address_definition_changes \n\
 			JOIN definitions USING(definition_chash) \n\
@@ -641,196 +1030,387 @@ function validateWitnesses(conn, objUnit, objValidationState, callback){
 			UNION \n\
 			SELECT 1 \n\
 			FROM definitions \n\
-			"+cross+" JOIN unit_authors USING(definition_chash) \n\
+			" + cross + " JOIN unit_authors USING(definition_chash) \n\
 			JOIN units AS definition_units ON unit_authors.unit=definition_units.unit   -- units where the definition was disclosed \n\
 			WHERE definition_chash IN(?) AND has_references=1 \n\
 				AND definition_units.is_stable=1 AND definition_units.main_chain_index<=? AND +definition_units.sequence='good' \n\
 			LIMIT 1",
-			[arrWitnesses, objValidationState.last_ball_mci, objValidationState.last_ball_mci, arrWitnesses, objValidationState.last_ball_mci],
-			function(rows){
-				profiler.stop('validation-witnesses-no-refs');
-				(rows.length > 0) ? callback("some witnesses have references in their addresses") : checkWitnessedLevelDidNotRetreat(arrWitnesses);
+			[
+				arrWitnesses,
+				objValidationState.last_ball_mci,
+				objValidationState.last_ball_mci,
+				arrWitnesses,
+				objValidationState.last_ball_mci
+			],
+			function( rows )
+			{
+				profiler.stop( 'validation-witnesses-no-refs' );
+				( rows.length > 0 )
+					? callback( "some witnesses have references in their addresses" )
+					: checkWitnessedLevelDidNotRetreat( arrWitnesses );
 			}
 		);
 	}
 
-	function checkWitnessedLevelDidNotRetreat(arrWitnesses){
-		storage.determineWitnessedLevelAndBestParent(conn, objUnit.parent_units, arrWitnesses, function(witnessed_level, best_parent_unit){
-			objValidationState.witnessed_level = witnessed_level;
-			objValidationState.best_parent_unit = best_parent_unit;
-			if (objValidationState.last_ball_mci < 1400000) // not enforced
-				return callback();
-			storage.readStaticUnitProps(conn, best_parent_unit, function(props){
-				(witnessed_level >= props.witnessed_level) 
-					? callback() 
-					: callback("witnessed level retreats from "+props.witnessed_level+" to "+witnessed_level);
-			});
-		});
+	function checkWitnessedLevelDidNotRetreat( arrWitnesses )
+	{
+		storage.determineWitnessedLevelAndBestParent
+		(
+			conn,
+			objUnit.parent_units,
+			arrWitnesses,
+			function( witnessed_level, best_parent_unit )
+			{
+				objValidationState.witnessed_level	= witnessed_level;
+				objValidationState.best_parent_unit	= best_parent_unit;
+
+				if ( objValidationState.last_ball_mci < 1400000 )
+				{
+					//	not enforced
+					return callback();
+				}
+
+				//	...
+				storage.readStaticUnitProps
+				(
+					conn,
+					best_parent_unit,
+					function( props )
+					{
+						( witnessed_level >= props.witnessed_level )
+						? callback()
+						: callback( "witnessed level retreats from " + props.witnessed_level + " to " + witnessed_level );
+					}
+				);
+			}
+		);
 	}
-	
+
+
+
+	//	...
 	profiler.start();
-	var last_ball_unit = objUnit.last_ball_unit;
-	if (typeof objUnit.witness_list_unit === "string"){
-		conn.query("SELECT sequence, is_stable, main_chain_index FROM units WHERE unit=?", [objUnit.witness_list_unit], function(unit_rows){
-			if (unit_rows.length === 0)
-				return callback("witness list unit "+objUnit.witness_list_unit+" not found");
-			var objWitnessListUnitProps = unit_rows[0];
-			if (objWitnessListUnitProps.sequence !== 'good')
-				return callback("witness list unit "+objUnit.witness_list_unit+" is not serial");
-			if (objWitnessListUnitProps.is_stable !== 1)
-				return callback("witness list unit "+objUnit.witness_list_unit+" is not stable");
-			if (objWitnessListUnitProps.main_chain_index > objValidationState.last_ball_mci)
-				return callback("witness list unit "+objUnit.witness_list_unit+" must come before last ball");
-			storage.readWitnessList(conn, objUnit.witness_list_unit, function(arrWitnesses){
-				if (arrWitnesses.length === 0)
-					return callback("referenced witness list unit "+objUnit.witness_list_unit+" has no witnesses");
-				profiler.stop('validation-witnesses-read-list');
-				validateWitnessListMutations(arrWitnesses);
-			}, true);
-		});
+	var last_ball_unit	= objUnit.last_ball_unit;
+
+	if ( typeof objUnit.witness_list_unit === "string" )
+	{
+		conn.query
+		(
+			"SELECT sequence, is_stable, main_chain_index FROM units WHERE unit=?",
+			[
+				objUnit.witness_list_unit
+			],
+			function( unit_rows )
+			{
+				if ( unit_rows.length === 0 )
+				{
+					return callback( "witness list unit " + objUnit.witness_list_unit + " not found" );
+				}
+
+				var objWitnessListUnitProps	= unit_rows[0];
+
+				if ( objWitnessListUnitProps.sequence !== 'good' )
+				{
+					return callback( "witness list unit " + objUnit.witness_list_unit + " is not serial" );
+				}
+				if ( objWitnessListUnitProps.is_stable !== 1 )
+				{
+					return callback( "witness list unit " + objUnit.witness_list_unit + " is not stable" );
+				}
+				if ( objWitnessListUnitProps.main_chain_index > objValidationState.last_ball_mci )
+				{
+					return callback( "witness list unit " + objUnit.witness_list_unit + " must come before last ball" );
+				}
+
+				//	...
+				storage.readWitnessList
+				(
+					conn,
+					objUnit.witness_list_unit,
+					function( arrWitnesses )
+					{
+						if ( arrWitnesses.length === 0 )
+						{
+							return callback( "referenced witness list unit " + objUnit.witness_list_unit + " has no witnesses" );
+						}
+
+						//	...
+						profiler.stop( 'validation-witnesses-read-list' );
+						validateWitnessListMutations( arrWitnesses );
+					},
+					true
+				);
+			}
+		);
 	}
-	else if (Array.isArray(objUnit.witnesses) && objUnit.witnesses.length === constants.COUNT_WITNESSES){
-		var prev_witness = objUnit.witnesses[0];
-		for (var i=0; i<objUnit.witnesses.length; i++){
-			var curr_witness = objUnit.witnesses[i];
-			if (!chash.isChashValid(curr_witness))
-				return cb("witness address "+curr_witness+" is invalid");
-			if (i === 0)
+	else if ( Array.isArray( objUnit.witnesses ) && objUnit.witnesses.length === constants.COUNT_WITNESSES )
+	{
+		var prev_witness	= objUnit.witnesses[ 0 ];
+
+		for ( var i = 0; i < objUnit.witnesses.length; i++ )
+		{
+			var curr_witness	= objUnit.witnesses[ i ];
+
+			if ( ! chash.isChashValid( curr_witness ) )
+			{
+				return cb( "witness address " + curr_witness + " is invalid" );
+			}
+			if ( i === 0 )
+			{
 				continue;
-			if (curr_witness <= prev_witness)
-				return callback("wrong order of witnesses, or duplicates");
-			prev_witness = curr_witness;
+			}
+			if ( curr_witness <= prev_witness )
+			{
+				return callback( "wrong order of witnesses, or duplicates" );
+			}
+
+			//	...
+			prev_witness	= curr_witness;
 		}
-		if (storage.isGenesisUnit(objUnit.unit)){
-			// addresses might not be known yet, it's ok
-			validateWitnessListMutations(objUnit.witnesses);
+
+		if ( storage.isGenesisUnit( objUnit.unit ) )
+		{
+			//	addresses might not be known yet, it's ok
+			validateWitnessListMutations( objUnit.witnesses );
 			return;
 		}
-		// check that all witnesses are already known and their units are good and stable
-		conn.query(
-			// address=definition_chash is true in the first appearence of the address
-			// (not just in first appearence: it can return to its initial definition_chash sometime later)
+
+		//	check that all witnesses are already known and their units are good and stable
+		conn.query
+		(
+			//	address=definition_chash is true in the first appearence of the address
+			//	(not just in first appearence: it can return to its initial definition_chash sometime later)
 			"SELECT COUNT(DISTINCT address) AS count_stable_good_witnesses FROM unit_authors JOIN units USING(unit) \n\
 			WHERE address=definition_chash AND +sequence='good' AND is_stable=1 AND main_chain_index<=? AND address IN(?)",
-			[objValidationState.last_ball_mci, objUnit.witnesses],
-			function(rows){
-				if (rows[0].count_stable_good_witnesses !== constants.COUNT_WITNESSES)
-					return callback("some witnesses are not stable, not serial, or don't come before last ball");
-				profiler.stop('validation-witnesses-stable');
-				validateWitnessListMutations(objUnit.witnesses);
+			[
+				objValidationState.last_ball_mci,
+				objUnit.witnesses
+			],
+			function( rows )
+			{
+				if ( rows[ 0 ].count_stable_good_witnesses !== constants.COUNT_WITNESSES )
+				{
+					return callback( "some witnesses are not stable, not serial, or don't come before last ball" );
+				}
+
+				//	...
+				profiler.stop( 'validation-witnesses-stable' );
+				validateWitnessListMutations( objUnit.witnesses );
 			}
 		);
 	}
 	else
-		return callback("no witnesses or not enough witnesses");
+	{
+		return callback( "no witnesses or not enough witnesses" );
+	}
 }
 
-function validateHeadersCommissionRecipients(objUnit, cb){
-	if (objUnit.authors.length > 1 && typeof objUnit.earned_headers_commission_recipients !== "object")
-		return cb("must specify earned_headers_commission_recipients when more than 1 author");
-	if ("earned_headers_commission_recipients" in objUnit){
-		if (!isNonemptyArray(objUnit.earned_headers_commission_recipients))
-			return cb("empty earned_headers_commission_recipients array");
-		var total_earned_headers_commission_share = 0;
-		var prev_address = "";
-		for (var i=0; i<objUnit.earned_headers_commission_recipients.length; i++){
-			var recipient = objUnit.earned_headers_commission_recipients[i];
-			if (!isPositiveInteger(recipient.earned_headers_commission_share))
-				return cb("earned_headers_commission_share must be positive integer");
-			if (hasFieldsExcept(recipient, ["address", "earned_headers_commission_share"]))
-				return cb("unknowsn fields in recipient");
-			if (recipient.address <= prev_address)
-				return cb("recipient list must be sorted by address");
-			if (!isValidAddress(recipient.address))
-				return cb("invalid recipient address checksum");
-			total_earned_headers_commission_share += recipient.earned_headers_commission_share;
-			prev_address = recipient.address;
-		}
-		if (total_earned_headers_commission_share !== 100)
-			return cb("sum of earned_headers_commission_share is not 100");
+function validateHeadersCommissionRecipients( objUnit, cb )
+{
+	if ( objUnit.authors.length > 1 && typeof objUnit.earned_headers_commission_recipients !== "object" )
+	{
+		return cb( "must specify earned_headers_commission_recipients when more than 1 author" );
 	}
+
+	if ( "earned_headers_commission_recipients" in objUnit )
+	{
+		if ( ! isNonemptyArray( objUnit.earned_headers_commission_recipients ) )
+		{
+			return cb( "empty earned_headers_commission_recipients array" );
+		}
+
+		//	...
+		var total_earned_headers_commission_share	= 0;
+		var prev_address				= "";
+
+		for ( var i = 0; i < objUnit.earned_headers_commission_recipients.length; i++ )
+		{
+			var recipient	= objUnit.earned_headers_commission_recipients[ i ];
+
+			if ( ! isPositiveInteger( recipient.earned_headers_commission_share ) )
+			{
+				return cb( "earned_headers_commission_share must be positive integer" );
+			}
+			if ( hasFieldsExcept( recipient, [ "address", "earned_headers_commission_share" ] ) )
+			{
+				return cb( "unknowsn fields in recipient" );
+			}
+			if ( recipient.address <= prev_address )
+			{
+				return cb( "recipient list must be sorted by address" );
+			}
+			if ( ! isValidAddress( recipient.address ) )
+			{
+				return cb( "invalid recipient address checksum" );
+			}
+
+			//	...
+			total_earned_headers_commission_share	+= recipient.earned_headers_commission_share;
+			prev_address				= recipient.address;
+		}
+
+		if ( total_earned_headers_commission_share !== 100 )
+		{
+			return cb( "sum of earned_headers_commission_share is not 100" );
+		}
+	}
+
+	//	...
 	cb();
 }
 
-function validateAuthors(conn, arrAuthors, objUnit, objValidationState, callback) {
-	if (arrAuthors.length > constants.MAX_AUTHORS_PER_UNIT) // this is anti-spam. Otherwise an attacker would send nonserial balls signed by zillions of authors.
-		return callback("too many authors");
-	objValidationState.arrAddressesWithForkedPath = [];
-	var prev_address = "";
-	for (var i=0; i<arrAuthors.length; i++){
-		var objAuthor = arrAuthors[i];
-		if (objAuthor.address <= prev_address)
-			return callback("author addresses not sorted");
-		prev_address = objAuthor.address;
+function validateAuthors( conn, arrAuthors, objUnit, objValidationState, callback )
+{
+	if ( arrAuthors.length > constants.MAX_AUTHORS_PER_UNIT )
+	{
+		//	this is anti-spam. Otherwise an attacker would send nonserial balls signed by zillions of authors.
+		return callback( "too many authors" );
 	}
-	
-	objValidationState.unit_hash_to_sign = objectHash.getUnitHashToSign(objUnit);
-	
-	async.eachSeries(arrAuthors, function(objAuthor, cb){
-		validateAuthor(conn, objAuthor, objUnit, objValidationState, cb);
-	}, callback);
+
+	//	...
+	objValidationState.arrAddressesWithForkedPath	= [];
+
+	var prev_address	= "";
+	var objAuthor		= null;
+	for ( var i = 0; i < arrAuthors.length; i++ )
+	{
+		objAuthor	= arrAuthors[ i ];
+		if ( objAuthor.address <= prev_address )
+		{
+			return callback( "author addresses not sorted" );
+		}
+
+		//	...
+		prev_address	= objAuthor.address;
+	}
+
+	//	...
+	objValidationState.unit_hash_to_sign = objectHash.getUnitHashToSign( objUnit );
+
+	//	...
+	async.eachSeries
+	(
+		arrAuthors,
+		function( objAuthor, cb )
+		{
+			validateAuthor( conn, objAuthor, objUnit, objValidationState, cb );
+		},
+		callback
+	);
 }
 
-function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
-	if (!isStringOfLength(objAuthor.address, 32))
-		return callback("wrong address length");
-	if (hasFieldsExcept(objAuthor, ["address", "authentifiers", "definition"]))
-		return callback("unknown fields in author");
-	if (!ValidationUtils.isNonemptyObject(objAuthor.authentifiers) && !objUnit.content_hash)
-		return callback("no authentifiers");
-	for (var path in objAuthor.authentifiers){
-		if (!isNonemptyString(objAuthor.authentifiers[path]))
-			return callback("authentifiers must be nonempty strings");
-		if (objAuthor.authentifiers[path].length > constants.MAX_AUTHENTIFIER_LENGTH)
-			return callback("authentifier too long");
+function validateAuthor( conn, objAuthor, objUnit, objValidationState, callback )
+{
+	if ( ! isStringOfLength( objAuthor.address, 32 ) )
+	{
+		return callback( "wrong address length" );
 	}
-	
+	if ( hasFieldsExcept( objAuthor, [ "address", "authentifiers", "definition" ] ) )
+	{
+		return callback( "unknown fields in author" );
+	}
+	if ( ! ValidationUtils.isNonemptyObject( objAuthor.authentifiers ) && ! objUnit.content_hash )
+	{
+		return callback( "no authentifiers" );
+	}
+
+	for ( var path in objAuthor.authentifiers )
+	{
+		if ( ! isNonemptyString( objAuthor.authentifiers[ path ] ) )
+		{
+			return callback( "authentifiers must be nonempty strings" );
+		}
+		if ( objAuthor.authentifiers[ path ].length > constants.MAX_AUTHENTIFIER_LENGTH )
+		{
+			return callback( "authentifier too long" );
+		}
+	}
+
+	//	...
 	var bNonserial = false;
 	
 	var arrAddressDefinition = objAuthor.definition;
-	if (isNonemptyArray(arrAddressDefinition)){
-		// todo: check that the address is really new?
-		validateAuthentifiers(arrAddressDefinition);
+	if ( isNonemptyArray( arrAddressDefinition ) )
+	{
+		//	todo: check that the address is really new?
+		validateAuthentifiers( arrAddressDefinition );
 	}
-	else if (!("definition" in objAuthor)){
-		if (!chash.isChashValid(objAuthor.address))
-			return callback("address checksum invalid");
-		if (objUnit.content_hash){ // nothing else to check
+	else if ( ! ( "definition" in objAuthor ) )
+	{
+		if ( ! chash.isChashValid( objAuthor.address ) )
+		{
+			return callback( "address checksum invalid" );
+		}
+		if ( objUnit.content_hash )
+		{
+			//	nothing else to check
 			objValidationState.sequence = 'final-bad';
 			return callback();
 		}
-		// we check signatures using the latest address definition before last ball
-		storage.readDefinitionByAddress(conn, objAuthor.address, objValidationState.last_ball_mci, {
-			ifDefinitionNotFound: function(definition_chash){
-				callback("definition "+definition_chash+" bound to address "+objAuthor.address+" is not defined");
-			},
-			ifFound: function(arrAddressDefinition){
-				validateAuthentifiers(arrAddressDefinition);
+
+		//	we check signatures using the latest address definition before last ball
+		storage.readDefinitionByAddress
+		(
+			conn,
+			objAuthor.address,
+			objValidationState.last_ball_mci,
+			{
+				ifDefinitionNotFound : function( definition_chash )
+				{
+					callback( "definition " + definition_chash + " bound to address " + objAuthor.address + " is not defined" );
+				},
+				ifFound : function( arrAddressDefinition )
+				{
+					validateAuthentifiers( arrAddressDefinition );
+				}
 			}
-		});
+		);
 	}
 	else
-		return callback("bad type of definition");
-	
-	
-	function validateAuthentifiers(arrAddressDefinition){
-		Definition.validateAuthentifiers(
-			conn, objAuthor.address, null, arrAddressDefinition, objUnit, objValidationState, objAuthor.authentifiers, 
-			function(err, res){
-				if (err) // error in address definition
-					return callback(err);
-				if (!res) // wrong signature or the like
-					return callback("authentifier verification failed");
+	{
+		return callback( "bad type of definition" );
+	}
+
+
+	//	...
+	function validateAuthentifiers( arrAddressDefinition )
+	{
+		Definition.validateAuthentifiers
+		(
+			conn,
+			objAuthor.address,
+			null,
+			arrAddressDefinition,
+			objUnit,
+			objValidationState,
+			objAuthor.authentifiers,
+			function( err, res )
+			{
+				if ( err )
+				{
+					//	error in address definition
+					return callback( err );
+				}
+				if ( ! res )
+				{
+					//	wrong signature or the like
+					return callback( "authentifier verification failed" );
+				}
+
+				//	...
 				checkSerialAddressUse();
 			}
 		);
 	}
-	
-	
-	function findConflictingUnits(handleConflictingUnits){
-	//	var cross = (objValidationState.max_known_mci - objValidationState.max_parent_limci < 1000) ? 'CROSS' : '';
-		conn.query( // _left_ join forces use of indexes in units
-		/*	"SELECT unit, is_stable \n\
+
+	function findConflictingUnits( handleConflictingUnits )
+	{
+		//	var cross = (objValidationState.max_known_mci - objValidationState.max_parent_limci < 1000) ? 'CROSS' : '';
+		conn.query
+		(
+			// _left_ join forces use of indexes in units
+			/*
+			"SELECT unit, is_stable \n\
 			FROM units \n\
 			"+cross+" JOIN unit_authors USING(unit) \n\
 			WHERE address=? AND (main_chain_index>? OR main_chain_index IS NULL) AND unit != ?",
@@ -844,136 +1424,267 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 			FROM unit_authors \n\
 			CROSS JOIN units USING(unit) \n\
 			WHERE address=? AND _mci IS NULL AND unit != ?",
-			[objAuthor.address, objValidationState.max_parent_limci, objUnit.unit, objAuthor.address, objUnit.unit],
-			function(rows){
+			[
+				objAuthor.address,
+				objValidationState.max_parent_limci,
+				objUnit.unit,
+				objAuthor.address,
+				objUnit.unit
+			],
+			function( rows )
+			{
 				var arrConflictingUnitProps = [];
-				async.eachSeries(
+
+				//	...
+				async.eachSeries
+				(
 					rows,
-					function(row, cb){
-						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
-							if (!bIncluded)
-								arrConflictingUnitProps.push(row);
-							cb();
-						});
+					function( row, cb )
+					{
+						graph.determineIfIncludedOrEqual
+						(
+							conn,
+							row.unit,
+							objUnit.parent_units,
+							function( bIncluded )
+							{
+								if ( ! bIncluded )
+								{
+									arrConflictingUnitProps.push( row );
+								}
+
+								//	...
+								cb();
+							}
+						);
 					},
-					function(){
-						handleConflictingUnits(arrConflictingUnitProps);
+					function()
+					{
+						handleConflictingUnits( arrConflictingUnitProps );
 					}
 				);
 			}
 		);
 	}
 
+	function checkSerialAddressUse()
+	{
+		var next	= checkNoPendingChangeOfDefinitionChash;
 
-	function checkSerialAddressUse(){
-		var next = checkNoPendingChangeOfDefinitionChash;
-		findConflictingUnits(function(arrConflictingUnitProps){
-			if (arrConflictingUnitProps.length === 0){ // no conflicting units
-				// we can have 2 authors. If the 1st author gave bad sequence but the 2nd is good then don't overwrite
-				objValidationState.sequence = objValidationState.sequence || 'good';
-				return next();
+		findConflictingUnits
+		(
+			function( arrConflictingUnitProps )
+			{
+				if ( arrConflictingUnitProps.length === 0 )
+				{
+					//	no conflicting units
+					//	we can have 2 authors.
+					//	If the 1st author gave bad sequence but the 2nd is good then don't overwrite
+					objValidationState.sequence	= objValidationState.sequence || 'good';
+					return next();
+				}
+
+				var arrConflictingUnits	= arrConflictingUnitProps.map
+				(
+					function( objConflictingUnitProps )
+					{
+						return objConflictingUnitProps.unit;
+					}
+				);
+
+				breadcrumbs.add( "========== found conflicting units " + arrConflictingUnits + " =========" );
+				breadcrumbs.add( "========== will accept a conflicting unit " + objUnit.unit + " =========" );
+
+				objValidationState.arrAddressesWithForkedPath.push( objAuthor.address );
+				objValidationState.arrConflictingUnits	= ( objValidationState.arrConflictingUnits || [] ).concat( arrConflictingUnits );
+
+				bNonserial = true;
+				var arrUnstableConflictingUnitProps = arrConflictingUnitProps.filter
+				(
+					function( objConflictingUnitProps )
+					{
+						return ( objConflictingUnitProps.is_stable === 0 );
+					}
+				);
+
+				var bConflictsWithStableUnits = arrConflictingUnitProps.some
+				(
+					function( objConflictingUnitProps )
+					{
+						return ( objConflictingUnitProps.is_stable === 1 );
+					}
+				);
+
+				if ( objValidationState.sequence !== 'final-bad' )
+				{
+					//	if it were already final-bad because of 1st author, it can't become temp-bad due to 2nd author
+					objValidationState.sequence = bConflictsWithStableUnits ? 'final-bad' : 'temp-bad';
+				}
+
+				var arrUnstableConflictingUnits = arrUnstableConflictingUnitProps.map
+				(
+					function( objConflictingUnitProps )
+					{
+						return objConflictingUnitProps.unit;
+					}
+				);
+
+				if ( bConflictsWithStableUnits )
+				{
+					//	don't temp-bad the unstable conflicting units
+					return next();
+				}
+				if ( arrUnstableConflictingUnits.length === 0 )
+				{
+					return next();
+				}
+
+				//	we don't modify the db during validation, schedule the update for the write
+				objValidationState.arrAdditionalQueries.push
+				(
+					{
+						sql	: "UPDATE units SET sequence='temp-bad' WHERE unit IN(?) AND +sequence='good'",
+						params	: [ arrUnstableConflictingUnits ]
+					}
+				);
+
+				//	...
+				next();
 			}
-			var arrConflictingUnits = arrConflictingUnitProps.map(function(objConflictingUnitProps){ return objConflictingUnitProps.unit; });
-			breadcrumbs.add("========== found conflicting units "+arrConflictingUnits+" =========");
-			breadcrumbs.add("========== will accept a conflicting unit "+objUnit.unit+" =========");
-			objValidationState.arrAddressesWithForkedPath.push(objAuthor.address);
-			objValidationState.arrConflictingUnits = (objValidationState.arrConflictingUnits || []).concat(arrConflictingUnits);
-			bNonserial = true;
-			var arrUnstableConflictingUnitProps = arrConflictingUnitProps.filter(function(objConflictingUnitProps){
-				return (objConflictingUnitProps.is_stable === 0);
-			});
-			var bConflictsWithStableUnits = arrConflictingUnitProps.some(function(objConflictingUnitProps){
-				return (objConflictingUnitProps.is_stable === 1);
-			});
-			if (objValidationState.sequence !== 'final-bad') // if it were already final-bad because of 1st author, it can't become temp-bad due to 2nd author
-				objValidationState.sequence = bConflictsWithStableUnits ? 'final-bad' : 'temp-bad';
-			var arrUnstableConflictingUnits = arrUnstableConflictingUnitProps.map(function(objConflictingUnitProps){ return objConflictingUnitProps.unit; });
-			if (bConflictsWithStableUnits) // don't temp-bad the unstable conflicting units
-				return next();
-			if (arrUnstableConflictingUnits.length === 0)
-				return next();
-			// we don't modify the db during validation, schedule the update for the write
-			objValidationState.arrAdditionalQueries.push(
-				{sql: "UPDATE units SET sequence='temp-bad' WHERE unit IN(?) AND +sequence='good'", params: [arrUnstableConflictingUnits]});
-			next();
-		});
+		);
 	}
-	
-	// don't allow contradicting pending keychanges.
-	// We don't trust pending keychanges even when they are serial, as another unit may arrive and make them nonserial
-	function checkNoPendingChangeOfDefinitionChash(){
+
+	//
+	//	don't allow contradicting pending keychanges.
+	//	We don't trust pending keychanges even when they are serial,
+	//		as another unit may arrive and make them nonserial
+	//
+	function checkNoPendingChangeOfDefinitionChash()
+	{
 		var next = checkNoPendingDefinition;
-		//var filter = bNonserial ? "AND sequence='good'" : "";
-		conn.query(
+
+		//	var filter = bNonserial ? "AND sequence='good'" : "";
+		conn.query
+		(
 			"SELECT unit FROM address_definition_changes JOIN units USING(unit) \n\
 			WHERE address=? AND (is_stable=0 OR main_chain_index>? OR main_chain_index IS NULL)", 
-			[objAuthor.address, objValidationState.last_ball_mci], 
-			function(rows){
-				if (rows.length === 0)
+			[
+				objAuthor.address,
+				objValidationState.last_ball_mci
+			],
+			function( rows )
+			{
+				if ( rows.length === 0 )
+				{
 					return next();
-				if (!bNonserial || objValidationState.arrAddressesWithForkedPath.indexOf(objAuthor.address) === -1)
-					return callback("you can't send anything before your last keychange is stable and before last ball");
-				// from this point, our unit is nonserial
-				async.eachSeries(
+				}
+				if ( ! bNonserial || objValidationState.arrAddressesWithForkedPath.indexOf( objAuthor.address ) === -1 )
+				{
+					return callback( "you can't send anything before your last keychange is stable and before last ball" );
+				}
+
+				//	from this point, our unit is nonserial
+				async.eachSeries
+				(
 					rows,
-					function(row, cb){
-						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
-							if (bIncluded)
-								log.consoleLog("checkNoPendingChangeOfDefinitionChash: unit "+row.unit+" is included");
-							bIncluded ? cb("found") : cb();
-						});
+					function( row, cb )
+					{
+						graph.determineIfIncludedOrEqual
+						(
+							conn,
+							row.unit,
+							objUnit.parent_units,
+							function( bIncluded )
+							{
+								if ( bIncluded )
+									log.consoleLog( "checkNoPendingChangeOfDefinitionChash: unit " + row.unit + " is included" );
+
+								bIncluded ? cb( "found" ) : cb();
+							}
+						);
 					},
-					function(err){
-						(err === "found") 
-							? callback("you can't send anything before your last included keychange is stable and before last ball (self is nonserial)") 
+					function( err )
+					{
+						( err === "found" )
+							? callback( "you can't send anything before your last included keychange is stable and before last ball (self is nonserial)" )
 							: next();
 					}
 				);
 			}
 		);
 	}
-	
-	// We don't trust pending definitions even when they are serial, as another unit may arrive and make them nonserial, 
-	// then the definition will be removed
-	function checkNoPendingDefinition(){
-		//var next = checkNoPendingOrRetrievableNonserialIncluded;
+
+	//
+	//	We don't trust pending definitions even when they are serial, as another unit may arrive and make them nonserial,
+	//	then the definition will be removed
+	//
+	function checkNoPendingDefinition()
+	{
+		//	var next = checkNoPendingOrRetrievableNonserialIncluded;
 		var next = validateDefinition;
 		//var filter = bNonserial ? "AND sequence='good'" : "";
-	//	var cross = (objValidationState.max_known_mci - objValidationState.last_ball_mci < 1000) ? 'CROSS' : '';
-		conn.query( // _left_ join forces use of indexes in units
-		//	"SELECT unit FROM units "+cross+" JOIN unit_authors USING(unit) \n\
-		//	WHERE address=? AND definition_chash IS NOT NULL AND ( /* is_stable=0 OR */ main_chain_index>? OR main_chain_index IS NULL)", 
-		//	[objAuthor.address, objValidationState.last_ball_mci], 
+		//	var cross = (objValidationState.max_known_mci - objValidationState.last_ball_mci < 1000) ? 'CROSS' : '';
+		conn.query
+		(
+			// _left_ join forces use of indexes in units
+			//	"SELECT unit FROM units "+cross+" JOIN unit_authors USING(unit) \n\
+			//	WHERE address=? AND definition_chash IS NOT NULL AND ( /* is_stable=0 OR */ main_chain_index>? OR main_chain_index IS NULL)",
+			//	[objAuthor.address, objValidationState.last_ball_mci],
 			"SELECT unit FROM unit_authors WHERE address=? AND definition_chash IS NOT NULL AND _mci>?  \n\
 			UNION \n\
 			SELECT unit FROM unit_authors WHERE address=? AND definition_chash IS NOT NULL AND _mci IS NULL", 
-			[objAuthor.address, objValidationState.last_ball_mci, objAuthor.address], 
-			function(rows){
-				if (rows.length === 0)
+			[
+				objAuthor.address,
+				objValidationState.last_ball_mci,
+				objAuthor.address
+			],
+			function( rows )
+			{
+				if ( rows.length === 0 )
+				{
 					return next();
-				if (!bNonserial || objValidationState.arrAddressesWithForkedPath.indexOf(objAuthor.address) === -1)
-					return callback("you can't send anything before your last definition is stable and before last ball");
-				// from this point, our unit is nonserial
-				async.eachSeries(
+				}
+				if ( ! bNonserial || objValidationState.arrAddressesWithForkedPath.indexOf( objAuthor.address ) === -1 )
+				{
+					return callback( "you can't send anything before your last definition is stable and before last ball" );
+				}
+
+				//	from this point, our unit is nonserial
+				async.eachSeries
+				(
 					rows,
-					function(row, cb){
-						graph.determineIfIncludedOrEqual(conn, row.unit, objUnit.parent_units, function(bIncluded){
-							if (bIncluded)
-								log.consoleLog("checkNoPendingDefinition: unit "+row.unit+" is included");
-							bIncluded ? cb("found") : cb();
-						});
+					function( row, cb )
+					{
+						graph.determineIfIncludedOrEqual
+						(
+							conn,
+							row.unit,
+							objUnit.parent_units,
+							function( bIncluded )
+							{
+								if ( bIncluded )
+								{
+									log.consoleLog( "checkNoPendingDefinition: unit " + row.unit + " is included" );
+								}
+
+								//	...
+								bIncluded ? cb( "found" ) : cb();
+							}
+						);
 					},
-					function(err){
-						(err === "found") 
-							? callback("you can't send anything before your last included definition is stable and before last ball (self is nonserial)") 
+					function( err )
+					{
+						( err === "found" )
+							? callback( "you can't send anything before your last included definition is stable and before last ball (self is nonserial)" )
 							: next();
 					}
 				);
 			}
 		);
 	}
-	
-	// This was bad idea.  An uncovered nonserial, if not archived, will block new units from this address forever.
+
+	//
+	//	This was bad idea.  An uncovered nonserial, if not archived, will block new units from this address forever.
 	/*
 	function checkNoPendingOrRetrievableNonserialIncluded(){
 		var next = validateDefinition;
@@ -1015,540 +1726,1085 @@ function validateAuthor(conn, objAuthor, objUnit, objValidationState, callback){
 		);
 	}
 	*/
-	
-	function validateDefinition(){
-		if (!("definition" in objAuthor))
+
+	function validateDefinition()
+	{
+		if ( ! ( "definition" in objAuthor ) )
 			return callback();
-		// the rest assumes that the definition is explicitly defined
+
+		//	the rest assumes that the definition is explicitly defined
 		var arrAddressDefinition = objAuthor.definition;
-		storage.readDefinitionByAddress(conn, objAuthor.address, objValidationState.last_ball_mci, {
-			ifDefinitionNotFound: function(definition_chash){ // first use of the definition_chash (in particular, of the address, when definition_chash=address)
-				if (objectHash.getChash160(arrAddressDefinition) !== definition_chash)
-					return callback("wrong definition: "+objectHash.getChash160(arrAddressDefinition) +"!=="+ definition_chash);
-				callback();
-			},
-			ifFound: function(arrAddressDefinition2){ // arrAddressDefinition2 can be different
-				handleDuplicateAddressDefinition(arrAddressDefinition2);
+
+		//	...
+		storage.readDefinitionByAddress
+		(
+			conn,
+			objAuthor.address,
+			objValidationState.last_ball_mci,
+			{
+				ifDefinitionNotFound : function( definition_chash )
+				{
+					//	first use of the definition_chash
+					//	(in particular, of the address, when definition_chash=address)
+					if ( objectHash.getChash160( arrAddressDefinition ) !== definition_chash )
+					{
+						return callback
+						(
+							"wrong definition: " + objectHash.getChash160( arrAddressDefinition ) + "!==" + definition_chash
+						);
+					}
+
+					//	...
+					callback();
+				},
+				ifFound : function( arrAddressDefinition2 )
+				{
+					//	arrAddressDefinition2 can be different
+					handleDuplicateAddressDefinition( arrAddressDefinition2 );
+				}
 			}
-		});
+		);
 	}
-	
-	function handleDuplicateAddressDefinition(arrAddressDefinition){
-		if (!bNonserial || objValidationState.arrAddressesWithForkedPath.indexOf(objAuthor.address) === -1)
-			return callback("duplicate definition of address "+objAuthor.address+", bNonserial="+bNonserial);
-		// todo: investigate if this can split the nodes
-		// in one particular case, the attacker changes his definition then quickly sends a new ball with the old definition - the new definition will not be active yet
-		if (objectHash.getChash160(arrAddressDefinition) !== objectHash.getChash160(objAuthor.definition))
-			return callback("unit definition doesn't match the stored definition");
-		callback(); // let it be for now. Eventually, at most one of the balls will be declared good
+
+	function handleDuplicateAddressDefinition( arrAddressDefinition )
+	{
+		if ( ! bNonserial || objValidationState.arrAddressesWithForkedPath.indexOf( objAuthor.address ) === -1 )
+		{
+			return callback( "duplicate definition of address " + objAuthor.address + ", bNonserial=" + bNonserial );
+		}
+
+		//
+		//	todo: investigate if this can split the nodes
+		//	in one particular case,
+		//	the attacker changes his definition then quickly sends a new ball with the old definition
+		//	- the new definition will not be active yet
+		if ( objectHash.getChash160( arrAddressDefinition ) !== objectHash.getChash160( objAuthor.definition ) )
+		{
+			return callback( "unit definition doesn't match the stored definition" );
+		}
+
+		//	let it be for now. Eventually, at most one of the balls will be declared good
+		callback();
 	}
-	
 }
 
-function validateMessages(conn, arrMessages, objUnit, objValidationState, callback){
-	log.consoleLog("validateMessages "+objUnit.unit);
-	async.forEachOfSeries(
+function validateMessages( conn, arrMessages, objUnit, objValidationState, callback )
+{
+	log.consoleLog( "validateMessages " + objUnit.unit );
+
+	//	...
+	async.forEachOfSeries
+	(
 		arrMessages, 
-		function(objMessage, message_index, cb){
-			validateMessage(conn, objMessage, message_index, objUnit, objValidationState, cb); 
-		}, 
-		function(err){
-			if (err)
-				return callback(err);
-			if (!objValidationState.bHasBasePayment)
-				return callback("no base payment message");
+		function( objMessage, message_index, cb )
+		{
+			validateMessage( conn, objMessage, message_index, objUnit, objValidationState, cb );
+		},
+		function( err )
+		{
+			if ( err )
+			{
+				return callback( err );
+			}
+			if ( ! objValidationState.bHasBasePayment )
+			{
+				return callback( "no base payment message" );
+			}
+
+			//	...
 			callback();
 		}
 	);
 }
 
-function validateMessage(conn, objMessage, message_index, objUnit, objValidationState, callback) {
-	if (typeof objMessage.app !== "string")
-		return callback("no app");
-	if (!isStringOfLength(objMessage.payload_hash, constants.HASH_LENGTH))
-		return callback("wrong payload hash size");
-	if (typeof objMessage.payload_location !== "string")
-		return callback("no payload_location");
-	if (hasFieldsExcept(objMessage, ["app", "payload_hash", "payload_location", "payload", "payload_uri", "payload_uri_hash", "spend_proofs"]))
-		return callback("unknown fields in message");
+function validateMessage( conn, objMessage, message_index, objUnit, objValidationState, callback )
+{
+	if ( typeof objMessage.app !== "string" )
+	{
+		return callback( "no app" );
+	}
+	if ( ! isStringOfLength( objMessage.payload_hash, constants.HASH_LENGTH ) )
+	{
+		return callback( "wrong payload hash size" );
+	}
+	if ( typeof objMessage.payload_location !== "string" )
+	{
+		return callback( "no payload_location" );
+	}
+	if ( hasFieldsExcept( objMessage, [ "app", "payload_hash", "payload_location", "payload", "payload_uri", "payload_uri_hash", "spend_proofs" ] ) )
+	{
+		return callback( "unknown fields in message" );
+	}
 	
-	if ("spend_proofs" in objMessage){
-		if (!Array.isArray(objMessage.spend_proofs) || objMessage.spend_proofs.length === 0 || objMessage.spend_proofs.length > constants.MAX_SPEND_PROOFS_PER_MESSAGE)
-			return callback("spend_proofs must be non-empty array max "+constants.MAX_SPEND_PROOFS_PER_MESSAGE+" elements");
-		var arrAuthorAddresses = objUnit.authors.map(function(author) { return author.address; } );
-		// spend proofs are sorted in the same order as their corresponding inputs
-		//var prev_spend_proof = "";
-		for (var i=0; i<objMessage.spend_proofs.length; i++){
-			var objSpendProof = objMessage.spend_proofs[i];
-			if (typeof objSpendProof !== "object")
-				return callback("spend_proof must be object");
-			if (hasFieldsExcept(objSpendProof, ["spend_proof", "address"]))
-				return callback("unknown fields in spend_proof");
+	if ( "spend_proofs" in objMessage )
+	{
+		if ( ! Array.isArray( objMessage.spend_proofs ) ||
+			objMessage.spend_proofs.length === 0 ||
+			objMessage.spend_proofs.length > constants.MAX_SPEND_PROOFS_PER_MESSAGE )
+		{
+			return callback( "spend_proofs must be non-empty array max " + constants.MAX_SPEND_PROOFS_PER_MESSAGE + " elements" );
+		}
+
+		var arrAuthorAddresses = objUnit.authors.map
+		(
+			function( author )
+			{
+				return author.address;
+			}
+		);
+
+		//
+		//	spend proofs are sorted in the same order as their corresponding inputs
+		//	var prev_spend_proof = "";
+		//
+		for ( var i = 0; i < objMessage.spend_proofs.length; i++ )
+		{
+			var objSpendProof	= objMessage.spend_proofs[ i ];
+			if ( typeof objSpendProof !== "object" )
+			{
+				return callback( "spend_proof must be object" );
+			}
+			if ( hasFieldsExcept( objSpendProof, [ "spend_proof", "address" ] ) )
+			{
+				return callback( "unknown fields in spend_proof" );
+			}
+
 			//if (objSpendProof.spend_proof <= prev_spend_proof)
 			//    return callback("spend_proofs not sorted");
-			
-			if (!isValidBase64(objSpendProof.spend_proof, constants.HASH_LENGTH))
-				return callback("spend proof "+objSpendProof.spend_proof+" is not a valid base64");
-			
-			var address = null;
-			if (arrAuthorAddresses.length === 1){
-				if ("address" in objSpendProof)
-					return cb("when single-authored, must not put address in spend proof");
-				address = arrAuthorAddresses[0];
+
+			if ( ! isValidBase64( objSpendProof.spend_proof, constants.HASH_LENGTH ) )
+			{
+				return callback( "spend proof " + objSpendProof.spend_proof + " is not a valid base64" );
 			}
-			else{
-				if (typeof objSpendProof.address !== "string")
-					return cb("when multi-authored, must put address in spend_proofs");
-				if (arrAuthorAddresses.indexOf(objSpendProof.address) === -1)
-					return cb("spend proof address "+objSpendProof.address+" is not an author");
+
+			//	...
+			var address	= null;
+			if ( arrAuthorAddresses.length === 1 )
+			{
+				if ( "address" in objSpendProof )
+				{
+					return cb( "when single-authored, must not put address in spend proof" );
+				}
+
+				//	...
+				address	= arrAuthorAddresses[ 0 ];
+			}
+			else
+			{
+				if ( typeof objSpendProof.address !== "string" )
+				{
+					return cb( "when multi-authored, must put address in spend_proofs" );
+				}
+				if ( arrAuthorAddresses.indexOf( objSpendProof.address ) === -1 )
+				{
+					return cb( "spend proof address " + objSpendProof.address + " is not an author" );
+				}
+
+				//	...
 				address = objSpendProof.address;
 			}
-			
-			if (objValidationState.arrInputKeys.indexOf(objSpendProof.spend_proof) >= 0)
-				return cb("spend proof "+objSpendProof.spend_proof+" already used");
-			objValidationState.arrInputKeys.push(objSpendProof.spend_proof);
-			
+
+			if ( objValidationState.arrInputKeys.indexOf( objSpendProof.spend_proof ) >= 0 )
+			{
+				return cb( "spend proof " + objSpendProof.spend_proof + " already used" );
+			}
+
+			//	...
+			objValidationState.arrInputKeys.push( objSpendProof.spend_proof );
 			//prev_spend_proof = objSpendProof.spend_proof;
 		}
-		if (objMessage.payload_location === "inline")
-			return callback("you don't need spend proofs when you have inline payload");
-	}
 
-	if (objMessage.payload_location !== "inline" && objMessage.payload_location !== "uri" && objMessage.payload_location !== "none")
-		return callback("wrong payload location: "+objMessage.payload_location);
-
-	if (objMessage.payload_location === "none" && ("payload" in objMessage || "payload_uri" in objMessage || "payload_uri_hash" in objMessage))
-		return callback("must be no payload");
-
-	if (objMessage.payload_location === "uri"){
-		if ("payload" in objMessage)
-			return callback("must not contain payload");
-		if (typeof objMessage.payload_uri !== "string")
-			return callback("no payload uri");
-		if (!isStringOfLength(objMessage.payload_uri_hash, constants.HASH_LENGTH))
-			return callback("wrong length of payload uri hash");
-		if (objMessage.payload_uri.length > 500)
-			return callback("payload_uri too long");
-		if (objectHash.getBase64Hash(objMessage.payload_uri) !== objMessage.payload_uri_hash)
-			return callback("wrong payload_uri hash");
-	}
-	else{
-		if ("payload_uri" in objMessage || "payload_uri_hash" in objMessage)
-			return callback("must not contain payload_uri and payload_uri_hash");
-	}
-	
-	if (objMessage.app === "payment"){ // special requirements for payment
-		if (objMessage.payload_location !== "inline" && objMessage.payload_location !== "none")
-			return callback("payment location must be inline or none");
-		if (objMessage.payload_location === "none" && !objMessage.spend_proofs)
-			return callback("private payment must come with spend proof(s)");
-	}
-	
-	var arrInlineOnlyApps = ["address_definition_change", "data_feed", "definition_template", "asset", "asset_attestors", "attestation", "poll", "vote"];
-	if (arrInlineOnlyApps.indexOf(objMessage.app) >= 0 && objMessage.payload_location !== "inline")
-		return callback(objMessage.app+" must be inline");
-
-	
-	function validatePayload(cb){
-		if (objMessage.payload_location === "inline"){
-			validateInlinePayload(conn, objMessage, message_index, objUnit, objValidationState, cb);
+		//	...
+		if ( objMessage.payload_location === "inline" )
+		{
+			return callback( "you don't need spend proofs when you have inline payload" );
 		}
-		else{
-			if (!isValidBase64(objMessage.payload_hash, constants.HASH_LENGTH))
-				return cb("wrong payload hash");
+	}
+
+	if ( objMessage.payload_location !== "inline" &&
+		objMessage.payload_location !== "uri" &&
+		objMessage.payload_location !== "none" )
+	{
+		return callback( "wrong payload location: " + objMessage.payload_location );
+	}
+
+	if ( objMessage.payload_location === "none" &&
+		( "payload" in objMessage || "payload_uri" in objMessage || "payload_uri_hash" in objMessage ) )
+	{
+		return callback( "must be no payload" );
+	}
+
+	if ( objMessage.payload_location === "uri" )
+	{
+		if ( "payload" in objMessage )
+		{
+			return callback( "must not contain payload" );
+		}
+		if ( typeof objMessage.payload_uri !== "string" )
+		{
+			return callback( "no payload uri" );
+		}
+		if ( ! isStringOfLength( objMessage.payload_uri_hash, constants.HASH_LENGTH ) )
+		{
+			return callback( "wrong length of payload uri hash" );
+		}
+		if ( objMessage.payload_uri.length > 500 )
+		{
+			return callback( "payload_uri too long" );
+		}
+		if ( objectHash.getBase64Hash( objMessage.payload_uri ) !== objMessage.payload_uri_hash )
+		{
+			return callback( "wrong payload_uri hash" );
+		}
+	}
+	else
+	{
+		if ( "payload_uri" in objMessage || "payload_uri_hash" in objMessage )
+		{
+			return callback( "must not contain payload_uri and payload_uri_hash" );
+		}
+	}
+
+	if ( objMessage.app === "payment" )
+	{
+		//	special requirements for payment
+		if ( objMessage.payload_location !== "inline" && objMessage.payload_location !== "none" )
+		{
+			return callback( "payment location must be inline or none" );
+		}
+		if ( objMessage.payload_location === "none" && ! objMessage.spend_proofs )
+		{
+			return callback( "private payment must come with spend proof(s)" );
+		}
+	}
+
+	var arrInlineOnlyApps =
+		[
+			"address_definition_change",
+			"data_feed",
+			"definition_template",
+			"asset",
+			"asset_attestors",
+			"attestation",
+			"poll",
+			"vote"
+		];
+	if ( arrInlineOnlyApps.indexOf( objMessage.app ) >= 0 && objMessage.payload_location !== "inline" )
+	{
+		return callback( objMessage.app + " must be inline" );
+	}
+
+
+	//	...
+	function validatePayload( cb )
+	{
+		if ( objMessage.payload_location === "inline" )
+		{
+			validateInlinePayload( conn, objMessage, message_index, objUnit, objValidationState, cb );
+		}
+		else
+		{
+			if ( ! isValidBase64( objMessage.payload_hash, constants.HASH_LENGTH ) )
+			{
+				return cb( "wrong payload hash" );
+			}
+
+			//	...
 			cb();
 		}
 	}
-	
-	function validateSpendProofs(cb){
-		if (!("spend_proofs" in objMessage))
+
+	function validateSpendProofs( cb )
+	{
+		if ( ! ( "spend_proofs" in objMessage ) )
+		{
 			return cb();
-		var arrEqs = objMessage.spend_proofs.map(function(objSpendProof){
-			return "spend_proof="+conn.escape(objSpendProof.spend_proof)+
-				" AND address="+conn.escape(objSpendProof.address ? objSpendProof.address : objUnit.authors[0].address);
-		});
-		checkForDoublespends(conn, "spend proof", 
-			"SELECT address, unit, main_chain_index, sequence FROM spend_proofs JOIN units USING(unit) WHERE unit != ? AND ("+arrEqs.join(" OR ")+")",
-			[objUnit.unit], 
-			objUnit, objValidationState, function(cb2){ cb2(); }, cb);
+		}
+
+		//	...
+		var arrEqs	= objMessage.spend_proofs.map
+		(
+			function( objSpendProof )
+			{
+				return "spend_proof=" + conn.escape( objSpendProof.spend_proof )
+					+ " AND address=" +
+					conn.escape
+					(
+						objSpendProof.address ?
+							objSpendProof.address
+							: objUnit.authors[ 0 ].address
+					);
+			}
+		);
+
+		//	...
+		checkForDoublespends
+		(
+			conn,
+			"spend proof",
+			"SELECT address, unit, main_chain_index, sequence" +
+			"ROM spend_proofs JOIN units USING(unit) " +
+			"HERE unit != ? AND (" + arrEqs.join( " OR " ) + ")",
+			[
+				objUnit.unit
+			],
+			objUnit,
+			objValidationState,
+			function( cb2 )
+			{
+				cb2();
+			},
+			cb
+		);
 	}
-	
-	async.series([validateSpendProofs, validatePayload], callback);
+
+	//	...
+	async.series
+	(
+		[
+			validateSpendProofs,
+			validatePayload
+		],
+		callback
+	);
 }
 
 
-function checkForDoublespends(conn, type, sql, arrSqlArgs, objUnit, objValidationState, onAcceptedDoublespends, cb){
-	conn.query(
+function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidationState, onAcceptedDoublespends, cb )
+{
+	conn.query
+	(
 		sql, 
 		arrSqlArgs,
-		function(rows){
-			if (rows.length === 0)
+		function( rows )
+		{
+			if ( rows.length === 0 )
+			{
 				return cb();
-			var arrAuthorAddresses = objUnit.authors.map(function(author) { return author.address; } );
-			async.eachSeries(
+			}
+
+			var arrAuthorAddresses = objUnit.authors.map
+			(
+				function( author )
+				{
+					return author.address;
+				}
+			);
+
+			//	...
+			async.eachSeries
+			(
 				rows,
-				function(objConflictingRecord, cb2){
-					if (arrAuthorAddresses.indexOf(objConflictingRecord.address) === -1)
-						throw Error("conflicting "+type+" spent from another address?");
-					graph.determineIfIncludedOrEqual(conn, objConflictingRecord.unit, objUnit.parent_units, function(bIncluded){
-						if (bIncluded){
-							var error = objUnit.unit+": conflicting "+type+" in inner unit "+objConflictingRecord.unit;
+				function( objConflictingRecord, cb2 )
+				{
+					if ( arrAuthorAddresses.indexOf( objConflictingRecord.address ) === -1 )
+					{
+						throw Error( "conflicting " + type + " spent from another address?" );
+					}
 
-							// too young (serial or nonserial)
-							if (objConflictingRecord.main_chain_index > objValidationState.last_ball_mci || objConflictingRecord.main_chain_index === null)
-								return cb2(error);
+					//	...
+					graph.determineIfIncludedOrEqual
+					(
+						conn,
+						objConflictingRecord.unit,
+						objUnit.parent_units,
+						function( bIncluded )
+						{
+							if ( bIncluded )
+							{
+								var error	= objUnit.unit + ": conflicting " + type + " in inner unit " + objConflictingRecord.unit;
 
-							// in good sequence (final state)
-							if (objConflictingRecord.sequence === 'good')
-								return cb2(error);
+								//	too young (serial or nonserial)
+								if ( objConflictingRecord.main_chain_index > objValidationState.last_ball_mci ||
+									objConflictingRecord.main_chain_index === null )
+								{
+									return cb2( error );
+								}
 
-							// to be voided: can reuse the output
-							if (objConflictingRecord.sequence === 'final-bad')
-								return cb2();
+								//	in good sequence (final state)
+								if ( objConflictingRecord.sequence === 'good' )
+								{
+									return cb2( error );
+								}
 
-							throw Error("unreachable code, conflicting "+type+" in unit "+objConflictingRecord.unit);
+								//	to be voided: can reuse the output
+								if ( objConflictingRecord.sequence === 'final-bad' )
+								{
+									return cb2();
+								}
+
+								throw Error
+								(
+									"unreachable code, conflicting " + type + " in unit " + objConflictingRecord.unit
+								);
+							}
+							else
+							{
+								//	arrAddressesWithForkedPath is not set when validating private payments
+								if ( objValidationState.arrAddressesWithForkedPath &&
+									objValidationState.arrAddressesWithForkedPath.indexOf( objConflictingRecord.address ) === -1 )
+								{
+									throw Error( "double spending " + type +" without double spending address?" );
+								}
+
+								//	...
+								cb2();
+							}
 						}
-						else{ // arrAddressesWithForkedPath is not set when validating private payments
-							if (objValidationState.arrAddressesWithForkedPath && objValidationState.arrAddressesWithForkedPath.indexOf(objConflictingRecord.address) === -1)
-								throw Error("double spending "+type+" without double spending address?");
-							cb2();
-						}
-					});
+					);
 				},
-				function(err){
-					if (err)
-						return cb(err);
-					onAcceptedDoublespends(cb);
+				function( err )
+				{
+					if ( err )
+					{
+						return cb( err );
+					}
+
+					//
+					//	TODO
+					//	accept double spends?
+					//
+					onAcceptedDoublespends( cb );
 				}
 			);
 		}
 	);
 }
 
-function validateInlinePayload(conn, objMessage, message_index, objUnit, objValidationState, callback){
+function validateInlinePayload( conn, objMessage, message_index, objUnit, objValidationState, callback )
+{
 	var payload = objMessage.payload;
-	if (typeof payload === "undefined")
-		return callback("no inline payload");
-	if (objectHash.getBase64Hash(payload) !== objMessage.payload_hash)
-		return callback("wrong payload hash: expected "+objectHash.getBase64Hash(payload)+", got "+objMessage.payload_hash);
 
-	switch (objMessage.app){
+	if ( typeof payload === "undefined" )
+	{
+		return callback( "no inline payload" );
+	}
+	if ( objectHash.getBase64Hash( payload ) !== objMessage.payload_hash )
+	{
+		return callback( "wrong payload hash: expected " + objectHash.getBase64Hash( payload ) + ", got " + objMessage.payload_hash );
+	}
 
+	switch ( objMessage.app )
+	{
 		case "text":
-			if (typeof payload !== "string")
-				return callback("payload must be string");
+			if ( typeof payload !== "string" )
+			{
+				return callback( "payload must be string" );
+			}
+
 			return callback();
 
 		case "address_definition_change":
-			if (hasFieldsExcept(payload, ["definition_chash", "address"]))
-				return callback("unknown fields in address_definition_change");
-			var arrAuthorAddresses = objUnit.authors.map(function(author) { return author.address; } );
+			if ( hasFieldsExcept( payload, [ "definition_chash", "address" ] ) )
+			{
+				return callback( "unknown fields in address_definition_change" );
+			}
+
+			var arrAuthorAddresses = objUnit.authors.map
+			(
+				function( author )
+				{
+					return author.address;
+				}
+			);
+
 			var address;
-			if (objUnit.authors.length > 1){
-				if (!isValidAddress(payload.address))
-					return callback("when multi-authored, must indicate address");
-				if (arrAuthorAddresses.indexOf(payload.address) === -1)
-					return callback("foreign address");
+			if ( objUnit.authors.length > 1 )
+			{
+				if ( ! isValidAddress( payload.address ) )
+				{
+					return callback( "when multi-authored, must indicate address" );
+				}
+				if ( arrAuthorAddresses.indexOf( payload.address ) === -1 )
+				{
+					return callback( "foreign address" );
+				}
+
+				//	...
 				address = payload.address;
 			}
-			else{
-				if ('address' in payload)
-					return callback("when single-authored, must not indicate address");
-				address = arrAuthorAddresses[0];
+			else
+			{
+				if ( 'address' in payload )
+				{
+					return callback( "when single-authored, must not indicate address" );
+				}
+
+				//	...
+				address	= arrAuthorAddresses[ 0 ];
 			}
-			if (!objValidationState.arrDefinitionChangeFlags)
+
+			if ( ! objValidationState.arrDefinitionChangeFlags )
+			{
 				objValidationState.arrDefinitionChangeFlags = {};
-			if (objValidationState.arrDefinitionChangeFlags[address])
-				return callback("can be only one definition change per address");
-			objValidationState.arrDefinitionChangeFlags[address] = true;
-			if (!isValidAddress(payload.definition_chash))
-				return callback("bad new definition_chash");
+			}
+			if ( objValidationState.arrDefinitionChangeFlags[ address ] )
+			{
+				return callback( "can be only one definition change per address" );
+			}
+
+			objValidationState.arrDefinitionChangeFlags[ address ] = true;
+			if ( ! isValidAddress( payload.definition_chash ) )
+			{
+				return callback( "bad new definition_chash" );
+			}
+
+			//	...
 			return callback();
 
 		case "poll":
-			if (objValidationState.bHasPoll)
-				return callback("can be only one poll");
-			objValidationState.bHasPoll = true;
-			if (typeof payload !== "object" || Array.isArray(payload))
-				return callback("poll payload must be object");
-			if (hasFieldsExcept(payload, ["question", "choices"]))
-				return callback("unknown fields in "+objMessage.app);
-			if (typeof payload.question !== 'string')
-				return callback("no question in poll");
-			if (!isNonemptyArray(payload.choices))
-				return callback("no choices in poll");
-			if (payload.choices.length > constants.MAX_CHOICES_PER_POLL)
-				return callback("too many choices in poll");
-			for (var i=0; i<payload.choices.length; i++)
-				if (typeof payload.choices[i] !== 'string')
-					return callback("all choices must be strings");
+			if ( objValidationState.bHasPoll )
+			{
+				return callback( "can be only one poll" );
+			}
+
+			objValidationState.bHasPoll	= true;
+			if ( typeof payload !== "object" || Array.isArray( payload ) )
+			{
+				return callback( "poll payload must be object" );
+			}
+			if ( hasFieldsExcept( payload, [ "question", "choices" ] ) )
+			{
+				return callback( "unknown fields in " + objMessage.app );
+			}
+			if ( typeof payload.question !== 'string' )
+			{
+				return callback( "no question in poll" );
+			}
+			if ( ! isNonemptyArray( payload.choices ) )
+			{
+				return callback( "no choices in poll" );
+			}
+			if ( payload.choices.length > constants.MAX_CHOICES_PER_POLL )
+			{
+				return callback( "too many choices in poll" );
+			}
+
+			for ( var i = 0; i < payload.choices.length; i++ )
+			{
+				if ( typeof payload.choices[ i ] !== 'string' )
+				{
+					return callback( "all choices must be strings" );
+				}
+			}
+
+			//	...
 			return callback();
-			
+
 		case "vote":
-			if (!isStringOfLength(payload.unit, constants.HASH_LENGTH))
-				return callback("invalid unit in vote");
-			if (typeof payload.choice !== "string")
-				return callback("choice must be string");
-			if (hasFieldsExcept(payload, ["unit", "choice"]))
-				return callback("unknown fields in "+objMessage.app);
-			conn.query(
+			if ( ! isStringOfLength( payload.unit, constants.HASH_LENGTH ) )
+			{
+				return callback( "invalid unit in vote" );
+			}
+			if ( typeof payload.choice !== "string" )
+			{
+				return callback( "choice must be string" );
+			}
+			if ( hasFieldsExcept( payload, [ "unit", "choice" ] ) )
+			{
+				return callback( "unknown fields in " + objMessage.app );
+			}
+
+			//	...
+			conn.query
+			(
 				"SELECT main_chain_index, sequence FROM polls JOIN poll_choices USING(unit) JOIN units USING(unit) WHERE unit=? AND choice=?", 
-				[payload.unit, payload.choice],
-				function(poll_unit_rows){
-					if (poll_unit_rows.length > 1)
-						throw Error("more than one poll?");
-					if (poll_unit_rows.length === 0)
-						return callback("invalid choice "+payload.choice+" or poll "+payload.unit);
-					var objPollUnitProps = poll_unit_rows[0];
-					if (objPollUnitProps.main_chain_index === null || objPollUnitProps.main_chain_index > objValidationState.last_ball_mci)
-						return callback("poll unit must be before last ball");
-					if (objPollUnitProps.sequence !== 'good')
-						return callback("poll unit is not serial");
+				[
+					payload.unit,
+					payload.choice
+				],
+				function( poll_unit_rows )
+				{
+					if ( poll_unit_rows.length > 1 )
+					{
+						throw Error( "more than one poll?" );
+					}
+					if ( poll_unit_rows.length === 0 )
+					{
+						return callback( "invalid choice " + payload.choice + " or poll " + payload.unit );
+					}
+
+					//	...
+					var objPollUnitProps	= poll_unit_rows[ 0 ];
+					if ( objPollUnitProps.main_chain_index === null ||
+						objPollUnitProps.main_chain_index > objValidationState.last_ball_mci )
+					{
+						return callback( "poll unit must be before last ball" );
+					}
+					if ( objPollUnitProps.sequence !== 'good' )
+					{
+						return callback( "poll unit is not serial" );
+					}
+
+					//	...
 					return callback();
 				}
 			);
 			break;
 
 		case "data_feed":
-			if (objValidationState.bHasDataFeed)
-				return callback("can be only one data feed");
-			objValidationState.bHasDataFeed = true;
-			if (typeof payload !== "object" || Array.isArray(payload) || Object.keys(payload).length === 0)
-				return callback("data feed payload must be non-empty object");
-			for (var feed_name in payload){
-				if (feed_name.length > constants.MAX_DATA_FEED_NAME_LENGTH)
-					return callback("feed name "+feed_name+" too long");
-				var value = payload[feed_name];
-				if (typeof value === 'string'){
-					if (value.length > constants.MAX_DATA_FEED_VALUE_LENGTH)
-						return callback("value "+value+" too long");
+			if ( objValidationState.bHasDataFeed )
+			{
+				return callback( "can be only one data feed" );
+			}
+
+			//	...
+			objValidationState.bHasDataFeed	= true;
+			if ( typeof payload !== "object" || Array.isArray( payload ) || Object.keys( payload ).length === 0 )
+			{
+				return callback( "data feed payload must be non-empty object" );
+			}
+
+			for ( var feed_name in payload )
+			{
+				if ( feed_name.length > constants.MAX_DATA_FEED_NAME_LENGTH )
+				{
+					return callback( "feed name " + feed_name + " too long" );
 				}
-				else if (typeof value === 'number'){
-					if (!isInteger(value))
-						return callback("fractional numbers not allowed in data feeds");
+
+				//	...
+				var value	= payload[ feed_name ];
+				if ( typeof value === 'string' )
+				{
+					if ( value.length > constants.MAX_DATA_FEED_VALUE_LENGTH )
+					{
+						return callback( "value " + value + " too long" );
+					}
+				}
+				else if ( typeof value === 'number' )
+				{
+					if ( ! isInteger( value ) )
+					{
+						return callback( "fractional numbers not allowed in data feeds" );
+					}
 				}
 				else
-					return callback("data feed "+feed_name+" must be string or number");
+				{
+					return callback( "data feed " + feed_name + " must be string or number" );
+				}
 			}
+
+			//	...
 			return callback();
 
-		case "profile":
-			if (objUnit.authors.length !== 1)
-				return callback("profile must be single-authored");
-			if (objValidationState.bHasProfile)
-				return callback("can be only one profile");
+		case "profile" :
+			if ( objUnit.authors.length !== 1 )
+			{
+				return callback( "profile must be single-authored" );
+			}
+			if ( objValidationState.bHasProfile )
+			{
+				return callback( "can be only one profile" );
+			}
+
+			//	...
 			objValidationState.bHasProfile = true;
 			// no break, continuing
+
 		case "data":
-			if (typeof payload !== "object" || payload === null)
-				return callback(objMessage.app+" payload must be object");
+			if ( typeof payload !== "object" || payload === null )
+			{
+				return callback( objMessage.app + " payload must be object" );
+			}
+
+			//	...
 			return callback();
 
 		case "definition_template":
-			if (objValidationState.bHasDefinitionTemplate)
-				return callback("can be only one definition template");
-			objValidationState.bHasDefinitionTemplate = true;
-			if (!ValidationUtils.isArrayOfLength(payload, 2))
-				return callback(objMessage.app+" payload must be array of two elements");
+			if ( objValidationState.bHasDefinitionTemplate )
+			{
+				return callback( "can be only one definition template" );
+			}
+
+			//	...
+			objValidationState.bHasDefinitionTemplate	= true;
+			if ( ! ValidationUtils.isArrayOfLength( payload, 2 ) )
+			{
+				return callback( objMessage.app + " payload must be array of two elements" );
+			}
+
+			//	...
 			return callback();
 
 		case "attestation":
-			if (objUnit.authors.length !== 1)
-				return callback("attestation must be single-authored");
-			if (hasFieldsExcept(payload, ["address", "profile"]))
-				return callback("unknown fields in "+objMessage.app);
-			if (!isValidAddress(payload.address))
-				return callback("attesting an invalid address");
-			if (typeof payload.profile !== 'object' || payload.profile === null)
-				return callback("attested profile must be object");
-			// it is ok if the address has never been used yet
-			// it is also ok to attest oneself
+			if ( objUnit.authors.length !== 1 )
+			{
+				return callback( "attestation must be single-authored" );
+			}
+			if ( hasFieldsExcept( payload, [ "address", "profile" ] ) )
+			{
+				return callback( "unknown fields in " + objMessage.app );
+			}
+			if ( ! isValidAddress( payload.address ) )
+			{
+				return callback( "attesting an invalid address" );
+			}
+			if ( typeof payload.profile !== 'object' || payload.profile === null )
+			{
+				return callback( "attested profile must be object" );
+			}
+
+			//
+			//	it is ok if the address has never been used yet
+			//	it is also ok to attest oneself
 			return callback();
 
 		case "asset":
-			if (objValidationState.bHasAssetDefinition)
-				return callback("can be only one asset definition");
+			if ( objValidationState.bHasAssetDefinition )
+			{
+				return callback( "can be only one asset definition" );
+			}
+
+			//	...
 			objValidationState.bHasAssetDefinition = true;
-			validateAssetDefinition(conn, payload, objUnit, objValidationState, callback);
+			validateAssetDefinition( conn, payload, objUnit, objValidationState, callback );
 			break;
 
 		case "asset_attestors":
-			if (!objValidationState.assocHasAssetAttestors)
+			if ( ! objValidationState.assocHasAssetAttestors )
+			{
 				objValidationState.assocHasAssetAttestors = {};
-			if (objValidationState.assocHasAssetAttestors[payload.asset])
-				return callback("can be only one asset attestor list update per asset");
-			objValidationState.assocHasAssetAttestors[payload.asset] = true;
-			validateAssetorListUpdate(conn, payload, objUnit, objValidationState, callback);
+			}
+			if ( objValidationState.assocHasAssetAttestors[ payload.asset ] )
+			{
+				return callback( "can be only one asset attestor list update per asset" );
+			}
+
+			//	...
+			objValidationState.assocHasAssetAttestors[ payload.asset ] = true;
+			validateAssetorListUpdate
+			(
+				conn,
+				payload,
+				objUnit,
+				objValidationState,
+				callback
+			);
 			break;
 
 		case "payment":
-			validatePayment(conn, payload, message_index, objUnit, objValidationState, callback);
+			validatePayment
+			(
+				conn,
+				payload,
+				message_index,
+				objUnit,
+				objValidationState,
+				callback
+			);
 			break;
 
 		default:
-			return callback("unknown app: "+objMessage.app);
+			return callback( "unknown app: " + objMessage.app );
 	}
 }
 
-// used for both public and private payments
-function validatePayment(conn, payload, message_index, objUnit, objValidationState, callback){
+/**
+ *	used for both public and private payments
+ */
+function validatePayment( conn, payload, message_index, objUnit, objValidationState, callback )
+{
+	if ( ! ( "asset" in payload ) )
+	{
+		//	base currency
+		if ( hasFieldsExcept( payload, [ "inputs", "outputs" ] ) )
+		{
+			return callback( "unknown fields in payment message" );
+		}
+		if ( objValidationState.bHasBasePayment )
+		{
+			return callback( "can have only one base payment" );
+		}
 
-	if (!("asset" in payload)){ // base currency
-		if (hasFieldsExcept(payload, ["inputs", "outputs"]))
-			return callback("unknown fields in payment message");
-		if (objValidationState.bHasBasePayment)
-			return callback("can have only one base payment");
+		//	...
 		objValidationState.bHasBasePayment = true;
-		return validatePaymentInputsAndOutputs(conn, payload, null, message_index, objUnit, objValidationState, callback);
+		return validatePaymentInputsAndOutputs( conn, payload, null, message_index, objUnit, objValidationState, callback );
 	}
-	
-	// asset
-	if (!isStringOfLength(payload.asset, constants.HASH_LENGTH))
-		return callback("invalid asset");
-	
-	var arrAuthorAddresses = objUnit.authors.map(function(author) { return author.address; } );
-	// note that light clients cannot check attestations
-	storage.loadAssetWithListOfAttestedAuthors(conn, payload.asset, objValidationState.last_ball_mci, arrAuthorAddresses, function(err, objAsset){
-		if (err)
-			return callback(err);
-		if (hasFieldsExcept(payload, ["inputs", "outputs", "asset", "denomination"]))
-			return callback("unknown fields in payment message");
-		if (!isNonemptyArray(payload.inputs))
-			return callback("no inputs");
-		if (!isNonemptyArray(payload.outputs))
-			return callback("no outputs");
-		if (objAsset.fixed_denominations){
-			if (!isPositiveInteger(payload.denomination))
-				return callback("no denomination");
+
+	//	asset
+	if ( ! isStringOfLength( payload.asset, constants.HASH_LENGTH ) )
+	{
+		return callback( "invalid asset" );
+	}
+
+	//	...
+	var arrAuthorAddresses = objUnit.authors.map
+	(
+		function( author )
+		{
+			return author.address;
 		}
-		else{
-			if ("denomination" in payload)
-				return callback("denomination in arbitrary-amounts asset")
-		}
-		if (!!objAsset.is_private !== !!objValidationState.bPrivate)
-			return callback("asset privacy mismatch");
-		var bIssue = (payload.inputs[0].type === "issue");
-		var issuer_address;
-		if (bIssue){
-			if (arrAuthorAddresses.length === 1)
-				issuer_address = arrAuthorAddresses[0];
-			else{
-				issuer_address = payload.inputs[0].address;
-				if (arrAuthorAddresses.indexOf(issuer_address) === -1)
-					return callback("issuer not among authors");
+	);
+
+	//	note that light clients cannot check attestations
+	storage.loadAssetWithListOfAttestedAuthors
+	(
+		conn,
+		payload.asset,
+		objValidationState.last_ball_mci,
+		arrAuthorAddresses,
+		function( err, objAsset )
+		{
+			if ( err )
+				return callback( err );
+
+			if ( hasFieldsExcept( payload, [ "inputs", "outputs", "asset", "denomination" ] ) )
+				return callback( "unknown fields in payment message" );
+			if ( ! isNonemptyArray( payload.inputs ) )
+				return callback( "no inputs" );
+			if ( ! isNonemptyArray( payload.outputs ) )
+				return callback( "no outputs" );
+			if ( objAsset.fixed_denominations )
+			{
+				if ( ! isPositiveInteger( payload.denomination ) )
+					return callback( "no denomination" );
 			}
-			if (objAsset.issued_by_definer_only && issuer_address !== objAsset.definer_address)
-				return callback("only definer can issue this asset");
+			else
+			{
+				if ( "denomination" in payload )
+					return callback( "denomination in arbitrary-amounts asset" )
+			}
+
+			if ( !! objAsset.is_private !== !! objValidationState.bPrivate )
+				return callback( "asset privacy mismatch" );
+
+			var bIssue	= ( payload.inputs[ 0 ].type === "issue" );
+			var issuer_address;
+
+			if ( bIssue )
+			{
+				if ( arrAuthorAddresses.length === 1 )
+				{
+					issuer_address	= arrAuthorAddresses[ 0 ];
+				}
+				else
+				{
+					issuer_address	= payload.inputs[ 0 ].address;
+					if ( arrAuthorAddresses.indexOf( issuer_address ) === -1 )
+					{
+						return callback( "issuer not among authors" );
+					}
+				}
+
+				if ( objAsset.issued_by_definer_only && issuer_address !== objAsset.definer_address )
+				{
+					return callback( "only definer can issue this asset" );
+				}
+			}
+
+			if ( objAsset.cosigned_by_definer && arrAuthorAddresses.indexOf( objAsset.definer_address ) === -1 )
+			{
+				return callback( "must be cosigned by definer" );
+			}
+
+			if ( objAsset.spender_attested )
+			{
+				if ( conf.bLight && objAsset.is_private )
+				{
+					//
+					//	in light clients,
+					//	we don't have the attestation data but if the asset is public,
+					// 	we trust witnesses to have checked attestations
+					//
+					//	TODO:
+					//	request history
+					return callback( "being light, I can't check attestations for private assets" );
+				}
+				if ( objAsset.arrAttestedAddresses.length === 0 )
+				{
+					return callback( "none of the authors is attested" );
+				}
+				if ( bIssue && objAsset.arrAttestedAddresses.indexOf( issuer_address ) === -1 )
+				{
+					return callback( "issuer is not attested" );
+				}
+			}
+
+			//	...
+			validatePaymentInputsAndOutputs
+			(
+				conn,
+				payload,
+				objAsset,
+				message_index,
+				objUnit,
+				objValidationState,
+				callback
+			);
 		}
-		if (objAsset.cosigned_by_definer && arrAuthorAddresses.indexOf(objAsset.definer_address) === -1)
-			return callback("must be cosigned by definer");
-		
-		if (objAsset.spender_attested){
-			if (conf.bLight && objAsset.is_private) // in light clients, we don't have the attestation data but if the asset is public, we trust witnesses to have checked attestations
-				return callback("being light, I can't check attestations for private assets"); // TODO: request history
-			if (objAsset.arrAttestedAddresses.length === 0)
-				return callback("none of the authors is attested");
-			if (bIssue && objAsset.arrAttestedAddresses.indexOf(issuer_address) === -1)
-				return callback("issuer is not attested");
-		}
-		validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index, objUnit, objValidationState, callback);
-	});
+	);
 }
 
-// divisible assets (including base asset)
-function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index, objUnit, objValidationState, callback){
-	
+/**
+ *	divisible assets (including base asset)
+ */
+function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index, objUnit, objValidationState, callback )
+{
 //	if (objAsset)
 //		profiler2.start();
-	var denomination = payload.denomination || 1;
-	var arrAuthorAddresses = objUnit.authors.map(function(author) { return author.address; } );
-	var arrInputAddresses = []; // used for non-transferrable assets only
-	var arrOutputAddresses = [];
-	var total_input = 0;
-	if (payload.inputs.length > constants.MAX_INPUTS_PER_PAYMENT_MESSAGE)
-		return callback("too many inputs");
-	if (payload.outputs.length > constants.MAX_OUTPUTS_PER_PAYMENT_MESSAGE)
-		return callback("too many outputs");
-	
-	if (objAsset && objAsset.fixed_denominations && payload.inputs.length !== 1)
-		return callback("fixed denominations payment must have 1 input");
+	var denomination	= payload.denomination || 1;
+	var arrAuthorAddresses	= objUnit.authors.map( function( author ) { return author.address; } );
+	var arrInputAddresses	= []; // used for non-transferrable assets only
+	var arrOutputAddresses	= [];
+	var total_input		= 0;
 
-	var total_output = 0;
-	var prev_address = ""; // if public, outputs must be sorted by address
-	var prev_amount = 0;
-	var count_open_outputs = 0;
-	for (var i=0; i<payload.outputs.length; i++){
-		var output = payload.outputs[i];
-		if (hasFieldsExcept(output, ["address", "amount", "blinding", "output_hash"]))
-			return callback("unknown fields in payment output");
-		if (!isPositiveInteger(output.amount))
-			return callback("amount must be positive integer, found "+output.amount);
-		if (objAsset && objAsset.fixed_denominations && output.amount % denomination !== 0)
-			return callback("output amount must be divisible by denomination");
-		if (objAsset && objAsset.is_private){
-			if (("output_hash" in output) !== !!objAsset.fixed_denominations)
-				return callback("output_hash must be present with fixed denominations only");
-			if ("output_hash" in output && !isStringOfLength(output.output_hash, constants.HASH_LENGTH))
-				return callback("invalid output hash");
-			if (!objAsset.fixed_denominations && !(("blinding" in output) && ("address" in output)))
-				return callback("no blinding or address");
-			if ("blinding" in output && !isStringOfLength(output.blinding, 16))
-				return callback("bad blinding");
-			if (("blinding" in output) !== ("address" in output))
-				return callback("address and bilinding must come together");
-			if ("address" in output && !ValidationUtils.isValidAddressAnyCase(output.address))
-				return callback("output address "+output.address+" invalid");
-			if (output.address)
-				count_open_outputs++;
+	if ( payload.inputs.length > constants.MAX_INPUTS_PER_PAYMENT_MESSAGE )
+	{
+		return callback( "too many inputs" );
+	}
+	if ( payload.outputs.length > constants.MAX_OUTPUTS_PER_PAYMENT_MESSAGE )
+	{
+		return callback( "too many outputs" );
+	}
+	if ( objAsset && objAsset.fixed_denominations && payload.inputs.length !== 1 )
+	{
+		return callback( "fixed denominations payment must have 1 input" );
+	}
+
+	//	...
+	var total_output	= 0;
+	var prev_address	= "";	//	if public, outputs must be sorted by address
+	var prev_amount		= 0;
+	var count_open_outputs	= 0;
+
+	for ( var i = 0; i < payload.outputs.length; i ++ )
+	{
+		var output	= payload.outputs[ i ];
+
+		if ( hasFieldsExcept( output, [ "address", "amount", "blinding", "output_hash" ] ) )
+		{
+			return callback( "unknown fields in payment output" );
 		}
-		else{
-			if ("blinding" in output)
-				return callback("public output must not have blinding");
-			if ("output_hash" in output)
-				return callback("public output must not have output_hash");
-			if (!ValidationUtils.isValidAddressAnyCase(output.address))
-				return callback("output address "+output.address+" invalid");
-			if (prev_address > output.address)
-				return callback("output addresses not sorted");
-			else if (prev_address === output.address && prev_amount > output.amount)
-				return callback("output amounts for same address not sorted");
-			prev_address = output.address;
-			prev_amount = output.amount;
+		if ( ! isPositiveInteger( output.amount ) )
+		{
+			return callback( "amount must be positive integer, found " + output.amount );
 		}
-		if (output.address && arrOutputAddresses.indexOf(output.address) === -1)
-			arrOutputAddresses.push(output.address);
+		if ( objAsset && objAsset.fixed_denominations && output.amount % denomination !== 0 )
+		{
+			return callback( "output amount must be divisible by denomination" );
+		}
+
+		if ( objAsset && objAsset.is_private )
+		{
+			if ( ( "output_hash" in output ) !== !! objAsset.fixed_denominations )
+			{
+				return callback( "output_hash must be present with fixed denominations only" );
+			}
+			if ( "output_hash" in output && ! isStringOfLength( output.output_hash, constants.HASH_LENGTH ) )
+			{
+				return callback( "invalid output hash" );
+			}
+			if ( ! objAsset.fixed_denominations && ! ( ( "blinding" in output ) && ( "address" in output ) ) )
+			{
+				return callback( "no blinding or address" );
+			}
+			if ( "blinding" in output && ! isStringOfLength( output.blinding, 16 ) )
+			{
+				return callback( "bad blinding" );
+			}
+			if ( ( "blinding" in output ) !== ( "address" in output ) )
+			{
+				return callback( "address and bilinding must come together" );
+			}
+			if ( "address" in output && ! ValidationUtils.isValidAddressAnyCase( output.address ) )
+			{
+				return callback( "output address " + output.address + " invalid" );
+			}
+			if ( output.address )
+			{
+				count_open_outputs ++;
+			}
+		}
+		else
+		{
+			if ( "blinding" in output )
+			{
+				return callback( "public output must not have blinding" );
+			}
+			if ( "output_hash" in output )
+			{
+				return callback( "public output must not have output_hash" );
+			}
+			if ( ! ValidationUtils.isValidAddressAnyCase( output.address ) )
+			{
+				return callback( "output address " + output.address + " invalid" );
+			}
+			if ( prev_address > output.address )
+			{
+				return callback( "output addresses not sorted" );
+			}
+			else if ( prev_address === output.address && prev_amount > output.amount )
+			{
+				return callback( "output amounts for same address not sorted" );
+			}
+
+			//	...
+			prev_address	= output.address;
+			prev_amount	= output.amount;
+		}
+
+		if ( output.address && arrOutputAddresses.indexOf( output.address ) === -1 )
+		{
+			arrOutputAddresses.push( output.address );
+		}
+
+		//	...
 		total_output += output.amount;
 	}
-	if (objAsset && objAsset.is_private && count_open_outputs !== 1)
-		return callback("found "+count_open_outputs+" open outputs, expected 1");
 
-	var bIssue = false;
-	var bHaveHeadersComissions = false;
-	var bHaveWitnessings = false;
-	
-	// same for both public and private
-	function validateIndivisibleIssue(input, cb){
-	//	if (objAsset)
-	//		profiler2.start();
-		conn.query(
+	if ( objAsset && objAsset.is_private && count_open_outputs !== 1 )
+	{
+		return callback( "found " + count_open_outputs + " open outputs, expected 1" );
+	}
+
+	//	...
+	var bIssue			= false;
+	var bHaveHeadersComissions	= false;
+	var bHaveWitnessings		= false;
+
+	//	same for both public and private
+	function validateIndivisibleIssue( input, cb )
+	{
+		//	if (objAsset)
+		//		profiler2.start();
+		conn.query
+		(
 			"SELECT count_coins FROM asset_denominations WHERE asset=? AND denomination=?", 
-			[payload.asset, denomination], 
-			function(rows){
-				if (rows.length === 0)
-					return cb("invalid denomination: "+denomination);
-				if (rows.length > 1)
-					throw Error("more than one record per denomination?");
-				var denomInfo = rows[0];
-				if (denomInfo.count_coins === null){ // uncapped
-					if (input.amount % denomination !== 0)
-						return cb("issue amount must be multiple of denomination");
+			[
+				payload.asset,
+				denomination
+			],
+			function( rows )
+			{
+				if ( rows.length === 0 )
+				{
+					return cb( "invalid denomination: " + denomination );
 				}
-				else{
-					if (input.amount !== denomination * denomInfo.count_coins)
-						return cb("wrong size of issue of denomination "+denomination);
+				if ( rows.length > 1 )
+				{
+					throw Error( "more than one record per denomination?" );
 				}
-			//	if (objAsset)
-			//		profiler2.stop('validateIndivisibleIssue');
+
+				//	...
+				var denomInfo	= rows[0];
+				if ( denomInfo.count_coins === null )
+				{
+					//	uncapped
+					if ( input.amount % denomination !== 0 )
+					{
+						return cb( "issue amount must be multiple of denomination" );
+					}
+				}
+				else
+				{
+					if ( input.amount !== denomination * denomInfo.count_coins )
+					{
+						return cb( "wrong size of issue of denomination " + denomination );
+					}
+				}
+
+				//	if (objAsset)
+				//		profiler2.stop('validateIndivisibleIssue');
 				cb();
 			}
 		);
@@ -1556,128 +2812,239 @@ function validatePaymentInputsAndOutputs(conn, payload, objAsset, message_index,
 	
 //	if (objAsset)
 //		profiler2.stop('validate outputs');
-	
-	// max 1 issue must come first, then transfers, then hc, then witnessings
-	// no particular sorting order within the groups
-	async.forEachOfSeries(
+
+	//
+	//	max 1 issue must come first, then transfers, then hc, then witnessings
+	//	no particular sorting order within the groups
+	//
+	async.forEachOfSeries
+	(
 		payload.inputs,
-		function(input, input_index, cb){
-			if (objAsset){
-				if ("type" in input && input.type !== "issue")
-					return cb("non-base input can have only type=issue");
+		function( input, input_index, cb )
+		{
+			if ( objAsset )
+			{
+				if ( "type" in input && input.type !== "issue" )
+				{
+					return cb( "non-base input can have only type=issue" );
+				}
 			}
-			else{
-				if ("type" in input && !isNonemptyString(input.type))
-					return cb("bad input type");
+			else
+			{
+				if ( "type" in input && ! isNonemptyString( input.type ) )
+				{
+					return cb( "bad input type" );
+				}
 			}
-			var type = input.type || "transfer";
 
-			var doubleSpendFields = "unit, address, message_index, input_index, main_chain_index, sequence, is_stable";
+			var type		= input.type || "transfer";
+
+			var doubleSpendFields	= "unit, address, message_index, input_index, main_chain_index, sequence, is_stable";
 			var doubleSpendWhere;
-			var doubleSpendVars = [];
+			var doubleSpendVars	= [];
 
-			function checkInputDoubleSpend(cb2){
-			//	if (objAsset)
-			//		profiler2.start();
-				doubleSpendWhere += " AND unit != " + conn.escape(objUnit.unit);
-				if (objAsset){
-					doubleSpendWhere += " AND asset=?";
-					doubleSpendVars.push(payload.asset);
+			function checkInputDoubleSpend( cb2 )
+			{
+				//	if (objAsset)
+				//		profiler2.start();
+				doubleSpendWhere	+= " AND unit != " + conn.escape( objUnit.unit );
+
+				if ( objAsset )
+				{
+					doubleSpendWhere	+= " AND asset=?";
+					doubleSpendVars.push( payload.asset );
 				}
 				else
-					doubleSpendWhere += " AND asset IS NULL";
-				var doubleSpendQuery = "SELECT "+doubleSpendFields+" FROM inputs JOIN units USING(unit) WHERE "+doubleSpendWhere;
-				checkForDoublespends(
-					conn, "divisible input", 
-					doubleSpendQuery, doubleSpendVars, 
-					objUnit, objValidationState, 
-					function acceptDoublespends(cb3){
-						log.consoleLog("--- accepting doublespend on unit "+objUnit.unit);
-						var sql = "UPDATE inputs SET is_unique=NULL WHERE "+doubleSpendWhere+
+				{
+					doubleSpendWhere	+= " AND asset IS NULL";
+				}
+
+				//	...
+				var doubleSpendQuery	= "SELECT " + doubleSpendFields + " FROM inputs JOIN units USING(unit) WHERE " + doubleSpendWhere;
+				checkForDoublespends
+				(
+					conn,
+					"divisible input",
+					doubleSpendQuery,
+					doubleSpendVars,
+					objUnit,
+					objValidationState,
+					function acceptDoublespends( cb3 )
+					{
+						log.consoleLog( "--- accepting doublespend on unit " + objUnit.unit );
+
+						//	...
+						var sql = "UPDATE inputs SET is_unique=NULL WHERE " + doubleSpendWhere+
 							" AND (SELECT is_stable FROM units WHERE units.unit=inputs.unit)=0";
-						if (!(objAsset && objAsset.is_private)){
-							objValidationState.arrAdditionalQueries.push({sql: sql, params: doubleSpendVars});
-							objValidationState.arrDoubleSpendInputs.push({message_index: message_index, input_index: input_index});
-							return cb3();
-						}
-						mutex.lock(["private_write"], function(unlock){
-							log.consoleLog("--- will ununique the conflicts of unit "+objUnit.unit);
-							conn.query(
-								sql, 
-								doubleSpendVars, 
-								function(){
-									log.consoleLog("--- ununique done unit "+objUnit.unit);
-									objValidationState.arrDoubleSpendInputs.push({message_index: message_index, input_index: input_index});
-									unlock();
-									cb3();
+						if ( ! ( objAsset && objAsset.is_private ) )
+						{
+							objValidationState.arrAdditionalQueries.push
+							(
+								{
+									sql	: sql,
+									params	: doubleSpendVars
 								}
 							);
-						});
+							objValidationState.arrDoubleSpendInputs.push
+							(
+								{
+									message_index	: message_index,
+									input_index	: input_index
+								}
+							);
+
+							//	...
+							return cb3();
+						}
+
+						//
+						//	* IMPORTANT
+						//
+						mutex.lock
+						(
+							[ "private_write" ],
+							function( unlock )
+							{
+								log.consoleLog( "--- will ununique the conflicts of unit " + objUnit.unit );
+
+								//	...
+								conn.query
+								(
+									sql,
+									doubleSpendVars,
+									function()
+									{
+										log.consoleLog( "--- ununique done unit " + objUnit.unit );
+										objValidationState.arrDoubleSpendInputs.push
+										(
+											{
+												message_index	: message_index,
+												input_index	: input_index
+											}
+										);
+
+										//	...
+										unlock();
+										cb3();
+									}
+								);
+							}
+						);
 					}, 
-					function onDone(err){
-						if (err && objAsset && objAsset.is_private)
-							throw Error("spend proof didn't help: "+err);
-					//	if (objAsset)
-					//		profiler2.stop('checkInputDoubleSpend');
-						cb2(err);
+					function onDone( err )
+					{
+						if ( err && objAsset && objAsset.is_private )
+						{
+							throw Error( "spend proof didn't help: " + err );
+						}
+
+						//	if (objAsset)
+						//		profiler2.stop('checkInputDoubleSpend');
+						cb2( err );
 					}
 				);
 			}
 
-			switch (type){
+			switch ( type )
+			{
 				case "issue":
 				//	if (objAsset)
 				//		profiler2.start();
-					if (input_index !== 0)
-						return cb("issue must come first");
-					if (hasFieldsExcept(input, ["type", "address", "amount", "serial_number"]))
-						return cb("unknown fields in issue input");
-					if (!isPositiveInteger(input.amount))
-						return cb("amount must be positive");
-					if (!isPositiveInteger(input.serial_number))
-						return cb("serial_number must be positive");
-					if (!objAsset || objAsset.cap){
-						if (input.serial_number !== 1)
-							return cb("for capped asset serial_number must be 1");
+					if ( input_index !== 0 )
+					{
+						return cb( "issue must come first" );
 					}
-					if (bIssue)
-						return cb("only one issue per message allowed");
+					if ( hasFieldsExcept( input, [ "type", "address", "amount", "serial_number" ] ) )
+					{
+						return cb( "unknown fields in issue input" );
+					}
+					if ( ! isPositiveInteger( input.amount ) )
+					{
+						return cb( "amount must be positive" );
+					}
+					if ( ! isPositiveInteger( input.serial_number ) )
+					{
+						return cb( "serial_number must be positive" );
+					}
+					if ( ! objAsset || objAsset.cap )
+					{
+						if ( input.serial_number !== 1 )
+						{
+							return cb( "for capped asset serial_number must be 1" );
+						}
+					}
+					if ( bIssue )
+					{
+						return cb( "only one issue per message allowed" );
+					}
+
+					//	...
 					bIssue = true;
-					
+
+					//	...
 					var address = null;
-					if (arrAuthorAddresses.length === 1){
-						if ("address" in input)
-							return cb("when single-authored, must not put address in issue input");
-						address = arrAuthorAddresses[0];
+					if ( arrAuthorAddresses.length === 1 )
+					{
+						if ( "address" in input )
+						{
+							return cb( "when single-authored, must not put address in issue input" );
+						}
+
+						//	...
+						address = arrAuthorAddresses[ 0 ];
 					}
-					else{
-						if (typeof input.address !== "string")
-							return cb("when multi-authored, must put address in issue input");
-						if (arrAuthorAddresses.indexOf(input.address) === -1)
-							return cb("issue input address "+input.address+" is not an author");
-						address = input.address;
+					else
+					{
+						if ( typeof input.address !== "string" )
+						{
+							return cb( "when multi-authored, must put address in issue input" );
+						}
+						if ( arrAuthorAddresses.indexOf( input.address ) === -1 )
+						{
+							return cb( "issue input address " + input.address + " is not an author" );
+						}
+
+						//	...
+						address	= input.address;
 					}
-					
-					arrInputAddresses = [address];
-					if (objAsset){
-						if (objAsset.cap && !objAsset.fixed_denominations && input.amount !== objAsset.cap)
-							return cb("issue must be equal to cap");
+
+					//	...
+					arrInputAddresses = [ address ];
+					if ( objAsset )
+					{
+						if ( objAsset.cap && ! objAsset.fixed_denominations && input.amount !== objAsset.cap )
+						{
+							return cb( "issue must be equal to cap" );
+						}
 					}
-					else{
-						if (!storage.isGenesisUnit(objUnit.unit))
-							return cb("only genesis can issue base asset");
-						if (input.amount !== constants.TOTAL_WHITEBYTES)
-							return cb("issue must be equal to cap");
+					else
+					{
+						if ( ! storage.isGenesisUnit( objUnit.unit ) )
+						{
+							return cb( "only genesis can issue base asset" );
+						}
+						if ( input.amount !== constants.TOTAL_WHITEBYTES )
+						{
+							return cb( "issue must be equal to cap" );
+						}
 					}
+
+					//	...
 					total_input += input.amount;
-					
-					var input_key = (payload.asset || "base") + "-" + denomination + "-" + address + "-" + input.serial_number;
-					if (objValidationState.arrInputKeys.indexOf(input_key) >= 0)
-						return callback("input "+input_key+" already used");
-					objValidationState.arrInputKeys.push(input_key);
-					doubleSpendWhere = "type='issue'";
-					doubleSpendVars = [];
-					if (objAsset && objAsset.fixed_denominations){
+
+					var input_key = ( payload.asset || "base" ) + "-" + denomination + "-" + address + "-" + input.serial_number;
+
+					if ( objValidationState.arrInputKeys.indexOf( input_key ) >= 0 )
+					{
+						return callback( "input " + input_key + " already used" );
+					}
+
+					objValidationState.arrInputKeys.push( input_key );
+					doubleSpendWhere	= "type='issue'";
+					doubleSpendVars		= [];
+
+					if ( objAsset && objAsset.fixed_denominations )
+					{
 						doubleSpendWhere += " AND denomination=?";
 						doubleSpendVars.push(denomination);
 					}
