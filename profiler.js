@@ -56,62 +56,6 @@ function mark_end( tag, id )
 	m_oTimer[ tag ][ id ]	= 0;
 }
 
-function start()
-{
-	if ( m_nStartTs )
-	{
-		throw Error("profiler already started");
-	}
-
-	//	...
-	m_nStartTs = Date.now();
-}
-
-function stop( tag )
-{
-	if ( ! m_nStartTs )
-	{
-		throw Error( "profiler not started" );
-	}
-	if ( ! m_oTimes[ tag ] )
-	{
-		m_oTimes[ tag ] = 0;
-	}
-
-	//	...
-	m_oTimes[ tag ] += ( Date.now() - m_nStartTs );
-	m_nStartTs = 0;
-}
-
-function print()
-{
-	let total	= 0;
-	let tag;
-
-	//	...
-	log.consoleLog( "\nProfiling results:" );
-
-	for ( tag in m_oTimes )
-	{
-		total += m_oTimes[ tag ];
-	}
-
-	for ( tag in m_oTimes )
-	{
-		log.consoleLog
-		(
-			pad_right( tag + ": ", 33 ) +
-			pad_left( m_oTimes[ tag ], 5 ) + ', ' +
-			pad_left( ( m_oTimes[ tag ] / m_nCount ).toFixed( 2 ), 5 ) + ' per unit, ' +
-			pad_left( ( 100 * m_oTimes[ tag ] / total ).toFixed( 2 ), 5 ) + '%'
-		);
-	}
-
-	//	...
-	log.consoleLog( 'total: ' + total );
-	log.consoleLog( ( total / m_nCount ) + ' per unit' );
-}
-
 function print_results()
 {
 	let tag;
@@ -164,6 +108,69 @@ function print_results()
 		+ " Elapsed ms:" + ( Date.now() - m_nProfilerStartTs )
 	);
 }
+
+
+
+
+
+
+function start()
+{
+	if ( m_nStartTs )
+	{
+		throw Error( "profiler already started" );
+	}
+
+	//	...
+	m_nStartTs = Date.now();
+}
+
+function stop( tag )
+{
+	if ( ! m_nStartTs )
+	{
+		throw Error( "profiler not started" );
+	}
+	if ( ! m_oTimes[ tag ] )
+	{
+		m_oTimes[ tag ] = 0;
+	}
+
+	//	...
+	m_oTimes[ tag ] += ( Date.now() - m_nStartTs );
+	m_nStartTs = 0;
+}
+
+function print()
+{
+	let total	= 0;
+	let tag;
+
+	//	...
+	log.consoleLog( "\nProfiling results:" );
+
+	for ( tag in m_oTimes )
+	{
+		total += m_oTimes[ tag ];
+	}
+
+	for ( tag in m_oTimes )
+	{
+		log.consoleLog
+		(
+			pad_right( tag + ": ", 33 ) +
+			pad_left( m_oTimes[ tag ], 5 ) + ', ' +
+			pad_left( ( m_oTimes[ tag ] / m_nCount ).toFixed( 2 ), 5 ) + ' per unit, ' +
+			pad_left( ( 100 * m_oTimes[ tag ] / total ).toFixed( 2 ), 5 ) + '%'
+		);
+	}
+
+	//	...
+	log.consoleLog( 'total: ' + total );
+	log.consoleLog( ( total / m_nCount ) + ' per unit' );
+}
+
+
 
 function pad_right( str, len )
 {
@@ -250,7 +257,7 @@ exports.mark_start	= mark_start;
 exports.mark_end	= mark_end;
 
 
-exports.start		= start;	//	function(){};
-exports.stop		= stop;		//	function(){};
-exports.increment	= increment;	//	function(){};
+exports.start		= function(){};
+exports.stop		= function(){};
+exports.increment	= function(){};
 //exports.print		= function(){};
