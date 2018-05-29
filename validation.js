@@ -2042,9 +2042,9 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 		(
 			conn,
 			"spend proof",
-			"SELECT address, unit, main_chain_index, sequence" +
-			"ROM spend_proofs JOIN units USING(unit) " +
-			"HERE unit != ? AND (" + arrEqs.join( " OR " ) + ")",
+			"SELECT address, unit, main_chain_index, sequence " +
+			"FROM spend_proofs JOIN units USING(unit) " +
+			"WHERE unit != ? AND (" + arrEqs.join( " OR " ) + ") ",
 			[
 				objUnit.unit
 			],
