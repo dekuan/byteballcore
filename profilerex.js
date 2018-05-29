@@ -31,8 +31,6 @@ function begin( sTag )
 
 	//	...
 	m_oData[ sTag ].time_start	= Date.now();
-	m_oData[ sTag ].time_used	= 0;
-	m_oData[ sTag ].qps		= 0;
 }
 
 function end( sTag )
@@ -53,7 +51,7 @@ function end( sTag )
 
 	//	...
 	m_oData[ sTag ].count ++;
-	m_oData[ sTag ].time_used	= Date.now() - m_oData[ sTag ].time_start;
+	m_oData[ sTag ].time_used	+= ( Date.now() - m_oData[ sTag ].time_start );
 	m_oData[ sTag ].qps		= ( m_oData[ sTag ].time_used / m_oData[ sTag ].count ).toFixed( 2 );
 }
 
@@ -62,7 +60,12 @@ function end( sTag )
 
 function print()
 {
+	log.consoleLog( "############################################################" );
+	log.consoleLog( "############################################################" );
 	log.consoleLog( m_oData );
+	log.consoleLog( "############################################################" );
+	log.consoleLog( "############################################################" );
+
 	//
 	// let total	= 0;
 	// let tag;
