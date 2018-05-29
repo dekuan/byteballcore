@@ -1,15 +1,15 @@
 /*jslint node: true */
 "use strict";
 
-var async		= require( 'async' );
-var _			= require( 'lodash' );
-var log			= require( './log.js' );
-var storage		= require( './storage.js' );
-var objectHash		= require( './object_hash.js' );
-var db			= require( './db.js' );
-var mutex		= require( './mutex.js' );
-var validation		= require( './validation.js' );
-var witnessProof	= require( './witness_proof.js' );
+let async		= require( 'async' );
+let _			= require( 'lodash' );
+let log			= require( './log.js' );
+let storage		= require( './storage.js' );
+let objectHash		= require( './object_hash.js' );
+let db			= require( './db.js' );
+let mutex		= require( './mutex.js' );
+let validation		= require( './validation.js' );
+let witnessProof	= require( './witness_proof.js' );
 
 
 /**
