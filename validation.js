@@ -3046,534 +3046,1063 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 					if ( objAsset && objAsset.fixed_denominations )
 					{
 						doubleSpendWhere += " AND denomination=?";
-						doubleSpendVars.push(denomination);
+						doubleSpendVars.push( denomination );
 					}
-					if (objAsset){
+					if ( objAsset )
+					{
 						doubleSpendWhere += " AND serial_number=?";
-						doubleSpendVars.push(input.serial_number);
+						doubleSpendVars.push( input.serial_number );
 					}
-					if (objAsset && !objAsset.issued_by_definer_only){
+					if ( objAsset && ! objAsset.issued_by_definer_only )
+					{
 						doubleSpendWhere += " AND address=?";
-						doubleSpendVars.push(address);
+						doubleSpendVars.push( address );
 					}
-				//	if (objAsset)
-				//		profiler2.stop('validate issue');
-					if (objAsset && objAsset.fixed_denominations){
-						validateIndivisibleIssue(input, function(err){
-							if (err)
-								return cb(err);
-							checkInputDoubleSpend(cb);
-						});
+					//	if (objAsset)
+					//		profiler2.stop('validate issue');
+					if ( objAsset && objAsset.fixed_denominations )
+					{
+						validateIndivisibleIssue
+						(
+							input,
+							function( err )
+							{
+								if ( err )
+								{
+									return cb( err );
+								}
+
+								//	...
+								checkInputDoubleSpend( cb );
+							}
+						);
 					}
 					else
-						checkInputDoubleSpend(cb);
-					// attestations and issued_by_definer_only already checked before
-					break;
-					
-				case "transfer":
-				//	if (objAsset)
-				//		profiler2.start();
-					if (bHaveHeadersComissions || bHaveWitnessings)
-						return cb("all transfers must come before hc and witnessings");
-					if (hasFieldsExcept(input, ["type", "unit", "message_index", "output_index"]))
-						return cb("unknown fields in payment input");
-					if (!isStringOfLength(input.unit, constants.HASH_LENGTH))
-						return cb("wrong unit length in payment input");
-					if (!isNonnegativeInteger(input.message_index))
-						return cb("no message_index in payment input");
-					if (!isNonnegativeInteger(input.output_index))
-						return cb("no output_index in payment input");
-					
-					var input_key = (payload.asset || "base") + "-" + input.unit + "-" + input.message_index + "-" + input.output_index;
-					if (objValidationState.arrInputKeys.indexOf(input_key) >= 0)
-						return cb("input "+input_key+" already used");
-					objValidationState.arrInputKeys.push(input_key);
-					
-					doubleSpendWhere = "type=? AND src_unit=? AND src_message_index=? AND src_output_index=?";
-					doubleSpendVars = [type, input.unit, input.message_index, input.output_index];
-					
-					// for private fixed denominations assets, we can't look up src output in the database 
-					// because we validate the entire chain before saving anything.
-					// Instead we prepopulate objValidationState with denomination and src_output 
-					if (objAsset && objAsset.is_private && objAsset.fixed_denominations){
-						if (!objValidationState.src_coin)
-							throw Error("no src_coin");
-						var src_coin = objValidationState.src_coin;
-						if (!src_coin.src_output)
-							throw Error("no src_output");
-						if (!isPositiveInteger(src_coin.denomination))
-							throw Error("no denomination in src coin");
-						if (!isPositiveInteger(src_coin.amount))
-							throw Error("no src coin amount");
-						var owner_address = src_coin.src_output.address;
-						if (arrAuthorAddresses.indexOf(owner_address) === -1)
-							return cb("output owner is not among authors");
-						if (denomination !== src_coin.denomination)
-							return cb("private denomination mismatch");
-						if (objAsset.auto_destroy && owner_address === objAsset.definer_address)
-							return cb("this output was destroyed by sending to definer address");
-						if (objAsset.spender_attested && objAsset.arrAttestedAddresses.indexOf(owner_address) === -1)
-							return cb("owner address is not attested");
-						if (arrInputAddresses.indexOf(owner_address) === -1)
-							arrInputAddresses.push(owner_address);
-						total_input += src_coin.amount;
-						log.consoleLog("-- val state "+JSON.stringify(objValidationState));
-					//	if (objAsset)
-					//		profiler2.stop('validate transfer');
-						return checkInputDoubleSpend(cb);
+					{
+						checkInputDoubleSpend( cb );
 					}
-					
-					conn.query(
+
+					//	attestations and issued_by_definer_only already checked before
+					break;
+
+				case "transfer":
+					//	if (objAsset)
+					//		profiler2.start();
+					if ( bHaveHeadersComissions || bHaveWitnessings )
+					{
+						return cb( "all transfers must come before hc and witnessings" );
+					}
+					if ( hasFieldsExcept( input, [ "type", "unit", "message_index", "output_index" ] ) )
+					{
+						return cb( "unknown fields in payment input" );
+					}
+					if ( ! isStringOfLength( input.unit, constants.HASH_LENGTH ) )
+					{
+						return cb( "wrong unit length in payment input" );
+					}
+					if ( ! isNonnegativeInteger( input.message_index ) )
+					{
+						return cb( "no message_index in payment input" );
+					}
+					if ( ! isNonnegativeInteger( input.output_index ) )
+					{
+						return cb( "no output_index in payment input" );
+					}
+
+					//	...
+					var input_key = ( payload.asset || "base" ) + "-" + input.unit + "-" + input.message_index + "-" + input.output_index;
+
+					if ( objValidationState.arrInputKeys.indexOf( input_key ) >= 0 )
+					{
+						return cb( "input " + input_key + " already used" );
+					}
+
+					//	...
+					objValidationState.arrInputKeys.push( input_key );
+
+					//	...
+					doubleSpendWhere	= "type=? AND src_unit=? AND src_message_index=? AND src_output_index=?";
+					doubleSpendVars		= [ type, input.unit, input.message_index, input.output_index ];
+
+					//
+					//	for private fixed denominations assets, we can't look up src output in the database
+					//	because we validate the entire chain before saving anything.
+					//	Instead we prepopulate objValidationState with denomination and src_output
+					//
+					if ( objAsset && objAsset.is_private && objAsset.fixed_denominations )
+					{
+						if ( ! objValidationState.src_coin )
+						{
+							throw Error( "no src_coin" );
+						}
+
+						var src_coin = objValidationState.src_coin;
+						if ( ! src_coin.src_output )
+						{
+							throw Error( "no src_output" );
+						}
+						if ( ! isPositiveInteger( src_coin.denomination ) )
+						{
+							throw Error( "no denomination in src coin" );
+						}
+						if ( ! isPositiveInteger( src_coin.amount ) )
+						{
+							throw Error( "no src coin amount" );
+						}
+
+						var owner_address = src_coin.src_output.address;
+						if ( arrAuthorAddresses.indexOf( owner_address ) === -1 )
+						{
+							return cb( "output owner is not among authors" );
+						}
+						if ( denomination !== src_coin.denomination )
+						{
+							return cb( "private denomination mismatch" );
+						}
+						if ( objAsset.auto_destroy && owner_address === objAsset.definer_address )
+						{
+							return cb( "this output was destroyed by sending to definer address" );
+						}
+						if ( objAsset.spender_attested && objAsset.arrAttestedAddresses.indexOf( owner_address ) === -1 )
+						{
+							return cb( "owner address is not attested" );
+						}
+						if ( arrInputAddresses.indexOf( owner_address ) === -1 )
+						{
+							arrInputAddresses.push( owner_address );
+						}
+
+						total_input	+= src_coin.amount;
+						log.consoleLog( "-- val state " + JSON.stringify( objValidationState ) );
+						//	if (objAsset)
+						//		profiler2.stop('validate transfer');
+						return checkInputDoubleSpend( cb );
+					}
+
+					//	...
+					conn.query
+					(
 						"SELECT amount, is_stable, sequence, address, main_chain_index, denomination, asset \n\
 						FROM outputs \n\
 						JOIN units USING(unit) \n\
 						WHERE outputs.unit=? AND message_index=? AND output_index=?",
-						[input.unit, input.message_index, input.output_index],
-						function(rows){
-							if (rows.length > 1)
-								throw Error("more than 1 src output");
-							if (rows.length === 0)
-								return cb("input unit "+input.unit+" not found");
-							var src_output = rows[0];
-							if (typeof src_output.amount !== 'number')
-								throw Error("src output amount is not a number");
-							if (!(!payload.asset && !src_output.asset || payload.asset === src_output.asset))
-								return cb("asset mismatch");
+						[
+							input.unit,
+							input.message_index,
+							input.output_index
+						],
+						function( rows )
+						{
+							if ( rows.length > 1 )
+							{
+								throw Error( "more than 1 src output" );
+							}
+							if ( rows.length === 0 )
+							{
+								return cb( "input unit " + input.unit + " not found" );
+							}
+
+							var src_output	= rows[ 0 ];
+							if ( typeof src_output.amount !== 'number' )
+							{
+								throw Error( "src output amount is not a number" );
+							}
+							if ( ! ( ! payload.asset && ! src_output.asset || payload.asset === src_output.asset ) )
+							{
+								return cb( "asset mismatch" );
+							}
+
 							//if (src_output.is_stable !== 1) // we allow immediate spends, that's why the error is transient
 							//    return cb(createTransientError("input unit is not on stable MC yet, unit "+objUnit.unit+", input "+input.unit));
-							if (src_output.main_chain_index !== null && src_output.main_chain_index <= objValidationState.last_ball_mci && src_output.sequence !== 'good')
-								return cb("stable input unit "+input.unit+" is not serial");
-							if (objValidationState.last_ball_mci < constants.spendUnconfirmedUpgradeMci){
-								if (!objAsset || !objAsset.is_private){
-									// for public payments, you can't spend unconfirmed transactions
-									if (src_output.main_chain_index > objValidationState.last_ball_mci || src_output.main_chain_index === null)
-										return cb("src output must be before last ball");
-								}
-								if (src_output.sequence !== 'good') // it is also stable or private
-									return cb("input unit "+input.unit+" is not serial");
-							}
-							else{ // after this MCI, spending unconfirmed is allowed for public assets too, non-good sequence will be inherited
-								if (src_output.sequence !== 'good'){
-									if (objValidationState.sequence === 'good' || objValidationState.sequence === 'temp-bad')
-										objValidationState.sequence = src_output.sequence;
-								}
-							}
-							var owner_address = src_output.address;
-							if (arrAuthorAddresses.indexOf(owner_address) === -1)
-								return cb("output owner is not among authors");
-							if (denomination !== src_output.denomination)
-								return cb("denomination mismatch");
-							if (objAsset && objAsset.auto_destroy && owner_address === objAsset.definer_address)
-								return cb("this output was destroyed by sending it to definer address");
-							if (objAsset && objAsset.spender_attested && objAsset.arrAttestedAddresses.indexOf(owner_address) === -1)
-								return cb("owner address is not attested");
-							if (arrInputAddresses.indexOf(owner_address) === -1)
-								arrInputAddresses.push(owner_address);
-							total_input += src_output.amount;
-							
-							if (!objAsset || !objAsset.is_private)
-								return checkInputDoubleSpend(cb);
 
-							// for private payments only, unit already saved (if public, we are already before last ball)
-							// when divisible, the asset is also non-transferrable and auto-destroy, 
-							// then this transfer is a transfer back to the issuer 
-							// and input.unit is known both to payer and the payee (issuer), even if light
-							graph.determineIfIncluded(conn, input.unit, [objUnit.unit], function(bIncluded){
-								if (!bIncluded)
-									return cb("input "+input.unit+" is not in your genes");
-								checkInputDoubleSpend(cb);
-							});
+							if ( src_output.main_chain_index !== null &&
+								src_output.main_chain_index <= objValidationState.last_ball_mci &&
+								src_output.sequence !== 'good' )
+							{
+								return cb( "stable input unit " + input.unit + " is not serial" );
+							}
+							if ( objValidationState.last_ball_mci < constants.spendUnconfirmedUpgradeMci )
+							{
+								if ( ! objAsset || ! objAsset.is_private )
+								{
+									//	for public payments, you can't spend unconfirmed transactions
+									if ( src_output.main_chain_index > objValidationState.last_ball_mci ||
+										src_output.main_chain_index === null )
+									{
+										return cb( "src output must be before last ball" );
+									}
+								}
+								if ( src_output.sequence !== 'good' )
+								{
+									//	it is also stable or private
+									return cb( "input unit " + input.unit + " is not serial" );
+								}
+							}
+							else
+							{
+								//
+								//	after this MCI,
+								//	spending unconfirmed is allowed for public assets too,
+								//	non-good sequence will be inherited
+								//
+								if ( src_output.sequence !== 'good' )
+								{
+									if ( objValidationState.sequence === 'good' ||
+										objValidationState.sequence === 'temp-bad' )
+									{
+										objValidationState.sequence = src_output.sequence;
+									}
+								}
+							}
+
+							//	...
+							var owner_address	= src_output.address;
+							if ( arrAuthorAddresses.indexOf( owner_address ) === -1 )
+							{
+								return cb( "output owner is not among authors" );
+							}
+							if ( denomination !== src_output.denomination )
+							{
+								return cb( "denomination mismatch" );
+							}
+							if ( objAsset && objAsset.auto_destroy &&
+								owner_address === objAsset.definer_address )
+							{
+								return cb( "this output was destroyed by sending it to definer address" );
+							}
+							if ( objAsset &&
+								objAsset.spender_attested &&
+								objAsset.arrAttestedAddresses.indexOf( owner_address ) === -1 )
+							{
+								return cb( "owner address is not attested" );
+							}
+
+							if ( arrInputAddresses.indexOf( owner_address ) === -1 )
+							{
+								arrInputAddresses.push( owner_address );
+							}
+
+							//	...
+							total_input += src_output.amount;
+
+							if ( ! objAsset || ! objAsset.is_private )
+							{
+								return checkInputDoubleSpend( cb );
+							}
+
+							//
+							//	for private payments only, unit already saved (if public, we are already before last ball)
+							//	when divisible, the asset is also non-transferrable and auto-destroy,
+							//	then this transfer is a transfer back to the issuer
+							//	and input.unit is known both to payer and the payee (issuer), even if light
+							//
+							graph.determineIfIncluded
+							(
+								conn,
+								input.unit,
+								[
+									objUnit.unit
+								],
+								function( bIncluded )
+								{
+									if ( ! bIncluded )
+									{
+										return cb( "input " + input.unit + " is not in your genes" );
+									}
+
+									//	...
+									checkInputDoubleSpend( cb );
+								}
+							);
 						}
 					);
 					break;
 
-
 				case "headers_commission":
 				case "witnessing":
-					if (type === "headers_commission"){
-						if (bHaveWitnessings)
-							return cb("all headers commissions must come before witnessings");
+					if ( type === "headers_commission" )
+					{
+						if ( bHaveWitnessings )
+						{
+							return cb( "all headers commissions must come before witnessings" );
+						}
+
+						//	...
 						bHaveHeadersComissions = true;
 					}
 					else
+					{
 						bHaveWitnessings = true;
-					if (objAsset)
-						return cb("only base asset can have "+type);
-					if (hasFieldsExcept(input, ["type", "from_main_chain_index", "to_main_chain_index", "address"]))
-						return cb("unknown fields in witnessing input");
-					if (!isNonnegativeInteger(input.from_main_chain_index))
-						return cb("from_main_chain_index must be nonnegative int");
-					if (!isNonnegativeInteger(input.to_main_chain_index))
-						return cb("to_main_chain_index must be nonnegative int");
-					if (input.from_main_chain_index > input.to_main_chain_index)
-						return cb("from_main_chain_index > input.to_main_chain_index");
-					if (input.to_main_chain_index > objValidationState.last_ball_mci)
-						return cb("to_main_chain_index > last_ball_mci");
-					if (input.from_main_chain_index > objValidationState.last_ball_mci)
-						return cb("from_main_chain_index > last_ball_mci");
-
-					var address = null;
-					if (arrAuthorAddresses.length === 1){
-						if ("address" in input)
-							return cb("when single-authored, must not put address in "+type+" input");
-						address = arrAuthorAddresses[0];
 					}
-					else{
-						if (typeof input.address !== "string")
-							return cb("when multi-authored, must put address in "+type+" input");
-						if (arrAuthorAddresses.indexOf(input.address) === -1)
-							return cb(type+" input address "+input.address+" is not an author");
+
+					if ( objAsset )
+					{
+						return cb( "only base asset can have " + type );
+					}
+					if ( hasFieldsExcept( input, [ "type", "from_main_chain_index", "to_main_chain_index", "address" ] ) )
+					{
+						return cb( "unknown fields in witnessing input" );
+					}
+					if ( ! isNonnegativeInteger( input.from_main_chain_index ) )
+					{
+						return cb( "from_main_chain_index must be nonnegative int" );
+					}
+					if ( ! isNonnegativeInteger( input.to_main_chain_index ) )
+					{
+						return cb( "to_main_chain_index must be nonnegative int" );
+					}
+					if ( input.from_main_chain_index > input.to_main_chain_index )
+					{
+						return cb( "from_main_chain_index > input.to_main_chain_index" );
+					}
+					if ( input.to_main_chain_index > objValidationState.last_ball_mci )
+					{
+						return cb( "to_main_chain_index > last_ball_mci" );
+					}
+					if ( input.from_main_chain_index > objValidationState.last_ball_mci )
+					{
+						return cb( "from_main_chain_index > last_ball_mci" );
+					}
+
+					//	...
+					var address = null;
+					if ( arrAuthorAddresses.length === 1 )
+					{
+						if ( "address" in input )
+						{
+							return cb( "when single-authored, must not put address in " + type + " input" );
+						}
+
+						//	...
+						address	= arrAuthorAddresses[ 0 ];
+					}
+					else
+					{
+						if ( typeof input.address !== "string" )
+						{
+							return cb( "when multi-authored, must put address in " + type + " input" );
+						}
+						if ( arrAuthorAddresses.indexOf( input.address ) === -1 )
+						{
+							return cb( type + " input address " + input.address + " is not an author" );
+						}
+
+						//	...
 						address = input.address;
 					}
 
-					var input_key = type + "-" + address + "-" + input.from_main_chain_index;
-					if (objValidationState.arrInputKeys.indexOf(input_key) >= 0)
-						return cb("input "+input_key+" already used");
-					objValidationState.arrInputKeys.push(input_key);
-					
-					doubleSpendWhere = "type=? AND from_main_chain_index=? AND address=? AND asset IS NULL";
-					doubleSpendVars = [type, input.from_main_chain_index, address];
+					//	...
+					var input_key	= type + "-" + address + "-" + input.from_main_chain_index;
 
-					mc_outputs.readNextSpendableMcIndex(conn, type, address, objValidationState.arrConflictingUnits, function(next_spendable_mc_index){
-						if (input.from_main_chain_index < next_spendable_mc_index)
-							return cb(type+" ranges must not overlap"); // gaps allowed, in case a unit becomes bad due to another address being nonserial
-						var max_mci = (type === "headers_commission") 
-							? headers_commission.getMaxSpendableMciForLastBallMci(objValidationState.last_ball_mci)
-							: paid_witnessing.getMaxSpendableMciForLastBallMci(objValidationState.last_ball_mci);
-						if (input.to_main_chain_index > max_mci)
-							return cb(type+" to_main_chain_index is too large");
+					if ( objValidationState.arrInputKeys.indexOf( input_key ) >= 0 )
+					{
+						return cb( "input " + input_key + " already used" );
+					}
 
-						var calcFunc = (type === "headers_commission") ? mc_outputs.calcEarnings : paid_witnessing.calcWitnessEarnings;
-						calcFunc(conn, type, input.from_main_chain_index, input.to_main_chain_index, address, {
-							ifError: function(err){
-								throw Error(err);
-							},
-							ifOk: function(commission){
-								if (commission === 0)
-									return cb("zero "+type+" commission");
-								total_input += commission;
-								checkInputDoubleSpend(cb);
+					objValidationState.arrInputKeys.push( input_key );
+
+					doubleSpendWhere	= "type=? AND from_main_chain_index=? AND address=? AND asset IS NULL";
+					doubleSpendVars		= [ type, input.from_main_chain_index, address ];
+
+					mc_outputs.readNextSpendableMcIndex
+					(
+						conn,
+						type,
+						address,
+						objValidationState.arrConflictingUnits,
+						function( next_spendable_mc_index )
+						{
+							if ( input.from_main_chain_index < next_spendable_mc_index )
+								//	gaps allowed, in case a unit becomes bad due to another address being nonserial
+								return cb( type + " ranges must not overlap" );
+
+							var max_mci = ( type === "headers_commission" )
+								? headers_commission.getMaxSpendableMciForLastBallMci( objValidationState.last_ball_mci )
+								: paid_witnessing.getMaxSpendableMciForLastBallMci( objValidationState.last_ball_mci );
+
+							if ( input.to_main_chain_index > max_mci )
+							{
+								return cb( type + " to_main_chain_index is too large" );
 							}
-						});
-					});
+
+							var calcFunc = ( type === "headers_commission" )
+								? mc_outputs.calcEarnings
+								: paid_witnessing.calcWitnessEarnings;
+
+							calcFunc
+							(
+								conn,
+								type,
+								input.from_main_chain_index,
+								input.to_main_chain_index,
+								address,
+								{
+									ifError : function( err )
+									{
+										throw Error( err );
+									},
+									ifOk : function( commission )
+									{
+										if ( commission === 0 )
+										{
+											return cb( "zero " + type + " commission" );
+										}
+
+										//	...
+										total_input += commission;
+										checkInputDoubleSpend( cb );
+									}
+								}
+							);
+						}
+					);
 					break;
 
 				default:
-					return cb("unrecognized input type: "+input.type);
+					return cb( "unrecognized input type: " + input.type );
 			}
 		},
-		function(err){
-			log.consoleLog("inputs done "+payload.asset, arrInputAddresses, arrOutputAddresses);
-			if (err)
-				return callback(err);
-			if (objAsset){
-				if (total_input !== total_output)
-					return callback("inputs and outputs do not balance: "+total_input+" !== "+total_output);
-				if (!objAsset.is_transferrable){ // the condition holds for issues too
-					if (arrInputAddresses.length === 1 && arrInputAddresses[0] === objAsset.definer_address
-					   || arrOutputAddresses.length === 1 && arrOutputAddresses[0] === objAsset.definer_address
+		function( err )
+		{
+			log.consoleLog( "inputs done " + payload.asset, arrInputAddresses, arrOutputAddresses );
+			if ( err )
+			{
+				return callback( err );
+			}
+
+			if ( objAsset )
+			{
+				if ( total_input !== total_output )
+				{
+					return callback( "inputs and outputs do not balance: " + total_input + " !== " + total_output );
+				}
+
+				if ( ! objAsset.is_transferrable )
+				{
+					//	the condition holds for issues too
+					if ( arrInputAddresses.length === 1 && arrInputAddresses[0] === objAsset.definer_address ||
+						arrOutputAddresses.length === 1 && arrOutputAddresses[0] === objAsset.definer_address ||
 						// sending payment to the definer and the change back to oneself
-					   || !(objAsset.fixed_denominations && objAsset.is_private) 
+					   	! ( objAsset.fixed_denominations && objAsset.is_private )
 							&& arrInputAddresses.length === 1 && arrOutputAddresses.length === 2 
-							&& arrOutputAddresses.indexOf(objAsset.definer_address) >= 0
-							&& arrOutputAddresses.indexOf(arrInputAddresses[0]) >= 0
-					   ){
+							&& arrOutputAddresses.indexOf( objAsset.definer_address ) >= 0
+							&& arrOutputAddresses.indexOf( arrInputAddresses[ 0 ] ) >= 0 )
+					{
 						// good
 					}
 					else
-						return callback("the asset is not transferrable");
-				}
-				async.series([
-					function(cb){
-						if (!objAsset.spender_attested)
-							return cb();
-						storage.filterAttestedAddresses(
-							conn, objAsset, lobjValidationState.last_ball_mci, arrOutputAddresses, 
-							function(arrAttestedOutputAddresses){
-								if (arrAttestedOutputAddresses.length !== arrOutputAddresses.length)
-									return cb("some output addresses are not attested");
-								cb();
-							}
-						);
-					},
-					function(cb){
-						var arrCondition = bIssue ? objAsset.issue_condition : objAsset.transfer_condition;
-						if (!arrCondition)
-							return cb();
-						Definition.evaluateAssetCondition(
-							conn, payload.asset, arrCondition, objUnit, objValidationState, 
-							function(cond_err, bSatisfiesCondition){
-								if (cond_err)
-									return cb(cond_err);
-								if (!bSatisfiesCondition)
-									return cb("transfer or issue condition not satisfied");
-								log.consoleLog("validatePaymentInputsAndOutputs with transfer/issue conditions done");
-								cb();
-							}
-						);
+					{
+						return callback( "the asset is not transferrable" );
 					}
-				], callback);
+				}
+
+				//	...
+				async.series
+				(
+					[
+						function( cb )
+						{
+							if ( ! objAsset.spender_attested )
+								return cb();
+
+							//	...
+							storage.filterAttestedAddresses
+							(
+								conn,
+								objAsset,
+								lobjValidationState.last_ball_mci,
+								arrOutputAddresses,
+								function( arrAttestedOutputAddresses )
+								{
+									if ( arrAttestedOutputAddresses.length !== arrOutputAddresses.length )
+									{
+										return cb( "some output addresses are not attested" );
+									}
+
+									//	...
+									cb();
+								}
+							);
+						},
+						function( cb )
+						{
+							var arrCondition = bIssue
+								? objAsset.issue_condition
+								: objAsset.transfer_condition;
+
+							if ( ! arrCondition )
+							{
+								return cb();
+							}
+
+							//	...
+							Definition.evaluateAssetCondition
+							(
+								conn,
+								payload.asset,
+								arrCondition,
+								objUnit,
+								objValidationState,
+								function( cond_err, bSatisfiesCondition )
+								{
+									if ( cond_err )
+									{
+										return cb( cond_err );
+									}
+									if ( ! bSatisfiesCondition )
+										return cb( "transfer or issue condition not satisfied" );
+
+									//	...
+									log.consoleLog( "validatePaymentInputsAndOutputs with transfer/issue conditions done" );
+
+									//	...
+									cb();
+								}
+							);
+						}
+					],
+					callback
+				);
 			}
-			else{ // base asset
-				if (total_input !== total_output + objUnit.headers_commission + objUnit.payload_commission)
-					return callback("inputs and outputs do not balance: "+total_input+" !== "+total_output+" + "+objUnit.headers_commission+" + "+objUnit.payload_commission);
+			else
+			{
+				//	base asset
+				if ( total_input !== total_output + objUnit.headers_commission + objUnit.payload_commission )
+				{
+					return callback
+					(
+						"inputs and outputs do not balance: " + total_input + " !== " + total_output + " + " + objUnit.headers_commission + " + " + objUnit.payload_commission
+					);
+				}
+
+				//	...
 				callback();
 			}
-		//	log.consoleLog("validatePaymentInputsAndOutputs done");
-		//	if (objAsset)
-		//		profiler2.stop('validate IO');
-		//	callback();
+
+			//	log.consoleLog("validatePaymentInputsAndOutputs done");
+			//	if (objAsset)
+			//		profiler2.stop('validate IO');
+			//	callback();
 		}
 	);
 }
 
 
-function initPrivatePaymentValidationState(conn, unit, message_index, payload, onError, onDone){
-	conn.query(
+function initPrivatePaymentValidationState( conn, unit, message_index, payload, onError, onDone )
+{
+	//	...
+	conn.query
+	(
 		"SELECT payload_hash, app, units.sequence, units.is_stable, lb_units.main_chain_index AS last_ball_mci \n\
 		FROM messages JOIN units USING(unit) \n\
 		LEFT JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
 		WHERE messages.unit=? AND message_index=?", 
-		[unit, message_index], 
-		function(rows){
-			if (rows.length > 1)
-				throw Error("more than 1 message by index");
-			if (rows.length === 0)
-				return onError("message not found");
-			var row = rows[0];
-			if (row.sequence !== "good" && row.is_stable === 1)
-				return onError("unit is final nonserial");
-			var bStable = (row.is_stable === 1); // it's ok if the unit is not stable yet
-			if (row.app !== "payment")
-				return onError("invalid app");
-			if (objectHash.getBase64Hash(payload) !== row.payload_hash)
-				return onError("payload hash does not match");
-			var objValidationState = {
-				last_ball_mci: row.last_ball_mci,
-				arrDoubleSpendInputs: [],
-				arrInputKeys: [],
-				bPrivate: true
-			};
-			var objPartialUnit = {unit: unit};
-			storage.readUnitAuthors(conn, unit, function(arrAuthors){
-				objPartialUnit.authors = arrAuthors.map(function(address){ return {address: address}; }); // array of objects {address: address}
-				// we need parent_units in checkForDoublespends in case it is a doublespend
-				conn.query("SELECT parent_unit FROM parenthoods WHERE child_unit=? ORDER BY parent_unit", [unit], function(prows){
-					objPartialUnit.parent_units = prows.map(function(prow){ return prow.parent_unit; });
-					onDone(bStable, objPartialUnit, objValidationState);
-				});
-			});
+		[
+			unit,
+			message_index
+		],
+		function( rows )
+		{
+			if ( rows.length > 1 )
+			{
+				throw Error( "more than 1 message by index" );
+			}
+			if ( rows.length === 0 )
+			{
+				return onError( "message not found" );
+			}
+
+			//	...
+			var row	= rows[ 0 ];
+
+			if ( row.sequence !== "good" && row.is_stable === 1 )
+			{
+				return onError( "unit is final nonserial" );
+			}
+
+			//	it's ok if the unit is not stable yet
+			var bStable	= ( row.is_stable === 1 );
+			if ( row.app !== "payment" )
+			{
+				return onError( "invalid app" );
+			}
+			if ( objectHash.getBase64Hash( payload ) !== row.payload_hash )
+			{
+				return onError( "payload hash does not match" );
+			}
+
+			var objValidationState =
+				{
+					last_ball_mci		: row.last_ball_mci,
+					arrDoubleSpendInputs	: [],
+					arrInputKeys		: [],
+					bPrivate		: true
+				};
+			var objPartialUnit =
+				{
+					unit	: unit
+				};
+			storage.readUnitAuthors
+			(
+				conn,
+				unit,
+				function( arrAuthors )
+				{
+					//	array of objects {address: address}
+					objPartialUnit.authors = arrAuthors.map
+					(
+						function( address )
+						{
+							return { address: address };
+						}
+					);
+
+					//	we need parent_units in checkForDoublespends in case it is a doublespend
+					conn.query
+					(
+						"SELECT parent_unit FROM parenthoods WHERE child_unit=? ORDER BY parent_unit",
+						[
+							unit
+						],
+						function( prows )
+						{
+							objPartialUnit.parent_units = prows.map
+							(
+								function( prow )
+								{
+									return prow.parent_unit;
+								}
+							);
+
+							//	...
+							onDone( bStable, objPartialUnit, objValidationState );
+						}
+					);
+				}
+			);
 		}
 	);
 }
 
 
-function validateAssetDefinition(conn, payload, objUnit, objValidationState, callback){
-	if (objUnit.authors.length !== 1)
-		return callback("asset definition must be single-authored");
-	if (hasFieldsExcept(payload, ["cap", "is_private", "is_transferrable", "auto_destroy", "fixed_denominations", "issued_by_definer_only", "cosigned_by_definer", "spender_attested", "issue_condition", "transfer_condition", "attestors", "denominations"]))
-		return callback("unknown fields in asset definition");
-	if (typeof payload.is_private !== "boolean" || typeof payload.is_transferrable !== "boolean" || typeof payload.auto_destroy !== "boolean" || typeof payload.fixed_denominations !== "boolean" || typeof payload.issued_by_definer_only !== "boolean" || typeof payload.cosigned_by_definer !== "boolean" || typeof payload.spender_attested !== "boolean")
-		return callback("some required fields in asset definition are missing");
+function validateAssetDefinition( conn, payload, objUnit, objValidationState, callback )
+{
+	if ( objUnit.authors.length !== 1 )
+	{
+		return callback( "asset definition must be single-authored" );
+	}
+	if ( hasFieldsExcept( payload,
+		[ "cap", "is_private", "is_transferrable", "auto_destroy", "fixed_denominations", "issued_by_definer_only", "cosigned_by_definer", "spender_attested", "issue_condition", "transfer_condition", "attestors", "denominations" ] ) )
+	{
+		return callback( "unknown fields in asset definition" );
+	}
+	if ( typeof payload.is_private !== "boolean" ||
+		typeof payload.is_transferrable !== "boolean" ||
+		typeof payload.auto_destroy !== "boolean" ||
+		typeof payload.fixed_denominations !== "boolean" ||
+		typeof payload.issued_by_definer_only !== "boolean" ||
+		typeof payload.cosigned_by_definer !== "boolean" ||
+		typeof payload.spender_attested !== "boolean" )
+	{
+		return callback( "some required fields in asset definition are missing" );
+	}
+	if ( "cap" in payload &&
+		! ( isPositiveInteger( payload.cap ) &&
+			payload.cap <= constants.MAX_CAP ) )
+	{
+		return callback( "invalid cap" );
+	}
 
-	if ("cap" in payload && !(isPositiveInteger(payload.cap) && payload.cap <= constants.MAX_CAP))
-		return callback("invalid cap");
-
-	// attestors
+	//	attestors
 	var err;
-	if ( payload.spender_attested && (err=checkAttestorList(payload.attestors)) )
-		return callback(err);
+	if ( payload.spender_attested && ( err = checkAttestorList( payload.attestors ) ) )
+	{
+		return callback( err );
+	}
 
-	// denominations
-	if (payload.fixed_denominations && !isNonemptyArray(payload.denominations))
-		return callback("denominations not defined");
-	if (payload.denominations){
-		if (payload.denominations.length > constants.MAX_DENOMINATIONS_PER_ASSET_DEFINITION)
-			return callback("too many denominations");
-		var total_cap_from_denominations = 0;
-		var bHasUncappedDenominations = false;
-		var prev_denom = 0;
-		for (var i=0; i<payload.denominations.length; i++){
-			var denomInfo = payload.denominations[i];
-			if (!isPositiveInteger(denomInfo.denomination))
-				return callback("invalid denomination");
-			if (denomInfo.denomination <= prev_denom)
-				return callback("denominations unsorted");
-			if ("count_coins" in denomInfo){
-				if (!isPositiveInteger(denomInfo.count_coins))
-					return callback("invalid count_coins");
+	//	denominations
+	if ( payload.fixed_denominations && ! isNonemptyArray( payload.denominations ) )
+	{
+		return callback( "denominations not defined" );
+	}
+	if ( payload.denominations )
+	{
+		if ( payload.denominations.length > constants.MAX_DENOMINATIONS_PER_ASSET_DEFINITION )
+		{
+			return callback( "too many denominations" );
+		}
+
+		var total_cap_from_denominations	= 0;
+		var bHasUncappedDenominations		= false;
+		var prev_denom				= 0;
+
+		for ( var i = 0; i < payload.denominations.length; i ++ )
+		{
+			var denomInfo	= payload.denominations[ i ];
+			if ( ! isPositiveInteger( denomInfo.denomination ) )
+			{
+				return callback( "invalid denomination" );
+			}
+			if ( denomInfo.denomination <= prev_denom )
+			{
+				return callback( "denominations unsorted" );
+			}
+			if ( "count_coins" in denomInfo )
+			{
+				if ( ! isPositiveInteger( denomInfo.count_coins ) )
+				{
+					return callback( "invalid count_coins" );
+				}
+
+				//	...
 				total_cap_from_denominations += denomInfo.count_coins * denomInfo.denomination;
 			}
 			else
+			{
 				bHasUncappedDenominations = true;
+			}
+
+			//	...
 			prev_denom = denomInfo.denomination;
 		}
-		if (bHasUncappedDenominations && total_cap_from_denominations)
-			return callback("some denominations are capped, some uncapped");
-		if (bHasUncappedDenominations && payload.cap)
-			return callback("has cap but some denominations are uncapped");
-		if (total_cap_from_denominations && !payload.cap)
-			return callback("has no cap but denominations are capped");
-		if (total_cap_from_denominations && payload.cap !== total_cap_from_denominations)
-			return callback("cap doesn't match sum of denominations");
-	}
-	
-	if (payload.is_private && payload.is_transferrable && !payload.fixed_denominations)
-		return callback("if private and transferrable, must have fixed denominations");
-	if (payload.is_private && !payload.fixed_denominations){
-		if (!(payload.auto_destroy && !payload.is_transferrable))
-			return callback("if private and divisible, must also be auto-destroy and non-transferrable");
-	}
-	if (payload.cap && !payload.issued_by_definer_only)
-		return callback("if capped, must be issued by definer only");
-	
-	// possible: definer is like black hole
-	//if (!payload.issued_by_definer_only && payload.auto_destroy)
-	//    return callback("if issued by anybody, cannot auto-destroy");
-	
-	// possible: the entire issue should go to the definer
-	//if (!payload.issued_by_definer_only && !payload.is_transferrable)
-	//    return callback("if issued by anybody, must be transferrable");
-	
-	objValidationState.bDefiningPrivateAsset = payload.is_private;
-	
-	async.series([
-		function(cb){
-			if (!("issue_condition" in payload))
-				return cb();
-			Definition.validateDefinition(conn, payload.issue_condition, objUnit, objValidationState, null, true, cb);
-		},
-		function(cb){
-			if (!("transfer_condition" in payload))
-				return cb();
-			Definition.validateDefinition(conn, payload.transfer_condition, objUnit, objValidationState, null, true, cb);
+
+		if ( bHasUncappedDenominations && total_cap_from_denominations )
+		{
+			return callback( "some denominations are capped, some uncapped" );
 		}
-	], callback);
-}
-
-function validateAssetorListUpdate(conn, payload, objUnit, objValidationState, callback){
-	if (objUnit.authors.length !== 1)
-		return callback("attestor list must be single-authored");
-	if (!isStringOfLength(payload.asset, constants.HASH_LENGTH))
-		return callback("invalid asset in attestor list update");
-	storage.readAsset(conn, payload.asset, objValidationState.last_ball_mci, function(err, objAsset){
-		if (err)
-			return callback(err);
-		if (!objAsset.spender_attested)
-			return callback("this asset does not require attestors");
-		if (objUnit.authors[0].address !== objAsset.definer_address)
-			return callback("attestor list can be edited only by definer");
-		err = checkAttestorList(payload.attestors);
-		if (err)
-			return callback(err);
-		callback();
-	});
-}
-
-function checkAttestorList(arrAttestors){
-	if (!isNonemptyArray(arrAttestors))
-		return "attestors not defined";
-	if (arrAttestors.length > constants.MAX_ATTESTORS_PER_ASSET)
-		return "too many attestors";
-	var prev="";
-	for (var i=0; i<arrAttestors.length; i++){
-		if (arrAttestors[i] <= prev)
-			return "attestors not sorted";
-		if (!isValidAddress(arrAttestors[i]))
-			return "invalid attestor address: "+arrAttestors[i];
-		prev = arrAttestors[i];
+		if ( bHasUncappedDenominations && payload.cap )
+		{
+			return callback( "has cap but some denominations are uncapped" );
+		}
+		if ( total_cap_from_denominations && !payload.cap )
+		{
+			return callback( "has no cap but denominations are capped" );
+		}
+		if ( total_cap_from_denominations && payload.cap !== total_cap_from_denominations )
+		{
+			return callback( "cap doesn't match sum of denominations" );
+		}
 	}
+
+	if ( payload.is_private &&
+		payload.is_transferrable &&
+		! payload.fixed_denominations )
+	{
+		return callback( "if private and transferrable, must have fixed denominations" );
+	}
+	if ( payload.is_private &&
+		! payload.fixed_denominations )
+	{
+		if ( ! ( payload.auto_destroy && ! payload.is_transferrable ) )
+		{
+			return callback( "if private and divisible, must also be auto-destroy and non-transferrable" );
+		}
+	}
+	if ( payload.cap && !payload.issued_by_definer_only )
+	{
+		return callback( "if capped, must be issued by definer only" );
+	}
+
+	//	possible: definer is like black hole
+	//	if (!payload.issued_by_definer_only && payload.auto_destroy)
+	//		return callback("if issued by anybody, cannot auto-destroy");
+
+	//	possible: the entire issue should go to the definer
+	//	if (!payload.issued_by_definer_only && !payload.is_transferrable)
+	//		return callback("if issued by anybody, must be transferrable");
+
+	objValidationState.bDefiningPrivateAsset = payload.is_private;
+
+	//	...
+	async.series
+	(
+		[
+			function( cb )
+			{
+				if ( ! ( "issue_condition" in payload ) )
+				{
+					return cb();
+				}
+
+				//	...
+				Definition.validateDefinition
+				(
+					conn,
+					payload.issue_condition,
+					objUnit,
+					objValidationState,
+					null,
+					true,
+					cb
+				);
+			},
+			function( cb )
+			{
+				if ( ! ( "transfer_condition" in payload ) )
+				{
+					return cb();
+				}
+
+				//	...
+				Definition.validateDefinition
+				(
+					conn,
+					payload.transfer_condition,
+					objUnit,
+					objValidationState,
+					null,
+					true,
+					cb
+				);
+			}
+		],
+		callback
+	);
+}
+
+function validateAssetorListUpdate( conn, payload, objUnit, objValidationState, callback )
+{
+	if ( objUnit.authors.length !== 1 )
+	{
+		return callback( "attestor list must be single-authored" );
+	}
+	if ( ! isStringOfLength( payload.asset, constants.HASH_LENGTH ) )
+	{
+		return callback( "invalid asset in attestor list update" );
+	}
+
+	//	...
+	storage.readAsset
+	(
+		conn,
+		payload.asset,
+		objValidationState.last_ball_mci,
+		function( err, objAsset )
+		{
+			if ( err )
+			{
+				return callback( err );
+			}
+			if ( ! objAsset.spender_attested )
+			{
+				return callback( "this asset does not require attestors" );
+			}
+			if ( objUnit.authors[ 0 ].address !== objAsset.definer_address )
+			{
+				return callback( "attestor list can be edited only by definer" );
+			}
+
+			//	...
+			err = checkAttestorList( payload.attestors );
+			if ( err )
+			{
+				return callback( err );
+			}
+
+			//	...
+			callback();
+		}
+	);
+}
+
+function checkAttestorList( arrAttestors )
+{
+	if ( ! isNonemptyArray( arrAttestors ) )
+	{
+		return "attestors not defined";
+	}
+	if ( arrAttestors.length > constants.MAX_ATTESTORS_PER_ASSET )
+	{
+		return "too many attestors";
+	}
+
+	//	...
+	var prev	= "";
+
+	for ( var i = 0; i < arrAttestors.length; i++ )
+	{
+		if ( arrAttestors[i] <= prev )
+		{
+			return "attestors not sorted";
+		}
+		if ( ! isValidAddress( arrAttestors[ i ] ) )
+		{
+			return "invalid attestor address: " + arrAttestors[ i ];
+		}
+
+		//	...
+		prev = arrAttestors[ i ];
+	}
+
 	return null;
 }
 
 
-
-function validateAuthorSignaturesWithoutReferences(objAuthor, objUnit, arrAddressDefinition, callback){
-	var objValidationState = {
+function validateAuthorSignaturesWithoutReferences( objAuthor, objUnit, arrAddressDefinition, callback )
+{
+	var objValidationState =
+	{
 		unit_hash_to_sign: objectHash.getUnitHashToSign(objUnit),
 		last_ball_mci: -1,
 		bNoReferences: true
 	};
-	Definition.validateAuthentifiers(
-		null, objAuthor.address, null, arrAddressDefinition, objUnit, objValidationState, objAuthor.authentifiers, 
-		function(err, res){
-			if (err) // error in address definition
-				return callback(err);
-			if (!res) // wrong signature or the like
-				return callback("authentifier verification failed");
+
+	Definition.validateAuthentifiers
+	(
+		null,
+		objAuthor.address,
+		null,
+		arrAddressDefinition,
+		objUnit,
+		objValidationState,
+		objAuthor.authentifiers,
+		function( err, res )
+		{
+			if ( err )
+			{
+				//	error in address definition
+				return callback( err );
+			}
+			if ( ! res )
+			{
+				//	wrong signature or the like
+				return callback( "authentifier verification failed" );
+			}
+
+			//	...
 			callback();
 		}
 	);
 }
 
 
-function createTransientError(err){
+function createTransientError( err )
+{
 	return {
-		error_code: "transient", 
-		message: err
-	};
-}
-
-// A problem is with the joint rather than with the unit. That is, the field that has an issue is not covered by unit hash.
-function createJointError(err){
-	return {
-		error_code: "invalid_joint", 
-		message: err
+		error_code	: "transient",
+		message		: err
 	};
 }
 
 
-function validateSignedMessage(objSignedMessage, handleResult){
-	if (typeof objSignedMessage !== 'object')
-		return handleResult("not an object");
-	if (ValidationUtils.hasFieldsExcept(objSignedMessage, ["signed_message", "authors"]))
-		return handleResult("unknown fields");
-	if (typeof objSignedMessage.signed_message !== 'string')
-		return handleResult("signed message not a string");
-	if (!Array.isArray(objSignedMessage.authors))
-		return handleResult("authors not an array");
-	if (!ValidationUtils.isArrayOfLength(objSignedMessage.authors, 1))
-		return handleResult("authors not an array of len 1");
-	var objAuthor = objSignedMessage.authors[0];
-	if (!objAuthor)
-		return handleResult("no authors[0]");
-	if (!ValidationUtils.isValidAddress(objAuthor.address))
-		return handleResult("not valid address");
-	if (typeof objAuthor.authentifiers !== 'object')
-		return handleResult("not valid authentifiers");
-	var arrAddressDefinition = objAuthor.definition;
-	if (objectHash.getChash160(arrAddressDefinition) !== objAuthor.address)
-		return handleResult("wrong definition: "+objectHash.getChash160(arrAddressDefinition) +"!=="+ objAuthor.address);
-	var objUnit = _.clone(objSignedMessage);
-	objUnit.messages = []; // some ops need it
-	var objValidationState = {
-		unit_hash_to_sign: objectHash.getUnitHashToSign(objSignedMessage),
-		last_ball_mci: -1,
-		bNoReferences: true
+/**
+ *	A problem is with the joint rather than with the unit. That is, the field that has an issue is not covered by unit hash.
+ */
+function createJointError( err )
+{
+	return {
+		error_code	: "invalid_joint",
+		message		: err
 	};
-	// passing db as null
-	Definition.validateAuthentifiers(
-		null, objAuthor.address, null, arrAddressDefinition, objUnit, objValidationState, objAuthor.authentifiers, 
-		function(err, res){
-			if (err) // error in address definition
-				return handleResult(err);
-			if (!res) // wrong signature or the like
-				return handleResult("authentifier verification failed");
+}
+
+
+function validateSignedMessage( objSignedMessage, handleResult )
+{
+	if ( typeof objSignedMessage !== 'object' )
+	{
+		return handleResult( "not an object" );
+	}
+	if ( ValidationUtils.hasFieldsExcept( objSignedMessage, [ "signed_message", "authors" ] ) )
+	{
+		return handleResult( "unknown fields" );
+	}
+	if ( typeof objSignedMessage.signed_message !== 'string' )
+	{
+		return handleResult( "signed message not a string" );
+	}
+	if ( ! Array.isArray( objSignedMessage.authors ) )
+	{
+		return handleResult( "authors not an array" );
+	}
+	if ( ! ValidationUtils.isArrayOfLength( objSignedMessage.authors, 1 ) )
+	{
+		return handleResult( "authors not an array of len 1" );
+	}
+
+	var objAuthor = objSignedMessage.authors[ 0 ];
+	if ( ! objAuthor )
+	{
+		return handleResult( "no authors[0]" );
+	}
+	if ( ! ValidationUtils.isValidAddress( objAuthor.address ) )
+	{
+		return handleResult( "not valid address" );
+	}
+	if ( typeof objAuthor.authentifiers !== 'object' )
+	{
+		return handleResult( "not valid authentifiers" );
+	}
+
+	//	...
+	var arrAddressDefinition	= objAuthor.definition;
+	if ( objectHash.getChash160( arrAddressDefinition ) !== objAuthor.address )
+	{
+		return handleResult( "wrong definition: " + objectHash.getChash160( arrAddressDefinition ) + "!==" + objAuthor.address );
+	}
+
+	//	...
+	var objUnit		= _.clone( objSignedMessage );
+	objUnit.messages	= [];	//	some ops need it
+	var objValidationState	=
+		{
+			unit_hash_to_sign	: objectHash.getUnitHashToSign( objSignedMessage ),
+			last_ball_mci		: -1,
+			bNoReferences		: true
+		};
+
+	//	passing db as null
+	Definition.validateAuthentifiers
+	(
+		null,
+		objAuthor.address,
+		null,
+		arrAddressDefinition,
+		objUnit,
+		objValidationState,
+		objAuthor.authentifiers,
+		function( err, res )
+		{
+			if ( err )
+			{
+				//	error in address definition
+				return handleResult( err );
+			}
+			if ( ! res )
+			{
+				//	wrong signature or the like
+				return handleResult( "authentifier verification failed" );
+			}
+
+			//	...
 			handleResult();
 		}
 	);
 }
 
 // inconsistent for multisig addresses
-function validateSignedMessageSync(objSignedMessage){
+function validateSignedMessageSync( objSignedMessage )
+{
 	var err;
 	var bCalledBack = false;
-	validateSignedMessage(objSignedMessage, function(_err){
-		err = _err;
-		bCalledBack = true;
-	});
-	if (!bCalledBack)
-		throw Error("validateSignedMessage is not sync");
+
+	//	...
+	validateSignedMessage
+	(
+		objSignedMessage,
+		function( _err )
+		{
+			err = _err;
+			bCalledBack = true;
+		}
+	);
+
+	if ( ! bCalledBack )
+	{
+		throw Error( "validateSignedMessage is not sync" );
+	}
+
+	//	...
 	return err;
 }
 
