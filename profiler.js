@@ -1,61 +1,86 @@
 /*jslint node: true */
 "use strict";
 
-var log			= require( './log.js' );
+let log			= require( './log.js' );
+
+let m_nCount		= 0;
+let m_oTimes		= {};
+let m_nStartTs		= 0;
+
+let m_oTimer		= {};
+let m_oTimerResult	= {};
+let m_nProfilerStartTs	= Date.now();
 
 
-var count = 0;
-var times = {};
-var start_ts = 0;
 
-var timers = {};
-var timers_results = {};
-var profiler_start_ts = Date.now();
-
-function mark_start(tag, id) {
+function mark_start( tag, id )
+{
 	return;
-	if (!id) id = 0;
-	if (!timers[tag]) timers[tag] = {};
-	if (timers[tag][id])
-		throw Error("multiple start marks for " + tag + "[" + id + "]");
-	timers[tag][id] = Date.now();
+
+	if ( ! id )
+	{
+		id = 0;
+	}
+	if ( ! m_oTimer[ tag ] )
+	{
+		m_oTimer[ tag ] = {};
+	}
+	if ( m_oTimer[ tag ][ id ] )
+	{
+		throw Error( "multiple start marks for " + tag + "[" + id + "]" );
+	}
+
+	//	...
+	m_oTimer[ tag ][ id ]	= Date.now();
 }
 
-function mark_end(tag, id) {
+function mark_end( tag, id )
+{
 	return;
-	if (!timers[tag]) return;
-	if (!id) id = 0;
-	if (!timers_results[tag])
-		timers_results[tag] = [];
-	timers_results[tag].push(Date.now() - timers[tag][id]);
-	timers[tag][id] = 0;
+
+	if ( ! m_oTimer[ tag ] )
+	{
+		return;
+	}
+	if ( ! id )
+	{
+		id = 0;
+	}
+	if ( ! m_oTimerResult[ tag ] )
+	{
+		m_oTimerResult[ tag ] = [];
+	}
+
+	//	...
+	m_oTimerResult[ tag ].push( Date.now() - m_oTimer[ tag ][ id ] );
+	m_oTimer[ tag ][ id ]	= 0;
 }
 
 function start()
 {
-	if ( start_ts )
+	if ( m_nStartTs )
 	{
 		throw Error("profiler already started");
 	}
 
 	//	...
-	start_ts = Date.now();
+	m_nStartTs = Date.now();
 }
 
 function stop( tag )
 {
-	if ( ! start_ts )
+	if ( ! m_nStartTs )
 	{
 		throw Error( "profiler not started" );
 	}
-	if ( ! times[ tag ] )
+	if ( ! m_oTimes[ tag ] )
 	{
-		times[ tag ] = 0;
+		m_oTimes[ tag ] = 0;
 	}
 
 	//	...
-	times[ tag ] += ( Date.now() - start_ts );
-	start_ts = 0;
+	m_oTimes[ tag ] += ( Date.now() - m_nStartTs );
+	m_nStartTs = 0;
 }
 
 function print()
@@ -66,42 +91,42 @@ function print()
 	//	...
 	log.consoleLog( "\nProfiling results:" );
 
-	for ( tag in times )
+	for ( tag in m_oTimes )
 	{
-		total += times[ tag ];
+		total += m_oTimes[ tag ];
 	}
 
-	for ( tag in times )
+	for ( tag in m_oTimes )
 	{
 		log.consoleLog
 		(
 			pad_right( tag + ": ", 33 ) +
-			pad_left( times[ tag ], 5 ) + ', ' +
-			pad_left( ( times[ tag ] / count ).toFixed( 2 ), 5 ) + ' per unit, ' +
-			pad_left( ( 100 * times[ tag ] / total ).toFixed( 2 ), 5 ) + '%'
+			pad_left( m_oTimes[ tag ], 5 ) + ', ' +
+			pad_left( ( m_oTimes[ tag ] / m_nCount ).toFixed( 2 ), 5 ) + ' per unit, ' +
+			pad_left( ( 100 * m_oTimes[ tag ] / total ).toFixed( 2 ), 5 ) + '%'
 		);
 	}
 
 	//	...
 	log.consoleLog( 'total: ' + total );
-	log.consoleLog( ( total / count ) + ' per unit' );
+	log.consoleLog( ( total / m_nCount ) + ' per unit' );
 }
 
 function print_results()
 {
 	let tag;
-	var results;
-	var sum;
-	var max;
-	var min;
-	var i;
-	var v;
+	let results;
+	let sum;
+	let max;
+	let min;
+	let i;
+	let v;
 
 	log.consoleLog( "\nBenchmarking results:" );
 
-	for ( tag in timers_results )
+	for ( tag in m_oTimerResult )
 	{
-		results	= timers_results[ tag ];
+		results	= m_oTimerResult[ tag ];
 		sum	= 0;
 		max	= 0;
 		min	= 999999999999;
@@ -134,9 +159,9 @@ function print_results()
 	//	...
 	log.consoleLog
 	(
-		"\n\nStart time: " + profiler_start_ts
+		"\n\nStart time: " + m_nProfilerStartTs
 		+ ", End time: " + Date.now()
-		+ " Elapsed ms:" + ( Date.now() - profiler_start_ts )
+		+ " Elapsed ms:" + ( Date.now() - m_nProfilerStartTs )
 	);
 }
 
@@ -164,7 +189,7 @@ function pad_left( str, len )
 
 function increment()
 {
-	count++;
+	m_nCount ++;
 }
 
 
@@ -184,22 +209,37 @@ process.on
 
 String.prototype.padding = function( n, c )
 {
-        var val = this.valueOf();
+        let val = this.valueOf();
         if ( Math.abs( n ) <= val.length )
         {
                 return val;
         }
 
-        var m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
-        var pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
-//      var pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
+        let m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
+        let pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
+//      let pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
         return ( n < 0 ) ? pad + val : val + pad;
 //      return ( n < 0 ) ? val + pad : pad + val;
 };
 
 
 
-var clog = log.consoleLog;
+/**
+ *	print profiler every 5 seconds
+ */
+setInterval
+(
+	function ()
+	{
+		print();
+	},
+	5000
+);
+
+
+
+
+let clog = log.consoleLog;
 //log.consoleLog = function(){};
 
 //exports.start = start;
@@ -210,7 +250,7 @@ exports.mark_start	= mark_start;
 exports.mark_end	= mark_end;
 
 
-exports.start		= function(){};
-exports.stop		= function(){};
-exports.increment	= function(){};
+exports.start		= start;	//	function(){};
+exports.stop		= stop;		//	function(){};
+exports.increment	= increment;	//	function(){};
 //exports.print		= function(){};
