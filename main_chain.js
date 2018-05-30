@@ -22,7 +22,7 @@ var breadcrumbs		= require( './breadcrumbs.js' );
 /**
  *	override when adding units which caused witnessed level to significantly retreat
  */
-var arrRetreatingUnits =
+var m_arrRetreatingUnits =
 [
 	'+5ntioHT58jcFb8oVc+Ff4UvO5UvYGRcrGfYIofGUW8=',
 	'C/aPdM0sODPLC3NqJPWdZlqmV8B4xxf2N/+HSEi0sKU=',
@@ -40,22 +40,27 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 {
 	var arrAllParents	= [];
 	var arrNewMcUnits	= [];
-	
-	// if unit === null, read free balls
-	function findNextUpMainChainUnit( unit, handleUnit )
+
+	//
+	//	if unit === null, read free balls
+	//
+	function _findNextUpMainChainUnit( unit, handleUnit )
 	{
-		function handleProps( props )
+		function _handleProps( props )
 		{
 			if ( props.best_parent_unit === null )
+			{
 				throw Error( "best parent is null" );
+			}
 
 			//	...
 			log.consoleLog( "unit " + unit + ", best parent " + props.best_parent_unit + ", wlevel " + props.witnessed_level );
 			handleUnit( props.best_parent_unit );
 		}
 
-		function readLastUnitProps( handleLastUnitProps )
+		function _readLastUnitProps( handleLastUnitProps )
 		{
+			//	...
 			conn.query
 			(
 				"SELECT unit AS best_parent_unit, witnessed_level \n\
@@ -80,9 +85,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							}
 						);
 						arrAllParents	= arrParents;
-						for ( var i = 0; i < arrRetreatingUnits.length; i ++ )
+						for ( var i = 0; i < m_arrRetreatingUnits.length; i ++ )
 						{
-							var n = arrParents.indexOf( arrRetreatingUnits[ i ] );
+							var n = arrParents.indexOf( m_arrRetreatingUnits[ i ] );
 							if ( n >= 0 )
 							{
 								return handleLastUnitProps( rows[ n ] );
@@ -103,108 +108,114 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		//	...
 		unit
 			?
-			storage.readStaticUnitProps( conn, unit, handleProps )
+			storage.readStaticUnitProps( conn, unit, _handleProps )
 			:
-			readLastUnitProps( handleProps );
+			_readLastUnitProps( _handleProps );
 	}
 
-	function goUpFromUnit( unit )
+
+	function _goUpFromUnit( unit )
 	{
 		if ( storage.isGenesisUnit( unit ) )
 		{
-			return checkNotRebuildingStableMainChainAndGoDown( 0, unit );
+			return _checkNotRebuildingStableMainChainAndGoDown( 0, unit );
 		}
 
 		//	...
 		profilerex.begin( 'mc-goUpFromUnit' );
-		findNextUpMainChainUnit
+		_findNextUpMainChainUnit
 		(
 			unit,
 			function( best_parent_unit )
 			{
-				storage.readUnitProps( conn, best_parent_unit, function( objBestParentUnitProps )
-				{
-					var objBestParentUnitProps2 = storage.assocUnstableUnits[ best_parent_unit ];
-					if ( ! objBestParentUnitProps2 )
+				storage.readUnitProps
+				(
+					conn,
+					best_parent_unit,
+					function( objBestParentUnitProps )
 					{
-						if ( storage.isGenesisUnit( best_parent_unit ) )
+						var objBestParentUnitProps2 = storage.assocUnstableUnits[ best_parent_unit ];
+						if ( ! objBestParentUnitProps2 )
 						{
-							objBestParentUnitProps2 = storage.assocStableUnits[ best_parent_unit ];
+							if ( storage.isGenesisUnit( best_parent_unit ) )
+							{
+								objBestParentUnitProps2 = storage.assocStableUnits[ best_parent_unit ];
+							}
+							else
+							{
+								profilerex.end( 'mc-goUpFromUnit' );
+								throw Error( "unstable unit not found: " + best_parent_unit );
+							}
+						}
+
+						//	...
+						var objBestParentUnitPropsForCheck	 = _.cloneDeep( objBestParentUnitProps2 );
+						delete objBestParentUnitPropsForCheck.parent_units;
+
+						if ( ! _.isEqual( objBestParentUnitPropsForCheck, objBestParentUnitProps ) )
+						{
+							profilerex.end( 'mc-goUpFromUnit' );
+							_throwError
+							(
+								"different props, db: "
+								+ JSON.stringify( objBestParentUnitProps )
+								+ ", unstable: "
+								+ JSON.stringify( objBestParentUnitProps2 )
+							);
+						}
+
+						if ( ! objBestParentUnitProps.is_on_main_chain )
+						{
+							conn.query
+							(
+								"UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?",
+								[
+									best_parent_unit
+								],
+								function()
+								{
+									objBestParentUnitProps2.is_on_main_chain	= 1;
+									objBestParentUnitProps2.main_chain_index	= null;
+
+									arrNewMcUnits.push( best_parent_unit );
+
+									//	...
+									profilerex.end( 'mc-goUpFromUnit' );
+
+									_goUpFromUnit( best_parent_unit );
+								}
+							);
 						}
 						else
 						{
 							profilerex.end( 'mc-goUpFromUnit' );
-							throw Error( "unstable unit not found: " + best_parent_unit );
-						}
-					}
 
-					//	...
-					var objBestParentUnitPropsForCheck	 = _.cloneDeep( objBestParentUnitProps2 );
-					delete objBestParentUnitPropsForCheck.parent_units;
-
-					if ( ! _.isEqual( objBestParentUnitPropsForCheck, objBestParentUnitProps ) )
-					{
-						profilerex.end( 'mc-goUpFromUnit' );
-						throwError
-						(
-							"different props, db: "
-							+ JSON.stringify( objBestParentUnitProps )
-							+ ", unstable: "
-							+ JSON.stringify( objBestParentUnitProps2 )
-						);
-					}
-
-					if ( ! objBestParentUnitProps.is_on_main_chain )
-					{
-						conn.query
-						(
-							"UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?",
-							[
-								best_parent_unit
-							],
-							function()
+							if ( unit === null )
 							{
-								objBestParentUnitProps2.is_on_main_chain	= 1;
-								objBestParentUnitProps2.main_chain_index	= null;
-
-								arrNewMcUnits.push( best_parent_unit );
-
-								//	...
-								profilerex.end( 'mc-goUpFromUnit' );
-
-								goUpFromUnit( best_parent_unit );
+								_updateLatestIncludedMcIndex
+								(
+									objBestParentUnitProps.main_chain_index,
+									false
+								);
 							}
-						);
-					}
-					else
-					{
-						profilerex.end( 'mc-goUpFromUnit' );
-
-						if ( unit === null )
-						{
-							updateLatestIncludedMcIndex
-							(
-								objBestParentUnitProps.main_chain_index,
-								false
-							);
-						}
-						else
-						{
-							checkNotRebuildingStableMainChainAndGoDown
-							(
-								objBestParentUnitProps.main_chain_index,
-								best_parent_unit
-							);
+							else
+							{
+								_checkNotRebuildingStableMainChainAndGoDown
+								(
+									objBestParentUnitProps.main_chain_index,
+									best_parent_unit
+								);
+							}
 						}
 					}
-				}
-			);
-		});
+				);
+			}
+		);
 	}
 
-	function checkNotRebuildingStableMainChainAndGoDown( last_main_chain_index, last_main_chain_unit )
+	function _checkNotRebuildingStableMainChainAndGoDown( last_main_chain_index, last_main_chain_unit )
 	{
-		log.consoleLog( "checkNotRebuildingStableMainChainAndGoDown " + from_unit );
+		log.consoleLog( "_checkNotRebuildingStableMainChainAndGoDown " + from_unit );
 		profilerex.begin( 'mc-checkNotRebuilding' );
 
 		//	...
@@ -237,7 +248,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				}
 
 				//	...
-				goDownAndUpdateMainChainIndex
+				_goDownAndUpdateMainChainIndex
 				(
 					last_main_chain_index,
 					last_main_chain_unit
@@ -246,11 +257,12 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		);
 	}
 
-	function goDownAndUpdateMainChainIndex( last_main_chain_index, last_main_chain_unit )
+	function _goDownAndUpdateMainChainIndex( last_main_chain_index, last_main_chain_unit )
 	{
 		//	PPP
 		profilerex.begin( 'mc-goDown' );
 
+		//	...
 		conn.query
 		(
 			//"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE is_on_main_chain=1 AND main_chain_index>?", 
@@ -274,6 +286,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				let main_chain_index	= last_main_chain_index;
 				let main_chain_unit	= last_main_chain_unit;
 
+				//	...
 				conn.query
 				(
 					"SELECT unit FROM units WHERE is_on_main_chain=1 AND main_chain_index IS NULL ORDER BY level",
@@ -285,7 +298,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								throw Error( "no unindexed MC units after adding " + last_added_unit );
 							//else{
 							//    log.consoleLog("last MC=0, no unindexed MC units");
-							//    return updateLatestIncludedMcIndex(last_main_chain_index, true);
+							//    return _updateLatestIncludedMcIndex(last_main_chain_index, true);
 							//}
 						}
 
@@ -300,7 +313,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 						if ( ! _.isEqual( arrNewMcUnits, arrDbNewMcUnits ) )
 						{
-							throwError
+							_throwError
 							(
 								"different new MC units, arr: "
 								+ JSON.stringify( arrNewMcUnits )
@@ -309,6 +322,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							);
 						}
 
+						//	...
 						async.eachSeries
 						(
 							rows, 
@@ -361,7 +375,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 											if ( ! _.isEqual( arrNewStartUnits.sort(), arrNewStartUnits2.sort() ) )
 											{
-												throwError
+												_throwError
 												(
 													"different new start units, arr: "
 													+ JSON.stringify( arrNewStartUnits2 )
@@ -412,10 +426,10 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							}, 
 							function( err )
 							{
-								log.consoleLog("goDownAndUpdateMainChainIndex done");
+								log.consoleLog("_goDownAndUpdateMainChainIndex done");
 								if ( err )
 								{
-									throw Error( "goDownAndUpdateMainChainIndex eachSeries failed" );
+									throw Error( "_goDownAndUpdateMainChainIndex eachSeries failed" );
 								}
 
 								//	...
@@ -426,7 +440,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									{
 										//	PPP
 										profilerex.end( 'mc-goDown' );
-										updateLatestIncludedMcIndex(last_main_chain_index, true);
+										_updateLatestIncludedMcIndex(last_main_chain_index, true);
 									}
 								);
 							}
@@ -437,14 +451,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		);
 	}
 	
-	function updateLatestIncludedMcIndex( last_main_chain_index, bRebuiltMc )
+	function _updateLatestIncludedMcIndex( last_main_chain_index, bRebuiltMc )
 	{
-		function checkAllLatestIncludedMcIndexesAreSet()
+		function _checkAllLatestIncludedMcIndexesAreSet()
 		{
 			profilerex.begin( 'mc-limci-check' );
 			if ( ! _.isEqual( assocDbLimcisByUnit, assocLimcisByUnit ) )
 			{
-				throwError( "different  LIMCIs, mem: " + JSON.stringify( assocLimcisByUnit ) + ", db: " + JSON.stringify( assocDbLimcisByUnit ) );
+				_throwError( "different  LIMCIs, mem: " + JSON.stringify( assocLimcisByUnit ) + ", db: " + JSON.stringify( assocDbLimcisByUnit ) );
 			}
 
 			conn.query
@@ -461,14 +475,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					profilerex.end( 'mc-limci-check' );
 
 					//	...
-					updateStableMcFlag();
+					_updateStableMcFlag();
 				}
 			);
 		}
 
-		function propagateLIMCI()
+		function _propagateLIMCI()
 		{
-			log.consoleLog( "propagateLIMCI " + last_main_chain_index );
+			log.consoleLog( "_propagateLIMCI " + last_main_chain_index );
 
 			//	PPP
 			profilerex.begin( 'mc-limci-select-propagate' );
@@ -485,7 +499,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					AND (chunits.latest_included_mc_index IS NULL OR chunits.latest_included_mc_index < punits.latest_included_mc_index)",
 				[last_main_chain_index],
 				function(result){
-					(result.affectedRows > 0) ? propagateLIMCI() : checkAllLatestIncludedMcIndexesAreSet();
+					(result.affectedRows > 0) ? _propagateLIMCI() : _checkAllLatestIncludedMcIndexesAreSet();
 				}
 				*/
 				"SELECT punits.latest_included_mc_index, chunits.unit \n\
@@ -504,7 +518,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 					if ( rows.length === 0 )
 					{
-						return checkAllLatestIncludedMcIndexesAreSet();
+						return _checkAllLatestIncludedMcIndexesAreSet();
 					}
 
 					//	PPP
@@ -536,14 +550,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							profilerex.end( 'mc-limci-update-propagate' );
 
 							//	...
-							propagateLIMCI();
+							_propagateLIMCI();
 						}
 					);
 				}
 			);
 		}
 
-		function loadUnitProps( unit, handleProps )
+		function _loadUnitProps( unit, handleProps )
 		{
 			if ( storage.assocUnstableUnits[ unit ] )
 			{
@@ -554,7 +568,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			storage.readUnitProps( conn, unit, handleProps );
 		}
 
-		function calcLIMCIs( onUpdated )
+		function _calcLIMCIs( onUpdated )
 		{
 			var arrFilledUnits = [];
 
@@ -569,7 +583,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 						props.parent_units,
 						function( parent_unit, cb2 )
 						{
-							loadUnitProps
+							_loadUnitProps
 							(
 								parent_unit,
 								function( parent_props )
@@ -625,7 +639,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					);
 					if ( Object.keys( assocChangedUnits ).length > 0 )
 					{
-						calcLIMCIs( onUpdated );
+						_calcLIMCIs( onUpdated );
 					}
 					else
 					{
@@ -636,7 +650,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		}
 
 		//	...
-		log.consoleLog( "updateLatestIncludedMcIndex " + last_main_chain_index );
+		log.consoleLog( "_updateLatestIncludedMcIndex " + last_main_chain_index );
 
 		//	PPP
 		profilerex.begin( 'mc-limci-set-null' );
@@ -654,7 +668,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				assocChangedUnits[ unit ]	= o;
 			}
 		}
-		calcLIMCIs
+
+		_calcLIMCIs
 		(
 			function()
 			{
@@ -694,7 +709,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							function(result){
 								if (result.affectedRows === 0 && bRebuiltMc)
 									throw "no latest_included_mc_index updated";
-								propagateLIMCI();
+								_propagateLIMCI();
 							}
 							*/
 							"SELECT chunits.unit, punits.main_chain_index \n\
@@ -757,7 +772,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 										profilerex.end( 'mc-limci-update-initial' );
 
 										//	...
-										propagateLIMCI();
+										_propagateLIMCI();
 									}
 								);
 							}
@@ -768,7 +783,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		);
 	}
 
-	function readLastStableMcUnit( handleLastStableMcUnit )
+	function _readLastStableMcUnit( handleLastStableMcUnit )
 	{
 		conn.query
 		(
@@ -784,15 +799,15 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		);
 	}
 	
-	function updateStableMcFlag()
+	function _updateStableMcFlag()
 	{
-		log.consoleLog( "updateStableMcFlag" );
+		log.consoleLog( "_updateStableMcFlag" );
 
 		//	PPP
 		profilerex.begin( 'mc-stableFlag' );
 
 		//	...
-		readLastStableMcUnit
+		_readLastStableMcUnit
 		(
 			function( last_stable_mc_unit )
 			{
@@ -818,7 +833,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									profilerex.end( 'mc-stableFlag' );
 
 									//	if (isGenesisUnit(last_stable_mc_unit))
-									//    return finish();
+									//    return _finish();
 									throw Error
 									(
 										"no best children of last stable MC unit "
@@ -869,11 +884,11 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									profilerex.end( 'mc-stableFlag' );
 
 									//	...
-									markMcIndexStable
+									_markMcIndexStable
 									(
 										conn,
 										first_unstable_mc_index,
-										updateStableMcFlag
+										_updateStableMcFlag
 									);
 								}
 
@@ -918,7 +933,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 													}
 
 													//	...
-													return finish();
+													return _finish();
 													/*
 													// if there are 12 witnesses on the MC, the next unit is stable
 													// This is not reliable. Adding a new unit after this one (not descending from this one)
@@ -929,14 +944,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 														[first_unstable_mc_index, arrWitnesses],
 														function(count_witnesses_rows){
 															(count_witnesses_rows[0].count_witnesses === constants.COUNT_WITNESSES)
-																? advanceLastStableMcUnitAndTryNext() : finish();
+																? advanceLastStableMcUnitAndTryNext() : _finish();
 														}
 													);
 													return;
 													*/
 												}
 
-												createListOfBestChildren
+												_createListOfBestChildren
 												(
 													arrAltBranchRootUnits,
 													function( arrAltBestChildren )
@@ -974,7 +989,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 																	?
 																	advanceLastStableMcUnitAndTryNext()
 																	:
-																	finish();
+																	_finish();
 															}
 														);
 													}
@@ -992,7 +1007,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	}
 
 	//	also includes arrParentUnits
-	function createListOfBestChildren( arrParentUnits, handleBestChildrenList )
+	function _createListOfBestChildren( arrParentUnits, handleBestChildrenList )
 	{
 		if ( arrParentUnits.length === 0 )
 		{
@@ -1001,7 +1016,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 		var arrBestChildren = arrParentUnits.slice();
 
-		function goDownAndCollectBestChildren( arrStartUnits, cb )
+		function _goDownAndCollectBestChildren( arrStartUnits, cb )
 		{
 			conn.query
 			(
@@ -1028,7 +1043,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							}
 							else
 							{
-								goDownAndCollectBestChildren( [ row.unit ], cb2 );
+								_goDownAndCollectBestChildren( [ row.unit ], cb2 );
 							}
 						},
 						cb
@@ -1037,7 +1052,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			);
 		}
 
-		goDownAndCollectBestChildren
+		_goDownAndCollectBestChildren
 		(
 			arrParentUnits,
 			function()
@@ -1047,7 +1062,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		);
 	}
 
-	function finish()
+	function _finish()
 	{
 		//	PPP
 		profilerex.end( 'mc-stableFlag' );
@@ -1062,14 +1077,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 	log.consoleLog( "\nwill update MC" );
 
-	/*if (from_unit === null && arrRetreatingUnits.indexOf(last_added_unit) >= 0){
+	/*if (from_unit === null && m_arrRetreatingUnits.indexOf(last_added_unit) >= 0){
 		conn.query("UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?", [last_added_unit], function(){
-			goUpFromUnit(last_added_unit);
+			_goUpFromUnit(last_added_unit);
 		});
 	}
 	else*/
 	{
-		goUpFromUnit( from_unit );
+		_goUpFromUnit( from_unit );
 	}
 }
 
@@ -1148,7 +1163,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 			);
 
 			//	...
-			readBestParentAndItsWitnesses
+			_readBestParentAndItsWitnesses
 			(
 				conn,
 				earlier_unit,
@@ -1207,7 +1222,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 							//log.consoleLog("first_unstable_mc_level", first_unstable_mc_level);
 							//log.consoleLog("alt", arrAltBranchRootUnits);
 				
-							function findMinMcWitnessedLevel( handleMinMcWl )
+							function _findMinMcWitnessedLevel( handleMinMcWl )
 							{
 								var min_mc_wl	= Number.MAX_VALUE;
 								var count	= 0;
@@ -1227,7 +1242,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 										{
 											if ( rows.length !== 1 )
 											{
-												throw Error( "findMinMcWitnessedLevel: not 1 row" );
+												throw Error( "_findMinMcWitnessedLevel: not 1 row" );
 											}
 
 											let row	= rows[ 0 ];
@@ -1275,7 +1290,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 								);
 							}
 				
-							function determineIfHasAltBranches( handleHasAltBranchesResult )
+							function _determineIfHasAltBranches( handleHasAltBranchesResult )
 							{
 								if ( arrAltBranchRootUnits.length === 0 )
 								{
@@ -1307,7 +1322,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 							}
 
 							//	also includes arrAltBranchRootUnits
-							function createListOfBestChildrenIncludedByLaterUnits( arrAltBranchRootUnits, handleBestChildrenList )
+							function _createListOfBestChildrenIncludedByLaterUnits( arrAltBranchRootUnits, handleBestChildrenList )
 							{
 								if ( arrAltBranchRootUnits.length === 0 )
 								{
@@ -1316,7 +1331,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 
 								var arrBestChildren = [];
 
-								function goDownAndCollectBestChildren( arrStartUnits, cb )
+								function _goDownAndCollectBestChildren( arrStartUnits, cb )
 								{
 									conn.query
 									(
@@ -1347,7 +1362,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 														}
 														else
 														{
-															goDownAndCollectBestChildren( [ row.unit ], cb2 );
+															_goDownAndCollectBestChildren( [ row.unit ], cb2 );
 														}
 													}
 
@@ -1376,7 +1391,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 								}
 
 								//	leaves only those roots that are included by later units
-								function filterAltBranchRootUnits( cb )
+								function _filterAltBranchRootUnits( cb )
 								{
 									var arrFilteredAltBranchRootUnits	= [];
 
@@ -1428,14 +1443,14 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 												function()
 												{
 													//	log.consoleLog('filtered:', arrFilteredAltBranchRootUnits);
-													goDownAndCollectBestChildren( arrFilteredAltBranchRootUnits, cb );
+													_goDownAndCollectBestChildren( arrFilteredAltBranchRootUnits, cb );
 												}
 											);
 										}
 									);
 								}
 
-								filterAltBranchRootUnits
+								_filterAltBranchRootUnits
 								(
 									function()
 									{
@@ -1445,12 +1460,12 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 								);
 							}
 
-							findMinMcWitnessedLevel
+							_findMinMcWitnessedLevel
 							(
 								function( min_mc_wl )
 								{
 									//	log.consoleLog("min mc wl", min_mc_wl);
-									determineIfHasAltBranches
+									_determineIfHasAltBranches
 									(
 										function( bHasAltBranches )
 										{
@@ -1480,7 +1495,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 											}
 
 											//	has alt branches
-											createListOfBestChildrenIncludedByLaterUnits
+											_createListOfBestChildrenIncludedByLaterUnits
 											(
 												arrAltBranchRootUnits,
 												function( arrAltBestChildren )
@@ -1594,7 +1609,7 @@ function determineIfStableInLaterUnitsAndUpdateStableMcFlag( conn, earlier_unit,
 										mci ++;
 										if ( mci <= new_last_stable_mci )
 										{
-											markMcIndexStable( conn, mci, advanceLastStableMcUnitAndStepForward );
+											_markMcIndexStable( conn, mci, advanceLastStableMcUnitAndStepForward );
 										}
 										else
 										{
@@ -1613,7 +1628,7 @@ function determineIfStableInLaterUnitsAndUpdateStableMcFlag( conn, earlier_unit,
 }
 
 
-function readBestParentAndItsWitnesses( conn, unit, handleBestParentAndItsWitnesses )
+function _readBestParentAndItsWitnesses( conn, unit, handleBestParentAndItsWitnesses )
 {
 	storage.readStaticUnitProps
 	(
@@ -1635,7 +1650,7 @@ function readBestParentAndItsWitnesses( conn, unit, handleBestParentAndItsWitnes
 }
 
 
-function markMcIndexStable( conn, mci, onDone )
+function _markMcIndexStable( conn, mci, onDone )
 {
 	//	PPP
 	profilerex.begin( 'mc-mark-stable' );
@@ -1672,11 +1687,11 @@ function markMcIndexStable( conn, mci, onDone )
 		function()
 		{
 			//	next op
-			handleNonserialUnits();
+			_handleNonSerialUnits();
 		}
 	);
 
-	function handleNonserialUnits()
+	function _handleNonSerialUnits()
 	{
 		conn.query
 		(
@@ -1697,7 +1712,7 @@ function markMcIndexStable( conn, mci, onDone )
 						if ( row.sequence === 'final-bad' )
 						{
 							arrFinalBadUnits.push( row.unit );
-							return row.content_hash ? cb() : setContentHash( row.unit, cb );
+							return row.content_hash ? cb() : _setContentHash( row.unit, cb );
 						}
 
 						//	temp-bad
@@ -1707,7 +1722,7 @@ function markMcIndexStable( conn, mci, onDone )
 						}
 
 						//	...
-						findStableConflictingUnits
+						_findStableConflictingUnits
 						(
 							row,
 							function( arrConflictingUnits )
@@ -1741,7 +1756,7 @@ function markMcIndexStable( conn, mci, onDone )
 										else
 										{
 											arrFinalBadUnits.push( row.unit );
-											setContentHash( row.unit, cb );
+											_setContentHash( row.unit, cb );
 										}
 									}
 								);
@@ -1760,14 +1775,14 @@ function markMcIndexStable( conn, mci, onDone )
 								storage.assocStableUnits[ unit ].sequence = 'final-bad';
 							}
 						);
-						propagateFinalBad( arrFinalBadUnits, addBalls );
+						_propagateFinalBad( arrFinalBadUnits, _addBalls );
 					}
 				);
 			}
 		);
 	}
 
-	function setContentHash( unit, onSet )
+	function _setContentHash( unit, onSet )
 	{
 		storage.readJoint
 		(
@@ -1800,7 +1815,7 @@ function markMcIndexStable( conn, mci, onDone )
 	}
 
 	//	all future units that spent these unconfirmed units become final-bad too
-	function propagateFinalBad( arrFinalBadUnits, onPropagated )
+	function _propagateFinalBad( arrFinalBadUnits, onPropagated )
 	{
 		if ( arrFinalBadUnits.length === 0 )
 		{
@@ -1845,14 +1860,14 @@ function markMcIndexStable( conn, mci, onDone )
 							}
 						);
 
-						propagateFinalBad( arrSpendingUnits, onPropagated );
+						_propagateFinalBad( arrSpendingUnits, onPropagated );
 					}
 				);
 			}
 		);
 	}
 
-	function findStableConflictingUnits( objUnitProps, handleConflictingUnits )
+	function _findStableConflictingUnits( objUnitProps, handleConflictingUnits )
 	{
 		//
 		//	find potential competitors.
@@ -1924,7 +1939,7 @@ function markMcIndexStable( conn, mci, onDone )
 	}
 
 
-	function addBalls()
+	function _addBalls()
 	{
 		conn.query
 		(
@@ -1967,7 +1982,7 @@ function markMcIndexStable( conn, mci, onDone )
 										return parent_ball_row.ball;
 									}
 								);
-								var arrSimilarMcis	= getSimilarMcis( mci );
+								var arrSimilarMcis	= _getSimilarMcis( mci );
 								var arrSkiplistUnits	= [];
 								var arrSkiplistBalls	= [];
 
@@ -2080,14 +2095,14 @@ function markMcIndexStable( conn, mci, onDone )
 					function()
 					{
 						//	next op
-						updateRetrievable();
+						_updateRetrievable();
 					}
 				);
 			}
 		);
 	}
 
-	function updateRetrievable()
+	function _updateRetrievable()
 	{
 		storage.updateMinRetrievableMciAfterStabilizingMci
 		(
@@ -2099,7 +2114,7 @@ function markMcIndexStable( conn, mci, onDone )
 				profilerex.end( 'mc-mark-stable' );
 
 				//	...
-				calcCommissions();
+				_calcCommissions();
 			}
 		);
 	}
@@ -2109,7 +2124,7 @@ function markMcIndexStable( conn, mci, onDone )
 	////////////////////////////////////////////////////////////
 	//	* IMPORTANT
 	////////////////////////////////////////////////////////////
-	function calcCommissions()
+	function _calcCommissions()
 	{
 		async.series
 		(
@@ -2151,7 +2166,7 @@ function markMcIndexStable( conn, mci, onDone )
 /**
  *	returns list of past MC indices for skiplist
  */
-function getSimilarMcis( mci )
+function _getSimilarMcis( mci )
 {
 	var arrSimilarMcis	= [];
 	var divisor		= 10;
@@ -2174,7 +2189,7 @@ function getSimilarMcis( mci )
 /**
  *	throw Error
  */
-function throwError( msg )
+function _throwError( msg )
 {
 	if ( typeof window === 'undefined' )
 	{

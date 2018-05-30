@@ -31,7 +31,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 {
 	let objUnit	= objJoint.unit;
 	log.consoleLog( "\nsaving unit " + objUnit.unit );
-	//#profiler.start();
+
+	//	PPP
+	profilerex.begin( 'writer-saveJoint-takeConnectionFromPool' );
 
 	//
 	//	...
@@ -41,6 +43,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 		function( conn )
 		{
 			let arrQueries = [];
+
+			//	PPP
+			profilerex.end( 'writer-saveJoint-takeConnectionFromPool' );
 
 			//	...
 			conn.addQuery
@@ -93,7 +98,6 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					objUnit.timestamp
 				);
 			}
-
 			conn.addQuery
 			(
 				arrQueries,
@@ -103,7 +107,8 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 
 
 			//
-			//	....
+			//	* FOR NOT LIGHT
+			//	save balls, hash_tree_balls, skiplist_units
 			//
 			if ( objJoint.ball && ! conf.bLight )
 			{
@@ -143,6 +148,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 				}
 			}
 
+			//
+			//	insert parenthoods
+			//
 			if ( objUnit.parent_units )
 			{
 				for ( let i = 0; i < objUnit.parent_units.length; i ++ )
@@ -159,6 +167,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 				}
 			}
 
+			//
+			//	update status of parent units
+			//
 			let bGenesis	= storage.isGenesisUnit( objUnit.unit );
 			if ( bGenesis )
 			{
@@ -186,6 +197,10 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						//	in sqlite3, result.affectedRows actually returns the number of _matched_ rows
 						let count_consumed_free_units	= result.affectedRows;
 						log.consoleLog( count_consumed_free_units + " free units consumed" );
+
+						//
+						//	update status of unit in storage
+						//
 						objUnit.parent_units.forEach
 						(
 							function( parent_unit )
@@ -199,7 +214,10 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					}
 				);
 			}
-		
+
+			//
+			//	insert unit_witnesses
+			//
 			if ( Array.isArray( objUnit.witnesses ) )
 			{
 				for ( let i = 0; i < objUnit.witnesses.length; i ++ )
@@ -484,9 +502,10 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 							(
 								arrQueries,
 								"INSERT INTO assets (unit, message_index, \n\
-								cap, is_private, is_transferrable, auto_destroy, fixed_denominations, \n\
-								issued_by_definer_only, cosigned_by_definer, spender_attested, \n\
-								issue_condition, transfer_condition) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", 
+									cap, is_private, is_transferrable, auto_destroy, fixed_denominations, \n\
+									issued_by_definer_only, cosigned_by_definer, spender_attested, \n\
+									issue_condition, transfer_condition ) \n\
+								VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
 								[
 									objUnit.unit,
 									i,
@@ -545,7 +564,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 								conn.addQuery
 								(
 									arrQueries,
-									"INSERT INTO asset_attestors (unit, message_index, asset, attestor_address) VALUES(?,?,?,?)",
+									"INSERT INTO asset_attestors \n\
+									(unit, message_index, asset, attestor_address) \n\
+									VALUES(?,?,?,?)",
 									[
 										objUnit.unit,
 										i,
@@ -644,7 +665,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 			{
 				conn.query
 				(
-					"SELECT address, denomination, asset FROM outputs WHERE unit=? AND message_index=? AND output_index=?",
+					"SELECT address, denomination, asset \n\
+					FROM outputs \n\
+					WHERE unit=? AND message_index=? AND output_index=?",
 					[
 						input.unit,
 						input.message_index,
@@ -909,13 +932,16 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						//	...
 						my_best_parent_unit	= rows[ 0 ].unit;
 						if ( my_best_parent_unit !== objValidationState.best_parent_unit )
+						{
 							_throwError
 							(
 								"different best parents, validation: "
 								+ objValidationState.best_parent_unit
 								+ ", writer: " + my_best_parent_unit
 							);
+						}
 
+						//	...
 						conn.query
 						(
 							"UPDATE units SET best_parent_unit=? WHERE unit=?",
@@ -1042,7 +1068,8 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 
 				function setWitnessedLevel( witnessed_level )
 				{
-					//#profiler.start();
+					//	PPP
+					profilerex.begin( 'writer-saveJoint-wl-update' );
 
 					if ( witnessed_level !== objValidationState.witnessed_level )
 					{
@@ -1065,7 +1092,10 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						],
 						function()
 						{
-							//#profiler.stop( 'write-wl-update' );
+							//	PPP
+							profilerex.end( 'writer-saveJoint-wl-update' );
+
+							//	...
 							cb();
 						}
 					);
@@ -1073,15 +1103,20 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 
 				function addWitnessesAndGoUp( start_unit )
 				{
-					//#profiler.start();
+					//	PPP
+					profilerex.begin( 'writer-saveJoint-wl-select-bp' );
+
+					//	...
 					storage.readStaticUnitProps
 					(
 						conn,
 						start_unit,
 						function( props )
 						{
-							//#profiler.stop( 'write-wl-select-bp' );
+							//	PPP
+							profilerex.end( 'writer-saveJoint-wl-select-bp' );
 
+							//	...
 							let best_parent_unit	= props.best_parent_unit;
 							let level		= props.level;
 
@@ -1095,15 +1130,21 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 								return setWitnessedLevel(0);
 							}
 
-							//#profiler.start();
+							//	PPP
+							profilerex.begin( 'writer-saveJoint-wl-select-authors' );
+
+							//	...
 							storage.readUnitAuthors
 							(
 								conn,
 								start_unit,
 								function( arrAuthors )
 								{
-									//#profiler.stop( 'write-wl-select-authors' );
-									//#profiler.start();
+									//	PPP
+									profilerex.end( 'writer-saveJoint-wl-select-authors' );
+
+									//	PPP
+									profilerex.begin( 'writer-saveJoint-wl-search' );
 
 									for ( let i = 0; i < arrAuthors.length; i ++ )
 									{
@@ -1116,7 +1157,10 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 										}
 									}
 
-									//#profiler.stop( 'write-wl-search' );
+									//	PPP
+									profilerex.end( 'writer-saveJoint-wl-search' );
+
+									//	...
 									( arrCollectedWitnesses.length < constants.MAJORITY_OF_WITNESSES )
 									?
 										addWitnessesAndGoUp( best_parent_unit )
@@ -1128,7 +1172,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					);
 				}
 
-				//#profiler.stop( 'write-update' );
+				//	...
 				addWitnessesAndGoUp( my_best_parent_unit );
 			}
 
@@ -1153,6 +1197,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 			//
 			////////////////////////////////////////////////////////////////////////////////
 
+			//	PPP
+			profilerex.begin( 'writer-saveJoint-mutexGetLock' );
+
 			//
 			//	without this locking, we get frequent deadlocks from mysql
 			//
@@ -1162,11 +1209,17 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 				function( unlock )
 				{
 					log.consoleLog( "got lock to write " + objUnit.unit );
+					//	PPP
+					profilerex.end( 'writer-saveJoint-mutexGetLock' );
 
 					//
 					//	save the unit
 					//
 					storage.assocUnstableUnits[ objUnit.unit ] = objNewUnitProps;
+
+
+					//	PPP
+					profilerex.begin( 'writer-saveJoint-addInlinePaymentQueries' );
 
 					//
 					//	...
@@ -1175,14 +1228,22 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					(
 						function()
 						{
+							//	PPP
+							profilerex.end( 'writer-saveJoint-addInlinePaymentQueries' );
+
+							//	PPP
+							profilerex.begin( 'writer-saveJoint-execute-series' );
+
+							//	...
 							async.series
 							(
 								arrQueries,
 								function()
 								{
-									//#profiler.stop( 'write-raw' );
+									//	PPP
+									profilerex.end( 'writer-saveJoint-execute-series' );
 
-									//#profiler.start();
+									//	...
 									let arrOps = [];
 
 									if ( objUnit.parent_units )
@@ -1215,12 +1276,22 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 										}
 									}
 
+									//	PPP
+									profilerex.begin( 'writer-saveJoint-arrOps-series' );
+
+									//	...
 									async.series
 									(
 										arrOps,
 										function( err )
 										{
-											//#profiler.start();
+											//	PPP
+											profilerex.end( 'writer-saveJoint-arrOps-series' );
+
+											//	PPP
+											profilerex.begin( 'writer-saveJoint-ROLLBACK-COMMIT' );
+
+											//	...
 											conn.query
 											(
 												err ? "ROLLBACK" : "COMMIT",
@@ -1232,9 +1303,10 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 														( err ? ( err + ", therefore rolled back unit " ) : "committed unit " ) + objUnit.unit
 													);
 
-													//#profiler.stop( 'write-commit' );
-													//#profiler.increment();
+													//	PPP
+													profilerex.end( 'writer-saveJoint-ROLLBACK-COMMIT' );
 
+													//	...
 													if ( err )
 													{
 														storage.resetUnstableUnits( unlock );
@@ -1257,7 +1329,14 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 													count_writes ++;
 													if ( conf.storage === 'sqlite' )
 													{
+														//	PPP
+														profilerex.begin( 'writer-saveJoint-_updateSQLiteStats' );
+
+														//	...
 														_updateSQLiteStats();
+
+														//	PPP
+														profilerex.end( 'writer-saveJoint-_updateSQLiteStats' );
 													}
 												}
 											);
