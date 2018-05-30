@@ -104,8 +104,9 @@ module.exports = function(connection_or_pool){
 		return "NOW()";
 	};
 
-	safe_connection.getFromUnixTime = function(ts){
-		return "FROM_UNIXTIME("+ts+")";
+	safe_connection.getFromUnixTime = function( ts )
+	{
+		return "FROM_UNIXTIME(" + ts + ")";
 	};
 
 	safe_connection.getRandom = function(){
@@ -116,16 +117,19 @@ module.exports = function(connection_or_pool){
 		return "FORCE INDEX ("+ index +")";
 	};
 
-	safe_connection.dropTemporaryTable = function(table){
+	safe_connection.dropTemporaryTable = function( table )
+	{
 		return "DROP TEMPORARY TABLE IF EXISTS " + table;
 	};
 
-	safe_connection.getIgnore = function(){
+	safe_connection.getIgnore = function()
+	{
 		return "IGNORE";
 	};
 
-	safe_connection.getUnixTimestamp = function(date){
-		return "UNIX_TIMESTAMP("+date+")";
+	safe_connection.getUnixTimestamp = function( date )
+	{
+		return "UNIX_TIMESTAMP(" + date + ")";
 	};
 
 	return safe_connection;

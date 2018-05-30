@@ -1,82 +1,151 @@
 /*jslint node: true */
 "use strict";
 
+var _			= require('lodash');
 var log			= require( './log.js' );
-var _ = require('lodash');
-var async = require('async');
-var sqlite_migrations = require('./sqlite_migrations');
-var EventEmitter = require('events').EventEmitter;
+var async		= require('async');
+var sqlite_migrations	= require('./sqlite_migrations');
+var EventEmitter	= require('events').EventEmitter;
 
-var bCordova = (typeof window === 'object' && window.cordova);
+var bCordova		= ( typeof window === 'object' && window.cordova );
 var sqlite3;
 var path;
 var cordovaSqlite;
 
-if (bCordova){
+
+if ( bCordova )
+{
 	// will error before deviceready
 	//cordovaSqlite = window.cordova.require('cordova-sqlite-plugin.SQLite');
 }
-else{
-	sqlite3 = require('sqlite3');//.verbose();
-	path = require('./desktop_app.js'+'').getAppDataDir() + '/';
-	log.consoleLog("path="+path);
+else
+{
+	sqlite3	= require( 'sqlite3' );//.verbose();
+	path	= require( './desktop_app.js' + '' ).getAppDataDir() + '/';
+	log.consoleLog( "path=" + path );
 }
 
-module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 
-	function openDb(cb){
-		if (bCordova){
-			var db = new cordovaSqlite(db_name);
-			db.open(cb);
+/**
+ *	CSQLitePool
+ */
+function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
+{
+	var m_cEventEmitter	= new EventEmitter();
+	var m_bReady		= false;
+	var m_arrConnections	= [];
+	var m_arrQueue		= [];
+
+
+	function openDb( cb )
+	{
+		if ( bCordova )
+		{
+			var db	= new cordovaSqlite(db_name);
+			db.open( cb );
 			return db;
 		}
 		else
-			return new sqlite3.Database(path + db_name, bReadOnly ? sqlite3.OPEN_READONLY : sqlite3.OPEN_READWRITE, cb);
+		{
+			return new sqlite3.Database( path + db_name, bReadOnly ? sqlite3.OPEN_READONLY : sqlite3.OPEN_READWRITE, cb );
+		}
 	}
 
-	var eventEmitter = new EventEmitter();
-	var bReady = false;
-	var arrConnections = [];
-	var arrQueue = [];
-
-	function connect(handleConnection){
+	function connect( handleConnection )
+	{
 		log.consoleLog("opening new db connection");
-		var db = openDb(function(err){
-			if (err)
-				throw Error(err);
-			log.consoleLog("opened db");
-		//	if (!bCordova)
-		//		db.serialize();
-			connection.query("PRAGMA foreign_keys = 1", function(){
-				connection.query("PRAGMA busy_timeout=30000", function(){
-					connection.query("PRAGMA journal_mode=WAL", function(){
-						connection.query("PRAGMA synchronous=FULL", function(){
-							connection.query("PRAGMA temp_store=MEMORY", function(){
-								sqlite_migrations.migrateDb(connection, function(){
-									handleConnection(connection);
-								});
-							});
-						});
-					});
-				});
-			});
-		});
-		
-		var connection = {
-			db: db,
-			bInUse: true,
-			
-			release: function(){
-				//log.consoleLog("released connection");
-				this.bInUse = false;
-				if (arrQueue.length === 0)
+		var db = openDb
+		(
+			function( err )
+			{
+				if ( err )
+				{
+					throw Error( err );
+				}
+
+				//	...
+				log.consoleLog("opened db");
+				//	if (!bCordova)
+				//		db.serialize();
+
+				//	...
+				connection.query
+				(
+					"PRAGMA foreign_keys = 1",
+					function()
+					{
+						connection.query
+						(
+							"PRAGMA busy_timeout=30000",
+							function()
+							{
+								connection.query
+								(
+									"PRAGMA journal_mode=WAL",
+									function()
+									{
+										connection.query
+										(
+											"PRAGMA synchronous=FULL",
+											function()
+											{
+												connection.query
+												(
+													"PRAGMA temp_store=MEMORY",
+													function()
+													{
+														sqlite_migrations.migrateDb
+														(
+															connection,
+															function()
+															{
+																//
+																//	finally
+																//	callback ...
+																//
+																handleConnection
+																(
+																	connection
+																);
+															}
+														);
+													}
+												);
+											}
+										);
+									}
+								);
+							}
+						);
+					}
+				);
+			}
+		);
+
+		//
+		//
+		//
+		var connection =
+		{
+			db	: db,
+			bInUse	: true,
+
+			release	: function()
+			{
+				//	log.consoleLog("released connection");
+				this.bInUse	= false;
+				if ( m_arrQueue.length === 0 )
+				{
 					return;
-				var connectionHandler = arrQueue.shift();
-				this.bInUse = true;
-				connectionHandler(this);
+				}
+
+				//	...
+				var connectionHandler	= m_arrQueue.shift();
+				this.bInUse		= true;
+				connectionHandler( this );
 			},
-			
-			query: function()
+
+			query : function()
 			{
 				if ( ! this.bInUse )
 				{
@@ -148,7 +217,7 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 									{
 										return ( i < new_args.length - 1 );
 									}
-								).join( ", " ) + "\nload avg: " + require('os').loadavg().join( ', ' )
+								).join( ", " ) + "\nload avg: " + require( 'os' ).loadavg().join( ', ' )
 							);
 						}
 
@@ -156,159 +225,285 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 						last_arg( result );
 					}
 				);
-				
+
+				//	...
 				var start_ts = Date.now();
-				if (bCordova)
-					this.db.query.apply(this.db, new_args);
+				if ( bCordova )
+				{
+					this.db.query.apply( this.db, new_args );
+				}
 				else
-					bSelect ? this.db.all.apply(this.db, new_args) : this.db.run.apply(this.db, new_args);
+				{
+					bSelect
+						? this.db.all.apply( this.db, new_args )
+						: this.db.run.apply( this.db, new_args );
+				}
 			},
 			
-			addQuery: addQuery,
-			escape: escape,
-			addTime: addTime,
-			getNow: getNow,
-			getUnixTimestamp: getUnixTimestamp,
-			getFromUnixTime: getFromUnixTime,
-			getRandom: getRandom,
-			getIgnore: getIgnore,
-			forceIndex: forceIndex,
-			dropTemporaryTable: dropTemporaryTable
-			
+			addQuery		: addQuery,
+			escape			: escape,
+			addTime			: addTime,
+			getNow			: getNow,
+			getUnixTimestamp	: getUnixTimestamp,
+			getFromUnixTime		: getFromUnixTime,
+			getRandom		: getRandom,
+			getIgnore		: getIgnore,
+			forceIndex		: forceIndex,
+			dropTemporaryTable	: dropTemporaryTable
 		};
-		arrConnections.push(connection);
+
+		//	...
+		m_arrConnections.push( connection );
 	}
 
-	// accumulate array of functions for async.series()
-	// it applies both to individual connection and to pool
-	function addQuery(arr) {
-		var self = this;
-		var query_args = [];
-		for (var i=1; i<arguments.length; i++) // except first, which is array
-			query_args.push(arguments[i]);
-		arr.push(function(callback){ // add callback for async.series() member tasks
-			if (typeof query_args[query_args.length-1] !== 'function')
-				query_args.push(function(){callback();}); // add callback
-			else{
-				var f = query_args[query_args.length-1];
-				query_args[query_args.length-1] = function(){ // add callback() call to the end of the function
-					f.apply(f, arguments);
-					callback();
+	//
+	//	accumulate array of functions for async.series()
+	//	it applies both to individual connection and to pool
+	//
+	function addQuery( arr )
+	{
+		var self	= this;
+		var query_args	= [];
+
+		//	...
+		for ( var i = 1; i < arguments.length; i++ )
+		{
+			//	except first, which is array
+			query_args.push( arguments[ i ] );
+		}
+
+		//	...
+		arr.push
+		(
+			function( callback )
+			{
+				//	add callback for async.series() member tasks
+				if ( typeof query_args[ query_args.length - 1 ] !== 'function' )
+				{
+					//	add callback
+					query_args.push
+					(
+						function()
+						{
+							callback();
+						}
+					);
 				}
-			}
-			self.query.apply(self, query_args);
-		});
-	}
-	
-	function takeConnectionFromPool(handleConnection){
+				else
+				{
+					//
+					//	the last parameter is an address of function
+					//
+					var f = query_args[ query_args.length - 1 ];
+					query_args[ query_args.length - 1 ] = function()
+					{
+						//	add callback() call to the end of the function
+						f.apply( f, arguments );
+						callback();
+					}
+				}
 
-		if (!bReady){
-			log.consoleLog("takeConnectionFromPool will wait for ready");
-			eventEmitter.once('ready', function(){
-				log.consoleLog("db is now ready");
-				takeConnectionFromPool(handleConnection);
-			});
+				//	...
+				self.query.apply( self, query_args );
+			}
+		);
+	}
+
+	function takeConnectionFromPool( handleConnection )
+	{
+		if ( ! m_bReady )
+		{
+			log.consoleLog( "takeConnectionFromPool will wait for ready" );
+			m_cEventEmitter.once
+			(
+				'ready',
+				function()
+				{
+					log.consoleLog( "db is now ready" );
+					takeConnectionFromPool( handleConnection );
+				}
+			);
 			return;
 		}
-		
-		// first, try to find a free connection
-		for (var i=0; i<arrConnections.length; i++)
-			if (!arrConnections[i].bInUse){
-				//log.consoleLog("reusing previously opened connection");
-				arrConnections[i].bInUse = true;
-				return handleConnection(arrConnections[i]);
+
+		//
+		//	first, try to find a free connection
+		//
+		for ( var i = 0; i < m_arrConnections.length; i++ )
+		{
+			if ( ! m_arrConnections[ i ].bInUse )
+			{
+				//	log.consoleLog("reusing previously opened connection");
+				m_arrConnections[ i ].bInUse	= true;
+				return handleConnection( m_arrConnections[ i ] );
 			}
+		}
 
-		// second, try to open a new connection
-		if (arrConnections.length < MAX_CONNECTIONS)
-			return connect(handleConnection);
+		//
+		//	second, try to open a new connection
+		//
+		if ( m_arrConnections.length < MAX_CONNECTIONS )
+		{
+			return connect( handleConnection );
+		}
 
-		// third, queue it
-		//log.consoleLog("queuing");
-		arrQueue.push(handleConnection);
+		//
+		//	third, queue it
+		//	log.consoleLog("queuing");
+		//
+		m_arrQueue.push( handleConnection );
 	}
-	
-	function onDbReady(){
-		if (bCordova && !cordovaSqlite)
-			cordovaSqlite = window.cordova.require('cordova-sqlite-plugin.SQLite');
-		bReady = true;
-		eventEmitter.emit('ready');
+
+
+	function onDbReady()
+	{
+		if ( bCordova && ! cordovaSqlite )
+		{
+			cordovaSqlite = window.cordova.require( 'cordova-sqlite-plugin.SQLite' );
+		}
+
+		//	...
+		m_bReady = true;
+		m_cEventEmitter.emit('ready');
 	}
-	
-	function getCountUsedConnections(){
+
+	function getCountUsedConnections()
+	{
 		var count = 0;
-		for (var i=0; i<arrConnections.length; i++)
-			if (arrConnections[i].bInUse)
-				count++;
+
+		for ( var i = 0; i < m_arrConnections.length; i++ )
+		{
+			if ( m_arrConnections[ i ].bInUse )
+			{
+				count ++;
+			}
+		}
+
+		//	...
 		return count;
 	}
 
-	// takes a connection from the pool, executes the single query on this connection, and immediately releases the connection
-	function query(){
-		//log.consoleLog(arguments[0]);
-		var args = arguments;
-		takeConnectionFromPool(function(connection){
-			var last_arg = args[args.length - 1];
-			var bHasCallback = (typeof last_arg === 'function');
-			if (!bHasCallback) // no callback
-				last_arg = function(){};
+	/**
+	 *	takes a connection from the pool,
+	 *	executes the single query on this connection, and immediately releases the connection
+	 */
+	function query()
+	{
+		//	log.consoleLog(arguments[0]);
+		var args	= arguments;
 
-			var count_arguments_without_callback = bHasCallback ? (args.length-1) : args.length;
-			var new_args = [];
+		//
+		//	to execute SQL querying task
+		//	is call the callback function immediately by passing in a picked database connection as parameter
+		//
+		takeConnectionFromPool
+		(
+			function( connection )
+			{
+				//
+				//	with the picked database connection handle, we have the ability to query, insert, update and more
+				//
+				var last_arg		= args[ args.length - 1 ];
+				var bHasCallback	= ( typeof last_arg === 'function' );
 
-			for (var i=0; i<count_arguments_without_callback; i++) // except callback
-				new_args.push(args[i]);
-			// add callback that releases the connection before calling the supplied callback
-			new_args.push(function(rows){
-				connection.release();
-				last_arg(rows);
-			});
-			connection.query.apply(connection, new_args);
-		});
+				if ( ! bHasCallback )
+				{
+					//	no callback
+					last_arg = function(){};
+				}
+
+				var count_arguments_without_callback = bHasCallback
+					? ( args.length - 1 )
+					: args.length;
+				var new_args = [];
+
+				for ( var i = 0; i < count_arguments_without_callback; i ++ )
+				{
+					//	except callback
+					new_args.push( args[ i ] );
+				}
+
+				//	add callback that releases the connection before calling the supplied callback
+				new_args.push
+				(
+					function( rows )
+					{
+						connection.release();
+						last_arg( rows );
+					}
+				);
+
+				//
+				//	now, we execute the SQL task
+				//
+				connection.query.apply
+				(
+					connection,
+					new_args
+				);
+			}
+		);
 	}
-	
-	function close(cb){
-		if (!cb)
+
+	function close( cb )
+	{
+		if ( ! cb)
+		{
 			cb = function(){};
-		bReady = false;
-		if (arrConnections.length === 0)
+		}
+
+		//	...
+		m_bReady = false;
+		if ( m_arrConnections.length === 0 )
+		{
 			return cb();
-		arrConnections[0].db.close(cb);
-		arrConnections.shift();
+		}
+
+		//	...
+		m_arrConnections[ 0 ].db.close( cb );
+		m_arrConnections.shift();
 	}
 
-	// interval is string such as -8 SECOND
-	function addTime(interval){
-		return "datetime('now', '"+interval+"')";
+	//	interval is string such as -8 SECOND
+	function addTime( interval )
+	{
+		return "datetime('now', '" + interval + "')";
 	}
 
-	function getNow(){
+	function getNow()
+	{
 		return "datetime('now')";
 	}
 
-	function getUnixTimestamp(date){
-		return "strftime('%s', "+date+")";
+	function getUnixTimestamp( date )
+	{
+		return "strftime('%s', " + date + ")";
 	}
 
-	function getFromUnixTime(ts){
-		return "datetime("+ts+", 'unixepoch')";
+	function getFromUnixTime( ts )
+	{
+		return "datetime(" + ts + ", 'unixepoch')";
 	}
 
-	function getRandom(){
+	function getRandom()
+	{
 		return "RANDOM()";
 	}
 
-	function forceIndex(index){
+	function forceIndex( index )
+	{
 		return "INDEXED BY " + index;
 	}
 
-	function dropTemporaryTable(table) {
+	function dropTemporaryTable( table )
+	{
 		return "DROP TABLE IF EXISTS " + table;
 	}
 
 	// note that IGNORE behaves differently from mysql.  In particular, if you insert and forget to specify a NOT NULL colum without DEFAULT value, 
 	// sqlite will ignore while mysql will throw an error
-	function getIgnore(){
+	function getIgnore()
+	{
 		return "OR IGNORE";
 	}
 
@@ -328,32 +523,47 @@ module.exports = function(db_name, MAX_CONNECTIONS, bReadOnly){
 		}
 	}
 	
-	
-	createDatabaseIfNecessary(db_name, onDbReady);
 
-	var pool = {};
-	pool.query = query;
-	pool.addQuery = addQuery;
-	pool.takeConnectionFromPool = takeConnectionFromPool;
-	pool.getCountUsedConnections = getCountUsedConnections;
-	pool.close = close;
-	pool.escape = escape;
-	pool.addTime = addTime;
-	pool.getNow = getNow;
-	pool.getUnixTimestamp = getUnixTimestamp;
-	pool.getFromUnixTime = getFromUnixTime;
-	pool.getRandom = getRandom;
-	pool.getIgnore = getIgnore;
-	pool.forceIndex = forceIndex;
-	pool.dropTemporaryTable = dropTemporaryTable;
-	
+	//
+	//	...
+	//
+	createDatabaseIfNecessary( db_name, onDbReady );
+
+	//	...
+	var pool	= {};
+	pool.query			= query;
+	pool.addQuery			= addQuery;
+	pool.takeConnectionFromPool	= takeConnectionFromPool;
+	pool.getCountUsedConnections	= getCountUsedConnections;
+	pool.close			= close;
+	pool.escape			= escape;
+	pool.addTime			= addTime;
+	pool.getNow			= getNow;
+	pool.getUnixTimestamp		= getUnixTimestamp;
+	pool.getFromUnixTime		= getFromUnixTime;
+	pool.getRandom			= getRandom;
+	pool.getIgnore			= getIgnore;
+	pool.forceIndex			= forceIndex;
+	pool.dropTemporaryTable		= dropTemporaryTable;
+
+	//	...
 	return pool;
-};
+}
 
-// expands IN(?) into IN(?,?,?) and flattens parameter array
-// the function modifies first two memebers of the args array in place
-// will misbehave if there are ? in SQL comments
-function expandArrayPlaceholders(args){
+
+
+
+
+
+
+
+//
+//	expands IN(?) into IN(?,?,?) and flattens parameter array
+//	the function modifies first two memebers of the args array in place
+//	will misbehave if there are ? in SQL comments
+//
+function expandArrayPlaceholders( args )
+{
 	var sql = args[0];
 	var params = args[1];
 	if (!Array.isArray(params) || params.length === 0)
@@ -477,3 +687,12 @@ function createDatabaseIfNecessary(db_name, onDbReady){
 		});
 	}
 }
+
+
+
+
+/**
+ *	exports
+ */
+module.exports		= CSQLitePool;
+

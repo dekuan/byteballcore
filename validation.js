@@ -276,6 +276,9 @@ function validate( objJoint, callbacks )
 						(
 							function( new_conn )
 							{
+								profilerex.end( 'validation-takeConnectionFromPool' );
+								profilerex.begin( 'validation-BEGIN' );
+
 								conn = new_conn;
 								conn.query
 								(
@@ -290,7 +293,7 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						profilerex.end( 'validation-takeConnectionFromPool' );
+						profilerex.end( 'validation-BEGIN' );
 						profilerex.begin( 'validation-checkDuplicate' );
 
 						checkDuplicate( conn, objUnit.unit, cb );

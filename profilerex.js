@@ -2,7 +2,13 @@
 "use strict";
 
 let _			= require( 'lodash' );
+var fs          	= require( 'fs' );
+var util		= require( 'util' );
 let log			= require( './log.js' );
+var desktopApp		= require( 'byteballcore/desktop_app.js' );
+
+var m_sAppDataDir	= desktopApp.getAppDataDir();
+let m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-ex.txt' );
 
 let m_oData		= {};
 let m_oDefaultItem	= {
@@ -55,17 +61,19 @@ function end( sTag )
 	m_oData[ sTag ].qps		= ( m_oData[ sTag ].time_used / m_oData[ sTag ].count ).toFixed( 2 );
 }
 
-
-
-
 function print()
 {
-	log.consoleLog( "############################################################" );
-	log.consoleLog( "############################################################" );
-	log.consoleLog( m_oData );
-	log.consoleLog( "############################################################" );
-	log.consoleLog( "############################################################" );
+	m_oWriteStream.write( "############################################################\r\n" );
+	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
+	m_oWriteStream.write( JSON.stringify( m_oData, null, 4 ) );
 
+	//
+	// log.consoleLog( "############################################################" );
+	// log.consoleLog( "############################################################" );
+	// log.consoleLog( m_oData );
+	// log.consoleLog( "############################################################" );
+	// log.consoleLog( "############################################################" );
+	//
 	//
 	// let total	= 0;
 	// let tag;
@@ -138,16 +146,16 @@ process.on
 
 String.prototype.padding = function( n, c )
 {
-        let val = this.valueOf();
-        if ( Math.abs( n ) <= val.length )
-        {
-                return val;
-        }
+	let val = this.valueOf();
+	if ( Math.abs( n ) <= val.length )
+	{
+		return val;
+	}
 
-        let m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
-        let pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
+	let m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
+	let pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
 //      let pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
-        return ( n < 0 ) ? pad + val : val + pad;
+	return ( n < 0 ) ? pad + val : val + pad;
 //      return ( n < 0 ) ? val + pad : pad + val;
 };
 
