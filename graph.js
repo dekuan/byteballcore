@@ -6,7 +6,7 @@ var async		= require( 'async' );
 var log			= require( './log.js' );
 var storage		= require( './storage.js' );
 var db			= require( './db.js' );
-var profiler		= require( './profiler.js' );
+var profilerex		= require( './profilerex.js' );
 
 
 
@@ -333,7 +333,10 @@ function readDescendantUnitsByAuthorsBeforeMcIndex( conn, objEarlierUnitProps, a
 	
 	function goDown( arrStartUnits )
 	{
-		profiler.start();
+		//	PPP
+		profilerex.begin( 'mc-wc-descendants-goDown' );
+
+		//	...
 		conn.query
 		(
 			"SELECT units.unit, unit_authors.address AS author_in_list \n\
@@ -363,8 +366,10 @@ function readDescendantUnitsByAuthorsBeforeMcIndex( conn, objEarlierUnitProps, a
 					}
 				}
 
+				//	PPP
+				profilerex.end( 'mc-wc-descendants-goDown' );
+
 				//	...
-				profiler.stop( 'mc-wc-descendants-goDown' );
 				( arrNewStartUnits.length > 0 )
 					? goDown( arrNewStartUnits )
 					: handleUnits( arrUnits );
@@ -372,8 +377,8 @@ function readDescendantUnitsByAuthorsBeforeMcIndex( conn, objEarlierUnitProps, a
 		);
 	}
 
-	//	...
-	profiler.start();
+	//	PPP
+	profilerex.begin( 'mc-wc-descendants-initial' );
 
 	//	...
 	conn.query
@@ -400,8 +405,10 @@ function readDescendantUnitsByAuthorsBeforeMcIndex( conn, objEarlierUnitProps, a
 				}
 			);
 
+			//	PPP
+			profilerex.end( 'mc-wc-descendants-initial' );
+
 			//	...
-			profiler.stop( 'mc-wc-descendants-initial' );
 			goDown
 			(
 				[

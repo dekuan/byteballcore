@@ -1,34 +1,47 @@
 /*jslint node: true */
 "use strict";
 
+var _			= require( 'lodash' );
+var async		= require( 'async' );
 var log			= require( './log.js' );
-var async = require('async');
-var _ = require('lodash');
-var conf = require('./conf.js');
-var storage = require('./storage.js');
-var objectHash = require("./object_hash.js");
-var db = require('./db.js');
-var constants = require("./constants.js");
-var composer = require("./composer.js");
-var validation = require('./validation.js');
-var ValidationUtils = require("./validation_utils.js");
-var writer = require('./writer.js');
-var graph = require('./graph.js');
-var profiler = require('./profiler.js');
+var conf		= require( './conf.js' );
+var storage		= require( './storage.js' );
+var objectHash		= require( './object_hash.js' );
+var db			= require( './db.js' );
+var constants		= require( './constants.js' );
+var composer		= require( './composer.js' );
+var validation		= require( './validation.js' );
+var ValidationUtils	= require( './validation_utils.js' );
+var writer		= require( './writer.js' );
+var graph		= require( './graph.js' );
+var profilerex		= require( './profilerex.js' );
 
-var NOT_ENOUGH_FUNDS_ERROR_MESSAGE = "not enough indivisible asset coins that fit the desired amount within the specified tolerances, make sure all your funds are confirmed";
+
+var NOT_ENOUGH_FUNDS_ERROR_MESSAGE	= "not enough indivisible asset coins that fit the desired amount within the specified tolerances, make sure all your funds are confirmed";
+
+
+
 
 function validatePrivatePayment(conn, objPrivateElement, objPrevPrivateElement, callbacks){
 		
-	function validateSpendProof(spend_proof, cb){
-		profiler.start();
+	function validateSpendProof( spend_proof, cb )
+	{
+		profilerex.begin( 'indivisible_asset-spend_proof' );
+
+		//	...
 		conn.query(
 			"SELECT spend_proof, address FROM spend_proofs WHERE unit=? AND message_index=?", 
 			[objPrivateElement.unit, objPrivateElement.message_index], 
-			function(rows){
-				profiler.stop('spend_proof');
+			function( rows )
+			{
+				//	...
+				profilerex.end( 'indivisible_asset-spend_proof' );
+
+				//	...
 				if (rows.length !== 1)
 					return cb("expected 1 spend proof, found "+rows.length);
+
+				//	...
 				var stored_spend_proof = rows[0].spend_proof;
 				var spend_proof_address = rows[0].address;
 				if (stored_spend_proof !== spend_proof)
@@ -42,13 +55,33 @@ function validatePrivatePayment(conn, objPrivateElement, objPrevPrivateElement, 
 		);
 	}
 	
-	function validateSourceOutput(cb){
-		if (conf.bLight)
-			return cb(); // already validated the linkproof
-		profiler.start();
-		graph.determineIfIncluded(conn, input.unit, [objPrivateElement.unit], function(bIncluded){
-			profiler.stop('determineIfIncluded');
-			bIncluded ? cb() : cb("input unit not included");
+	function validateSourceOutput( cb )
+	{
+		if ( conf.bLight )
+		{
+			//	already validated the linkproof
+			return cb();
+		}
+
+		//	...
+		profilerex.begin( 'indivisible_asset-determineIfIncluded' );
+
+		//	...
+		graph.determineIfIncluded
+		(
+			conn,
+			input.unit,
+			[
+				objPrivateElement.unit
+			],
+			function( bIncluded )
+			{
+				profilerex.end( 'indivisible_asset-determineIfIncluded' );
+
+				//	...
+				bIncluded
+					? cb()
+					: cb( "input unit not included" );
 		});
 	}
 		
@@ -78,12 +111,18 @@ function validatePrivatePayment(conn, objPrivateElement, objPrevPrivateElement, 
 	if (!ValidationUtils.isNonemptyObject(input))
 		return callbacks.ifError("no inputs[0]");
 	
-	profiler.start();
+	//	PPP
+	profilerex.begin( 'indivisible_asset-initPrivatePaymentValidationState' );
+
+	//	...
 	validation.initPrivatePaymentValidationState(
 		conn, objPrivateElement.unit, objPrivateElement.message_index, payload, callbacks.ifError, 
-		function(bStable, objPartialUnit, objValidationState){
-		
-			profiler.stop('initPrivatePaymentValidationState');
+		function(bStable, objPartialUnit, objValidationState)
+		{
+			//	PPP
+			profilerex.end( 'indivisible_asset-initPrivatePaymentValidationState' );
+
+			//	...
 			var arrFuncs = [];
 			var spend_proof;
 			var input_address; // from which address the money is sent
@@ -221,12 +260,22 @@ function parsePrivatePaymentChain(conn, arrPrivateElements, callbacks){
 }
 
 
-function validateAndSavePrivatePaymentChain(conn, arrPrivateElements, callbacks){
-	parsePrivatePaymentChain(conn, arrPrivateElements, {
-		ifError: callbacks.ifError,
-		ifOk: function(bAllStable){
+function validateAndSavePrivatePaymentChain( conn, arrPrivateElements, callbacks )
+{
+	parsePrivatePaymentChain
+	(
+		conn,
+		arrPrivateElements,
+		{
+		ifError : callbacks.ifError,
+		ifOk : function( bAllStable )
+		{
 			log.consoleLog("saving private chain "+JSON.stringify(arrPrivateElements));
-			profiler.start();
+
+			//	PPP
+			profilerex.begin( 'indivisible_asset-save' );
+
+			//	...
 			var arrQueries = [];
 			for (var i=0; i<arrPrivateElements.length; i++){
 				var objPrivateElement = arrPrivateElements[i];
@@ -273,8 +322,12 @@ function validateAndSavePrivatePaymentChain(conn, arrPrivateElements, callbacks)
 				}
 			}
 		//	log.consoleLog("queries: "+JSON.stringify(arrQueries));
-			async.series(arrQueries, function(){
-				profiler.stop('save');
+			async.series(arrQueries, function()
+			{
+				//	PPP
+				profilerex.end( 'indivisible_asset-save' );
+
+				//	...
 				callbacks.ifOk();
 			});
 		}

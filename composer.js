@@ -20,7 +20,6 @@ var mc_outputs = require("./mc_outputs.js");
 var validation = require('./validation.js');
 var writer = require('./writer.js');
 var conf = require('./conf.js');
-var profiler = require('./profiler.js');
 
 var TRANSFER_INPUT_SIZE = 0 // type: "transfer" omitted
 	+ 44 // unit

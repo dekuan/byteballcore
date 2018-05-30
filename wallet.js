@@ -22,7 +22,7 @@ var ValidationUtils		= require( './validation_utils.js' );
 var composer			= require( './composer.js');
 var indivisibleAsset		= require( './indivisible_asset.js');
 var divisibleAsset		= require( './divisible_asset.js');
-var profiler			= require( './profiler.js');
+var profilerex			= require( './profilerex.js');
 var breadcrumbs			= require( './breadcrumbs.js');
 var balances			= require( './balances');
 var Mnemonic			= require( 'bitcore-mnemonic');
@@ -666,7 +666,7 @@ function handleMessageFromHub( ws, json, device_pubkey, bIndirectCorrespondent, 
 			var arrChains = body.chains;
 			if (!ValidationUtils.isNonemptyArray(arrChains))
 				return callbacks.ifError("no chains found");
-			profiler.increment();
+			//profiler.increment();
 			
 			if (conf.bLight)
 				network.requestUnfinishedPastUnitsOfPrivateChains(arrChains); // it'll work in the background
@@ -697,7 +697,7 @@ function handleMessageFromHub( ws, json, device_pubkey, bIndirectCorrespondent, 
 						forwardPrivateChainsToOtherMembersOfSharedAddresses(arrChains, arrAuthorAddresses, from_address, true);
 					});
 				}
-				profiler.print();
+				//profiler.print();
 			};
 			
 			async.eachSeries(

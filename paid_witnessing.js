@@ -10,7 +10,7 @@ var db			= require( './db.js' );
 var constants		= require( './constants.js' );
 var conf		= require( './conf.js' );
 var mc_outputs		= require( './mc_outputs.js' );
-var profiler		= require( './profiler.js' );
+var profilerex		= require( './profilerex.js' );
 
 
 var et;
@@ -102,7 +102,9 @@ function readUnitOnMcIndex( conn, main_chain_index, handleUnit )
 function updatePaidWitnesses( conn, cb )
 {
 	log.consoleLog( "updating paid witnesses" );
-	profiler.start();
+
+	//	...
+	profilerex.begin( 'mc-wc-readLastStableMCI' );
 
 	//	...
 	storage.readLastStableMcIndex
@@ -110,7 +112,7 @@ function updatePaidWitnesses( conn, cb )
 		conn,
 		function( last_stable_mci )
 		{
-			profiler.stop( 'mc-wc-readLastStableMCI' );
+			profilerex.end( 'mc-wc-readLastStableMCI' );
 
 			var max_spendable_mc_index = getMaxSpendableMciForLastBallMci( last_stable_mci );
 			( max_spendable_mc_index > 0 )
@@ -122,7 +124,7 @@ function updatePaidWitnesses( conn, cb )
 
 function buildPaidWitnessesTillMainChainIndex( conn, to_main_chain_index, cb )
 {
-	profiler.start();
+	profilerex.begin( 'mc-wc-minMCI' );
 
 	var cross = ( conf.storage === 'sqlite' )
 		? 'CROSS'
@@ -136,7 +138,7 @@ function buildPaidWitnessesTillMainChainIndex( conn, to_main_chain_index, cb )
 		"WHERE count_paid_witnesses IS NULL",
 		function( rows )
 		{
-			profiler.stop( 'mc-wc-minMCI' );
+			profilerex.end( 'mc-wc-minMCI' );
 
 			//	...
 			var main_chain_index	= rows[ 0 ].min_main_chain_index;
@@ -183,7 +185,7 @@ function buildPaidWitnessesForMainChainIndex( conn, main_chain_index, cb )
 	log.consoleLog( "updating paid witnesses mci " + main_chain_index );
 
 	//	...
-	profiler.start();
+	profilerex.begin( 'mc-wc-select-count' );
 
 	//	...
 	conn.query
@@ -196,7 +198,7 @@ function buildPaidWitnessesForMainChainIndex( conn, main_chain_index, cb )
 		],
 		function( rows )
 		{
-			profiler.stop( 'mc-wc-select-count' );
+			profilerex.end( 'mc-wc-select-count' );
 
 			//	...
 			var count		= rows[ 0 ].count;
@@ -219,7 +221,7 @@ function buildPaidWitnessesForMainChainIndex( conn, main_chain_index, cb )
 			}
 
 			//	...
-			profiler.start();
+			profilerex.begin( 'mc-wc-select-units' );
 
 			//	we read witnesses from MC unit (users can cheat with side-chains to flip the witness list and pay commissions to their own witnesses)
 			readMcUnitWitnesses
@@ -244,7 +246,7 @@ function buildPaidWitnessesForMainChainIndex( conn, main_chain_index, cb )
 								],
 								function( rows )
 								{
-									profiler.stop( 'mc-wc-select-units' );
+									profilerex.end( 'mc-wc-select-units' );
 
 									//	...
 									et	= 0;
@@ -281,7 +283,7 @@ function buildPaidWitnessesForMainChainIndex( conn, main_chain_index, cb )
 											}
 
 											//	var t=Date.now();
-											profiler.start();
+											profilerex.begin( 'mc-wc-aggregate-events' );
 											conn.query
 											(
 												"INSERT INTO witnessing_outputs (main_chain_index, address, amount) \n\
@@ -303,7 +305,10 @@ function buildPaidWitnessesForMainChainIndex( conn, main_chain_index, cb )
 														conn.dropTemporaryTable( "paid_witness_events_tmp" ),
 														function()
 														{
-															profiler.stop( 'mc-wc-aggregate-events' );
+															//	...
+															profilerex.end( 'mc-wc-aggregate-events' );
+
+															//	...
 															cb();
 														}
 													);
@@ -365,7 +370,7 @@ function buildPaidWitnesses( conn, objUnitProps, arrWitnesses, onDone )
 			],
 			function()
 			{
-				profiler.stop( 'mc-wc-insert-events' );
+				profilerex.end( 'mc-wc-insert-events' );
 				onDone();
 			}
 		);
@@ -397,7 +402,10 @@ function buildPaidWitnesses( conn, objUnitProps, arrWitnesses, onDone )
 				).join( ', ' );
 			//throw "no witnesses before mc "+to_main_chain_index+" for unit "+objUnitProps.unit;
 
-			profiler.start();
+			//	...
+			profilerex.begin( 'mc-wc-select-events' );
+
+			//	...
 			conn.query
 			(
 				//
@@ -445,10 +453,10 @@ function buildPaidWitnesses( conn, objUnitProps, arrWitnesses, onDone )
 					}
 
 					//	...
-					profiler.stop( 'mc-wc-select-events' );
+					profilerex.end( 'mc-wc-select-events' );
 
 					//	...
-					profiler.start();
+					profilerex.begin( 'mc-wc-insert-events' );
 					conn.query
 					(
 						"INSERT INTO paid_witness_events_tmp (unit, address, delay) VALUES " + arrValues.join( ", " ),

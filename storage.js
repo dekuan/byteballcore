@@ -10,7 +10,7 @@ var objectHash		= require( './object_hash.js' );
 var constants		= require( './constants.js' );
 var mutex		= require( './mutex.js' );
 var archiving		= require( './archiving.js' );
-var profiler		= require( './profiler.js' );
+var profilerex		= require( './profilerex.js' );
 
 
 var MAX_INT32			= Math.pow( 2, 31 ) - 1;
