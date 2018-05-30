@@ -8,7 +8,9 @@ let log			= require( './log.js' );
 var desktopApp		= require( 'byteballcore/desktop_app.js' );
 
 var m_sAppDataDir	= desktopApp.getAppDataDir();
-let m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-ex.txt' );
+
+//	https://nodejs.org/api/fs.html#fs_fs_createwritestream_path_options
+let m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-ex.txt', { flags: 'w' } );
 
 let m_oData		= {};
 let m_oDefaultItem	= {
@@ -68,9 +70,9 @@ function end( sTag )
 
 function print()
 {
-	m_oWriteStream.write( "############################################################\r\n" );
-	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
-	m_oWriteStream.write( JSON.stringify( m_oData, null, 8 ) );
+	m_oWriteStream.write( "\n############################################################\r\n", 0 );
+	m_oWriteStream.write( Date().toString() + "\r\n\r\n", 0 );
+	m_oWriteStream.write( JSON.stringify( m_oData, null, 8 ), 0 );
 
 	//
 	// log.consoleLog( "############################################################" );
