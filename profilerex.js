@@ -70,6 +70,9 @@ function end( sTag )
 
 function print()
 {
+	m_oWriteStream.truncate( 0 );
+
+	//	...
 	m_oWriteStream.write( "\n############################################################\r\n", 0 );
 	m_oWriteStream.write( Date().toString() + "\r\n\r\n", 0 );
 	m_oWriteStream.write( JSON.stringify( m_oData, null, 8 ), 0 );
