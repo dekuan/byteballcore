@@ -693,6 +693,14 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 
 			function addInlinePaymentQueries( cb )
 			{
+				//
+				//	async.forEachOfSeries is an alias of async.eachOfSeries
+				//
+				//	eachOfSeries( coll, iteratee, [opt]callback )
+				//	- runs only a single async operation at a time.
+				//
+				//	see details in https://caolan.github.io/async/docs.html#eachOfSeries
+				//
 				async.forEachOfSeries
 				(
 					objUnit.messages,
@@ -703,12 +711,14 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 							return cb2();
 						}
 
+						//	...
 						let payload = message.payload;
 						if ( message.app !== 'payment' )
 						{
 							return cb2();
 						}
 
+						//	...
 						let denomination = payload.denomination || 1;
 
 						//	...
@@ -724,7 +734,8 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 								let from_main_chain_index	= ( type === "witnessing" || type === "headers_commission" ) ? input.from_main_chain_index : null;
 								let to_main_chain_index		= ( type === "witnessing" || type === "headers_commission" ) ? input.to_main_chain_index : null;
 
-								let determineInputAddress	= function( handleAddress )
+								//	...
+								function determineInputAddress( handleAddress )
 								{
 									if ( type === "headers_commission" || type === "witnessing" || type === "issue" )
 									{
@@ -748,8 +759,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 										input,
 										handleAddress
 									);
-								};
-							
+								}
+
+								//	...
 								determineInputAddress
 								(
 									function( address )
