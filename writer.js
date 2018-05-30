@@ -1,19 +1,19 @@
 /*jslint node: true */
 "use strict";
 
-let _			= require('lodash');
-let async		= require('async');
+let _			= require( 'lodash' );
+let async		= require( 'async' );
 let log			= require( './log.js' );
-let constants		= require("./constants.js");
-let conf		= require("./conf.js");
-let storage		= require('./storage.js');
-let db			= require('./db.js');
-let objectHash		= require("./object_hash.js");
-let mutex		= require('./mutex.js');
-let main_chain		= require("./main_chain.js");
-let Definition		= require("./definition.js");
-let eventBus		= require('./event_bus.js');
-let profilerex		= require('./profilerex.js');
+let constants		= require( './constants.js' );
+let conf		= require( './conf.js' );
+let storage		= require( './storage.js' );
+let db			= require( './db.js' );
+let objectHash		= require( './object_hash.js' );
+let mutex		= require( './mutex.js' );
+let main_chain		= require( './main_chain.js' );
+let Definition		= require( './definition.js' );
+let eventBus		= require( './event_bus.js' );
+let profilerex		= require( './profilerex.js' );
 
 let count_writes			= 0;
 let count_units_in_prev_analyze		= 0;
