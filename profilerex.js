@@ -13,6 +13,8 @@ let m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-ex.txt' );
 let m_oData		= {};
 let m_oDefaultItem	= {
 	count		: 0,
+	time_first	: 0,
+	time_last	: 0,
 	time_start	: 0,
 	time_used	: 0,
 	qps		: 0
@@ -32,7 +34,8 @@ function begin( sTag )
 
 	if ( ! m_oData.hasOwnProperty( sTag ) )
 	{
-		m_oData[ sTag ]	= _.cloneDeep( m_oDefaultItem );
+		m_oData[ sTag ] = _.cloneDeep( m_oDefaultItem );
+		m_oData[ sTag ].time_first	= Date.now();
 	}
 
 	//	...
@@ -52,10 +55,12 @@ function end( sTag )
 	if ( ! m_oData.hasOwnProperty( sTag ) )
 	{
 		m_oData[ sTag ]	= _.cloneDeep( m_oDefaultItem );
+		m_oData[ sTag ].time_first	= Date.now();
 		m_oData[ sTag ].time_start	= Date.now();
 	}
 
 	//	...
+	m_oData[ sTag ].time_last	= Date.now();
 	m_oData[ sTag ].count ++;
 	m_oData[ sTag ].time_used	+= ( Date.now() - m_oData[ sTag ].time_start );
 	m_oData[ sTag ].qps		= ( m_oData[ sTag ].time_used / m_oData[ sTag ].count ).toFixed( 2 );
@@ -65,7 +70,7 @@ function print()
 {
 	m_oWriteStream.write( "############################################################\r\n" );
 	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
-	m_oWriteStream.write( JSON.stringify( m_oData, null, 4 ) );
+	m_oWriteStream.write( JSON.stringify( m_oData, null, 8 ) );
 
 	//
 	// log.consoleLog( "############################################################" );
