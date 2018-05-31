@@ -63,7 +63,15 @@ function end( sTag )
 	m_oData[ sTag ].time_last	= Date.now();
 	m_oData[ sTag ].count ++;
 	m_oData[ sTag ].time_used	+= ( Date.now() - m_oData[ sTag ].time_start );
-	m_oData[ sTag ].qps		= ( m_oData[ sTag ].time_used / m_oData[ sTag ].count ).toFixed( 2 );
+	if ( m_oData[ sTag ].time_used > 0 )
+	{
+		m_oData[ sTag ].qps		= ( ( m_oData[ sTag ].count * 1000 ) / m_oData[ sTag ].time_used ).toFixed( 2 );
+	}
+	else
+	{
+		m_oData[ sTag ].qps		= -1;
+	}
+
 }
 
 function print()
@@ -74,7 +82,8 @@ function print()
 	//	...
 	m_oWriteStream.write( "\n############################################################\r\n" );
 	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
-	m_oWriteStream.write( JSON.stringify( m_oData, null, 8 ) );
+	m_oWriteStream.write( JSON.stringify( m_oData, null, 4 ) );
+	m_oWriteStream.write( JSON.stringify( getSummary(), null, 4 ) );
 
 	m_oWriteStream.end();
 
@@ -117,33 +126,64 @@ function print()
 }
 
 
-function printResults()
+function getSummary()
 {
+	let oRet;
+	let arrDataList;
 	let nTotalTimeUsed;
 	let nTotalExecutedCount;
-
-	log.consoleLog( "\nBenchmarking results:" );
-	nTotalTimeUsed = Object.values( m_oData ).reduce( function( oAccumulator, oCurrentValue )
-	{
-		return oAccumulator.time_used + oCurrentValue.time_used;
-	});
-	nTotalExecutedCount = Object.values( m_oData ).reduce( function( oAccumulator, oCurrentValue )
-	{
-		return oAccumulator.count + oCurrentValue.count;
-	});
-
-	log.consoleLog( Object.values( m_oData ) );
+	let nAverageQps;
 
 	//	...
-	log.consoleLog
-	(
-		"\n\nStart time: " + String( m_nProfilerExStart ) + "\n"
-		+ "End time: " + String( Date.now() ) + "\n"
-		+ "Elapsed ms:" + String( Date.now() - m_nProfilerExStart ) + "\n"
-		+ "Total time used:" + String( nTotalTimeUsed ) + "\n"
-		+ "Total executed count:" + String( nTotalExecutedCount ) + "\n"
-		+ "Average qps:" + String( ( nTotalTimeUsed / nTotalExecutedCount ).toFixed( 2 ) ) + "\n\n\n\n\n"
-	);
+	arrDataList		= Object.values( m_oData );
+	nTotalTimeUsed		= 0;
+	nTotalExecutedCount	= 0;
+
+	if ( Array.isArray( arrDataList ) && arrDataList.length > 0 )
+	{
+		nTotalTimeUsed		= arrDataList.reduce
+		(
+			function( nAccumulator, oCurrentValue )
+			{
+				return parseInt( nAccumulator ) + parseInt( oCurrentValue.time_used );
+			},
+			arrDataList[ 0 ].time_used
+		);
+		nTotalExecutedCount	= arrDataList.reduce
+		(
+			function( nAccumulator, oCurrentValue )
+			{
+				return parseInt( nAccumulator ) + parseInt( oCurrentValue.count );
+			},
+			arrDataList[ 0 ].count
+		);
+	}
+
+	//	...
+	if ( nTotalTimeUsed > 0 )
+	{
+		nAverageQps	= ( ( nTotalExecutedCount * 1000 ) / nTotalTimeUsed ).toFixed( 2 );
+	}
+	else
+	{
+		nAverageQps	= -1;
+	}
+
+	//	...
+	return {
+		"time_start"		: m_nProfilerExStart,
+		"time_end"		: Date.now(),
+		"time_elapsed"		: Date.now() - m_nProfilerExStart,
+		"time_used"		: nTotalTimeUsed,
+		"count_executed"	: nTotalExecutedCount,
+		"average_qps"		: nAverageQps
+	};
+}
+
+
+function printResults()
+{
+	log.consoleLog( JSON.stringify( getSummary(), null, 4 ) );
 }
 
 
