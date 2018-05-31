@@ -1,386 +1,730 @@
 /*jslint node: true */
 "use strict";
 
-var log			= require( './log.js' );
-var crypto = require('crypto');
-var async = require('async');
-var db = require('./db.js');
-var constants = require('./constants.js');
-var objectHash = require('./object_hash.js');
-var objectLength = require("./object_length.js");
-var ecdsaSig = require('./signature.js');
-var mutex = require('./mutex.js');
-var _ = require('lodash');
-var storage = require('./storage.js');
-var myWitnesses = require('./my_witnesses.js');
-var parentComposer = require('./parent_composer.js');
-var paid_witnessing = require("./paid_witnessing.js");
-var headers_commission = require("./headers_commission.js");
-var mc_outputs = require("./mc_outputs.js");
-var validation = require('./validation.js');
-var writer = require('./writer.js');
-var conf = require('./conf.js');
-
-var TRANSFER_INPUT_SIZE = 0 // type: "transfer" omitted
-	+ 44 // unit
-	+ 8 // message_index
-	+ 8; // output_index
-
-var HEADERS_COMMISSION_INPUT_SIZE = 18 // type: "headers_commission"
-	+ 8 // from_main_chain_index
-	+ 8; // to_main_chain_index
-
-var WITNESSING_INPUT_SIZE = 10 // type: "witnessing"
-	+ 8 // from_main_chain_index
-	+ 8; // to_main_chain_index
-
-var ADDRESS_SIZE = 32;
-
-var hash_placeholder = "--------------------------------------------"; // 256 bits (32 bytes) base64: 44 bytes
-var sig_placeholder = "----------------------------------------------------------------------------------------"; // 88 bytes
+var _				= require( 'lodash' );
+var crypto			= require( 'crypto' );
+var async			= require( 'async' );
+var log				= require( './log.js' );
+var db				= require( './db.js' );
+var constants			= require( './constants.js' );
+var objectHash			= require( './object_hash.js' );
+var objectLength		= require( './object_length.js' );
+var ecdsaSig			= require( './signature.js' );
+var mutex			= require( './mutex.js' );
+var storage			= require( './storage.js' );
+var myWitnesses			= require( './my_witnesses.js' );
+var parentComposer		= require( './parent_composer.js' );
+var paid_witnessing		= require( './paid_witnessing.js' );
+var headers_commission		= require( './headers_commission.js' );
+var mc_outputs			= require( './mc_outputs.js' );
+var validation			= require( './validation.js' );
+var writer			= require( './writer.js' );
+var conf			= require( './conf.js' );
 
 
-var bGenesis = false;
-exports.setGenesis = function(_bGenesis){ bGenesis = _bGenesis; };
+var TRANSFER_INPUT_SIZE = 0	//	type: "transfer" omitted
+	+ 44			//	unit
+	+ 8			//	message_index
+	+ 8;			//	output_index
+
+var HEADERS_COMMISSION_INPUT_SIZE = 18	//	type: "headers_commission"
+	+ 8				//	from_main_chain_index
+	+ 8;				//	to_main_chain_index
+
+var WITNESSING_INPUT_SIZE = 10		//	type: "witnessing"
+	+ 8				//	from_main_chain_index
+	+ 8;				//	to_main_chain_index
+
+var ADDRESS_SIZE	= 32;
 
 
-function repeatString(str, times){
-	if (str.repeat)
-		return str.repeat(times);
-	return (new Array(times+1)).join(str);
+//	256 bits (32 bytes) base64: 44 bytes
+var hash_placeholder	= "--------------------------------------------";
+
+//	88 bytes
+var sig_placeholder	= "----------------------------------------------------------------------------------------";
+
+
+
+var bGenesis		= false;
+exports.setGenesis	= function( _bGenesis ){ bGenesis = _bGenesis; };
+
+
+
+
+function repeatString( str, times )
+{
+	if ( str.repeat )
+	{
+		return str.repeat( times );
+	}
+
+	return ( new Array( times + 1 ) ).join( str );
 }
 
-function sortOutputs(a,b){
-	var addr_comparison = a.address.localeCompare(b.address);
-	return addr_comparison ? addr_comparison : (a.amount - b.amount);
+function sortOutputs( a, b )
+{
+	var addr_comparison	= a.address.localeCompare( b.address );
+	return addr_comparison ? addr_comparison : ( a.amount - b.amount );
 }
 
-// bMultiAuthored includes all addresses, not just those that pay
-// arrAddresses is paying addresses
-function pickDivisibleCoinsForAmount(conn, objAsset, arrAddresses, last_ball_mci, amount, bMultiAuthored, onDone){
-	var asset = objAsset ? objAsset.asset : null;
-	log.consoleLog("pick coins "+asset+" amount "+amount);
-	var is_base = objAsset ? 0 : 1;
-	var arrInputsWithProofs = [];
-	var total_amount = 0;
-	var required_amount = amount;
-	
-	// adds element to arrInputsWithProofs
-	function addInput(input){
-		total_amount += input.amount;
-		var objInputWithProof = {input: input};
-		if (objAsset && objAsset.is_private){ // for type=payment only
-			var spend_proof = objectHash.getBase64Hash({
-				asset: asset,
-				amount: input.amount,
-				address: input.address,
-				unit: input.unit,
-				message_index: input.message_index,
-				output_index: input.output_index,
-				blinding: input.blinding
-			});
-			var objSpendProof = {spend_proof: spend_proof};
-			if (bMultiAuthored)
-				objSpendProof.address = input.address;
-			objInputWithProof.spend_proof = objSpendProof;
+/**
+ *	bMultiAuthored includes all addresses, not just those that pay
+ *	arrAddresses is paying addresses
+ */
+function pickDivisibleCoinsForAmount( conn, objAsset, arrAddresses, last_ball_mci, amount, bMultiAuthored, onDone )
+{
+	var asset			= objAsset ? objAsset.asset : null;
+	var is_base			= objAsset ? 0 : 1;
+	var arrInputsWithProofs		= [];
+	var total_amount		= 0;
+	var required_amount		= amount;
+
+	//	...
+	log.consoleLog( "pick coins " + asset + " amount " + amount );
+
+	//	adds element to arrInputsWithProofs
+	function addInput( input )
+	{
+		//	...
+		total_amount	+= input.amount;
+
+		//	..
+		var objInputWithProof	= { input : input };
+		if ( objAsset && objAsset.is_private )
+		{
+			//	for type=payment only
+			var spend_proof		= objectHash.getBase64Hash
+			(
+				{
+					asset		: asset,
+					amount		: input.amount,
+					address		: input.address,
+					unit		: input.unit,
+					message_index	: input.message_index,
+					output_index	: input.output_index,
+					blinding	: input.blinding
+				}
+			);
+			var objSpendProof	=
+				{
+					spend_proof	: spend_proof
+				};
+			if ( bMultiAuthored )
+			{
+				objSpendProof.address	= input.address;
+			}
+
+			objInputWithProof.spend_proof	= objSpendProof;
 		}
-		if (!bMultiAuthored || !input.type)
+
+		if ( ! bMultiAuthored || ! input.type )
+		{
 			delete input.address;
+		}
+
 		delete input.amount;
 		delete input.blinding;
-		arrInputsWithProofs.push(objInputWithProof);
+
+		//	...
+		arrInputsWithProofs.push( objInputWithProof );
 	}
-   
-	// first, try to find a coin just bigger than the required amount
-	function pickOneCoinJustBiggerAndContinue(){
-		if (amount === Infinity)
+
+	//	first, try to find a coin just bigger than the required amount
+	function pickOneCoinJustBiggerAndContinue()
+	{
+		if ( amount === Infinity )
+		{
 			return pickMultipleCoinsAndContinue();
-		var more = is_base ? '>' : '>=';
-		conn.query(
+		}
+
+		var more	= is_base ? '>' : '>=';
+
+		//	...
+		conn.query
+		(
 			"SELECT unit, message_index, output_index, amount, blinding, address \n\
 			FROM outputs \n\
 			CROSS JOIN units USING(unit) \n\
-			WHERE address IN(?) AND asset"+(asset ? "="+conn.escape(asset) : " IS NULL")+" AND is_spent=0 AND amount "+more+" ? \n\
+			WHERE address IN(?) AND asset" + ( asset ? "=" + conn.escape( asset ) : " IS NULL" ) + " AND is_spent=0 AND amount " + more + " ? \n\
 				AND is_stable=1 AND sequence='good' AND main_chain_index<=?  \n\
 			ORDER BY amount LIMIT 1", 
-			[arrSpendableAddresses, amount+is_base*TRANSFER_INPUT_SIZE, last_ball_mci],
-			function(rows){
-				if (rows.length === 1){
-					var input = rows[0];
-					// default type is "transfer"
-					addInput(input);
-					onDone(arrInputsWithProofs, total_amount);
+			[
+				arrSpendableAddresses,
+				amount+is_base*TRANSFER_INPUT_SIZE,
+				last_ball_mci
+			],
+			function( rows )
+			{
+				if ( rows.length === 1 )
+				{
+					var input	= rows[0];
+
+					//	default type is "transfer"
+					addInput( input );
+					onDone( arrInputsWithProofs, total_amount );
 				}
 				else
+				{
 					pickMultipleCoinsAndContinue();
+				}
 			}
 		);
 	}
-	
-	// then, try to add smaller coins until we accumulate the target amount
-	function pickMultipleCoinsAndContinue(){
-		conn.query(
+
+	//	then, try to add smaller coins until we accumulate the target amount
+	function pickMultipleCoinsAndContinue()
+	{
+		//	...
+		conn.query
+		(
 			"SELECT unit, message_index, output_index, amount, address, blinding \n\
 			FROM outputs \n\
 			CROSS JOIN units USING(unit) \n\
-			WHERE address IN(?) AND asset"+(asset ? "="+conn.escape(asset) : " IS NULL")+" AND is_spent=0 \n\
+			WHERE address IN(?) AND asset" + ( asset ? "=" + conn.escape( asset ) : " IS NULL" ) + " AND is_spent=0 \n\
 				AND is_stable=1 AND sequence='good' AND main_chain_index<=?  \n\
 			ORDER BY amount DESC LIMIT ?",
-			[arrSpendableAddresses, last_ball_mci, constants.MAX_INPUTS_PER_PAYMENT_MESSAGE-2],
-			function(rows){
-				async.eachSeries(
+			[
+				arrSpendableAddresses,
+				last_ball_mci,
+				constants.MAX_INPUTS_PER_PAYMENT_MESSAGE - 2
+			],
+			function( rows )
+			{
+				async.eachSeries
+				(
 					rows,
-					function(row, cb){
-						var input = row;
-						objectHash.cleanNulls(input);
-						required_amount += is_base*TRANSFER_INPUT_SIZE;
-						addInput(input);
-						// if we allow equality, we might get 0 amount for change which is invalid
-						var bFound = is_base ? (total_amount > required_amount) : (total_amount >= required_amount);
-						bFound ? cb('found') : cb();
+					function( row, cb )
+					{
+						var input	= row;
+
+						//	...
+						objectHash.cleanNulls( input );
+						required_amount	+= is_base*TRANSFER_INPUT_SIZE;
+						addInput( input );
+
+						//	if we allow equality, we might get 0 amount for change which is invalid
+						var bFound = is_base
+							? ( total_amount > required_amount )
+							: ( total_amount >= required_amount );
+						bFound
+							? cb( 'found' )
+							: cb();
 					},
-					function(err){
-						if (err === 'found')
-							onDone(arrInputsWithProofs, total_amount);
-						else if (asset)
+					function( err )
+					{
+						if ( err === 'found' )
+						{
+							onDone( arrInputsWithProofs, total_amount );
+						}
+						else if ( asset )
+						{
 							issueAsset();
+						}
 						else
+						{
 							addHeadersCommissionInputs();
+						}
 					}
 				);
 			}
 		);
 	}
-	
-	function addHeadersCommissionInputs(){
-		addMcInputs("headers_commission", HEADERS_COMMISSION_INPUT_SIZE, 
-			headers_commission.getMaxSpendableMciForLastBallMci(last_ball_mci), addWitnessingInputs);
+
+	function addHeadersCommissionInputs()
+	{
+		addMcInputs
+		(
+			"headers_commission",
+			HEADERS_COMMISSION_INPUT_SIZE,
+			headers_commission.getMaxSpendableMciForLastBallMci( last_ball_mci ),
+			addWitnessingInputs
+		);
 	}
-	
-	function addWitnessingInputs(){
-		addMcInputs("witnessing", WITNESSING_INPUT_SIZE, paid_witnessing.getMaxSpendableMciForLastBallMci(last_ball_mci), issueAsset);
+
+	function addWitnessingInputs()
+	{
+		addMcInputs
+		(
+			"witnessing",
+			WITNESSING_INPUT_SIZE,
+			paid_witnessing.getMaxSpendableMciForLastBallMci( last_ball_mci ),
+			issueAsset
+		);
 	}
-	
-	function addMcInputs(type, input_size, max_mci, onStillNotEnough){
-		async.eachSeries(
+
+	function addMcInputs( type, input_size, max_mci, onStillNotEnough )
+	{
+		async.eachSeries
+		(
 			arrAddresses, 
-			function(address, cb){
-				var target_amount = required_amount + input_size + (bMultiAuthored ? ADDRESS_SIZE : 0) - total_amount;
-				mc_outputs.findMcIndexIntervalToTargetAmount(conn, type, address, max_mci, target_amount, {
-					ifNothing: cb,
-					ifFound: function(from_mc_index, to_mc_index, earnings, bSufficient){
-						if (earnings === 0)
-							throw Error("earnings === 0");
-						total_amount += earnings;
-						var input = {
-							type: type,
-							from_main_chain_index: from_mc_index,
-							to_main_chain_index: to_mc_index
-						};
-						var full_input_size = input_size;
-						if (bMultiAuthored){
-							full_input_size += ADDRESS_SIZE; // address length
-							input.address = address;
+			function( address, cb )
+			{
+				var target_amount = required_amount + input_size + ( bMultiAuthored ? ADDRESS_SIZE : 0 ) - total_amount;
+
+				//	...
+				mc_outputs.findMcIndexIntervalToTargetAmount
+				(
+					conn,
+					type,
+					address,
+					max_mci,
+					target_amount,
+					{
+						ifNothing	: cb,
+						ifFound		: function( from_mc_index, to_mc_index, earnings, bSufficient )
+						{
+							if ( earnings === 0 )
+							{
+								throw Error( "earnings === 0" );
+							}
+
+							//	...
+							total_amount += earnings;
+							var input =
+								{
+									type			: type,
+									from_main_chain_index	: from_mc_index,
+									to_main_chain_index	: to_mc_index
+								};
+							var full_input_size = input_size;
+							if ( bMultiAuthored )
+							{
+								// address length
+								full_input_size	+= ADDRESS_SIZE;
+
+								//	...
+								input.address = address;
+							}
+
+							//	...
+							required_amount += full_input_size;
+							arrInputsWithProofs.push( { input: input } );
+							( total_amount > required_amount )
+								? cb( "found" )	//	break eachSeries
+								: cb();		//	try next address
 						}
-						required_amount += full_input_size;
-						arrInputsWithProofs.push({input: input});
-						(total_amount > required_amount)
-							? cb("found") // break eachSeries
-							: cb(); // try next address
 					}
-				});
+				);
 			},
-			function(err){
-				if (!err)
-					log.consoleLog(arrAddresses+" "+type+": got only "+total_amount+" out of required "+required_amount);
-				(err === "found") ? onDone(arrInputsWithProofs, total_amount) : onStillNotEnough();
+			function( err )
+			{
+				if ( ! err )
+				{
+					log.consoleLog( arrAddresses + " " + type + ": got only " + total_amount + " out of required " + required_amount );
+				}
+
+				//	...
+				( err === "found" )
+					? onDone( arrInputsWithProofs, total_amount )
+					: onStillNotEnough();
 			}
 		);
 	}
-	
-	function issueAsset(){
-		if (!asset)
+
+	function issueAsset()
+	{
+		if ( ! asset )
+		{
 			return finish();
-		else{
-			if (amount === Infinity && !objAsset.cap) // don't try to create infinite issue
-				return onDone(null);
 		}
-		log.consoleLog("will try to issue asset "+asset);
-		// for issue, we use full list of addresses rather than spendable addresses
-		if (objAsset.issued_by_definer_only && arrAddresses.indexOf(objAsset.definer_address) === -1)
+		else
+		{
+			if ( amount === Infinity && ! objAsset.cap )
+			{
+				//	don't try to create infinite issue
+				return onDone( null );
+			}
+		}
+
+		//	...
+		log.consoleLog( "will try to issue asset " + asset );
+
+		//	for issue, we use full list of addresses rather than spendable addresses
+		if ( objAsset.issued_by_definer_only &&
+			arrAddresses.indexOf( objAsset.definer_address ) === -1 )
+		{
 			return finish();
-		var issuer_address = objAsset.issued_by_definer_only ? objAsset.definer_address : arrAddresses[0];
-		var issue_amount = objAsset.cap || (required_amount - total_amount) || 1; // 1 currency unit in case required_amount = total_amount
-		
-		function addIssueInput(serial_number){
-			total_amount += issue_amount;
-			var input = {
-				type: "issue",
-				amount: issue_amount,
-				serial_number: serial_number
-			};
-			if (bMultiAuthored)
-				input.address = issuer_address;
-			var objInputWithProof = {input: input};
-			if (objAsset && objAsset.is_private){
-				var spend_proof = objectHash.getBase64Hash({
-					asset: asset,
-					amount: issue_amount,
-					denomination: 1,
-					address: issuer_address,
-					serial_number: serial_number
-				});
-				var objSpendProof = {spend_proof: spend_proof};
-				if (bMultiAuthored)
+		}
+
+		var issuer_address	= objAsset.issued_by_definer_only ? objAsset.definer_address : arrAddresses[0];
+		var issue_amount	= objAsset.cap || ( required_amount - total_amount ) || 1;	//	1 currency unit in case required_amount = total_amount
+
+
+		function addIssueInput( serial_number )
+		{
+			total_amount	+= issue_amount;
+			var input =
+				{
+					type		: "issue",
+					amount		: issue_amount,
+					serial_number	: serial_number
+				};
+			if ( bMultiAuthored )
+			{
+				input.address	= issuer_address;
+			}
+
+			var objInputWithProof =
+				{
+					input	: input
+				};
+			if ( objAsset && objAsset.is_private )
+			{
+				var spend_proof = objectHash.getBase64Hash
+				(
+					{
+						asset		: asset,
+						amount		: issue_amount,
+						denomination	: 1,
+						address		: issuer_address,
+						serial_number	: serial_number
+					}
+				);
+				var objSpendProof =
+					{
+						spend_proof	: spend_proof
+					};
+				if ( bMultiAuthored )
+				{
 					objSpendProof.address = input.address;
+				}
+
 				objInputWithProof.spend_proof = objSpendProof;
 			}
-			arrInputsWithProofs.push(objInputWithProof);
-			var bFound = is_base ? (total_amount > required_amount) : (total_amount >= required_amount);
-			bFound ? onDone(arrInputsWithProofs, total_amount) : finish();
+
+			//	...
+			arrInputsWithProofs.push( objInputWithProof );
+			var bFound	= is_base ? ( total_amount > required_amount ) : ( total_amount >= required_amount );
+
+			//	...
+			bFound
+				? onDone( arrInputsWithProofs, total_amount )
+				: finish();
 		}
-		
-		if (objAsset.cap){
-			conn.query("SELECT 1 FROM inputs WHERE type='issue' AND asset=?", [asset], function(rows){
-				if (rows.length > 0) // already issued
-					return finish();
-				addIssueInput(1);
-			});
+
+		if ( objAsset.cap )
+		{
+			//	...
+			conn.query
+			(
+				"SELECT 1 FROM inputs WHERE type='issue' AND asset=?",
+				[
+					asset
+				],
+				function( rows )
+				{
+					if ( rows.length > 0 )
+					{
+						//	already issued
+						return finish();
+					}
+
+					//
+					addIssueInput( 1 );
+				}
+			);
 		}
-		else{
-			conn.query(
+		else
+		{
+			conn.query
+			(
 				"SELECT MAX(serial_number) AS max_serial_number FROM inputs WHERE type='issue' AND asset=? AND address=?", 
-				[asset, issuer_address], 
-				function(rows){
-					var max_serial_number = (rows.length === 0) ? 0 : rows[0].max_serial_number;
-					addIssueInput(max_serial_number+1);
+				[
+					asset,
+					issuer_address
+				],
+				function( rows )
+				{
+					var max_serial_number	= ( rows.length === 0 ) ? 0 : rows[ 0 ].max_serial_number;
+
+					//	...
+					addIssueInput( max_serial_number + 1 );
 				}
 			);
 		}
 	}
-	
-	function finish(){
-		if (amount === Infinity && arrInputsWithProofs.length > 0)
-			onDone(arrInputsWithProofs, total_amount);
+
+	function finish()
+	{
+		if ( amount === Infinity &&
+			arrInputsWithProofs.length > 0 )
+		{
+			onDone( arrInputsWithProofs, total_amount );
+		}
 		else
-			onDone(null);
+		{
+			onDone( null );
+		}
 	}
-	
-	var arrSpendableAddresses = arrAddresses.concat(); // cloning
-	if (objAsset && objAsset.auto_destroy){
-		var i = arrAddresses.indexOf(objAsset.definer_address);
-		if (i>=0)
-			arrSpendableAddresses.splice(i, 1);
+
+	//	...
+	var arrSpendableAddresses	= arrAddresses.concat();	//	cloning
+	if ( objAsset &&
+		objAsset.auto_destroy )
+	{
+		var i	= arrAddresses.indexOf( objAsset.definer_address );
+		if ( i >= 0 )
+		{
+			arrSpendableAddresses.splice( i, 1 );
+		}
 	}
-	if (arrSpendableAddresses.length > 0)
+
+	if ( arrSpendableAddresses.length > 0 )
+	{
 		pickOneCoinJustBiggerAndContinue();
+	}
 	else
+	{
 		issueAsset();
+	}
 }
 
 
-function createTextMessage(text){
+function createTextMessage( text )
+{
 	return {
-		app: "text",
-		payload_location: "inline",
-		payload_hash: objectHash.getBase64Hash(text),
-		payload: text
+		app			: "text",
+		payload_location	: "inline",
+		payload_hash		: objectHash.getBase64Hash( text ),
+		payload			: text
 	};
 }
 
-// change goes back to the first paying address
-function composeTextJoint(arrSigningAddresses, arrPayingAddresses, text, signer, callbacks){
-	composePaymentAndTextJoint(arrSigningAddresses, arrPayingAddresses, [{address: arrPayingAddresses[0], amount: 0}], text, signer, callbacks);
+/**
+ *	change goes back to the first paying address
+ */
+function composeTextJoint( arrSigningAddresses, arrPayingAddresses, text, signer, callbacks )
+{
+	composePaymentAndTextJoint
+	(
+		arrSigningAddresses,
+		arrPayingAddresses,
+		[
+			{
+				address	: arrPayingAddresses[ 0 ],
+				amount	: 0
+			}
+		],
+		text,
+		signer,
+		callbacks
+	);
 }
 
-function composePaymentJoint(arrFromAddresses, arrOutputs, signer, callbacks){
-	composeJoint({paying_addresses: arrFromAddresses, outputs: arrOutputs, signer: signer, callbacks: callbacks});
+function composePaymentJoint( arrFromAddresses, arrOutputs, signer, callbacks )
+{
+	composeJoint
+	(
+		{
+			paying_addresses	: arrFromAddresses,
+			outputs			: arrOutputs,
+			signer			: signer,
+			callbacks		: callbacks
+		}
+	);
 }
 	
-function composePaymentAndTextJoint(arrSigningAddresses, arrPayingAddresses, arrOutputs, text, signer, callbacks){
-	composeJoint({
-		signing_addresses: arrSigningAddresses, 
-		paying_addresses: arrPayingAddresses, 
-		outputs: arrOutputs, 
-		messages: [createTextMessage(text)], 
-		signer: signer, 
-		callbacks: callbacks
-	});
+function composePaymentAndTextJoint( arrSigningAddresses, arrPayingAddresses, arrOutputs, text, signer, callbacks )
+{
+	composeJoint
+	(
+		{
+			signing_addresses	: arrSigningAddresses,
+			paying_addresses	: arrPayingAddresses,
+			outputs			: arrOutputs,
+			messages		: [ createTextMessage( text ) ],
+			signer			: signer,
+			callbacks		: callbacks
+		}
+	);
 }
 
-function composeContentJoint(from_address, app, payload, signer, callbacks){
-	var objMessage = {
-		app: app,
-		payload_location: "inline",
-		payload_hash: objectHash.getBase64Hash(payload),
-		payload: payload
-	};
-	composeJoint({
-		paying_addresses: [from_address], 
-		outputs: [{address: from_address, amount: 0}], 
-		messages: [objMessage], 
-		signer: signer, 
-		callbacks: callbacks
-	});
+function composeContentJoint( from_address, app, payload, signer, callbacks )
+{
+	var objMessage =
+		{
+			app			: app,
+			payload_location	: "inline",
+			payload_hash		: objectHash.getBase64Hash( payload ),
+			payload			: payload
+		};
+	composeJoint
+	(
+		{
+			paying_addresses	: [ from_address ],
+			outputs			: [
+					{
+						address	: from_address,
+						amount	: 0
+					}
+				],
+			messages		: [ objMessage ],
+			signer			: signer,
+			callbacks		: callbacks
+		}
+	);
 }
 
-function composeDefinitionChangeJoint(from_address, definition_chash, signer, callbacks){
-	composeContentJoint(from_address, "address_definition_change", {definition_chash: definition_chash}, signer, callbacks);
+function composeDefinitionChangeJoint( from_address, definition_chash, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"address_definition_change",
+		{
+			definition_chash	: definition_chash
+		},
+		signer,
+		callbacks
+	);
 }
 
-function composeDataFeedJoint(from_address, data, signer, callbacks){
-	composeContentJoint(from_address, "data_feed", data, signer, callbacks);
+function composeDataFeedJoint( from_address, data, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"data_feed",
+		data,
+		signer,
+		callbacks
+	);
 }
 
-function composeDataJoint(from_address, data, signer, callbacks){
-	composeContentJoint(from_address, "data", data, signer, callbacks);
+function composeDataJoint( from_address, data, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"data",
+		data,
+		signer,
+		callbacks
+	);
 }
 
-function composeDedinitionTemplateJoint(from_address, arrDefinitionTemplate, signer, callbacks){
-	composeContentJoint(from_address, "definition_template", arrDefinitionTemplate, signer, callbacks);
+function composeDedinitionTemplateJoint( from_address, arrDefinitionTemplate, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"definition_template",
+		arrDefinitionTemplate,
+		signer,
+		callbacks
+	);
 }
 
-function composePollJoint(from_address, question, arrChoices, signer, callbacks){
-	var poll_data = {question: question, choices: arrChoices};
-	composeContentJoint(from_address, "poll", poll_data, signer, callbacks);
+function composePollJoint( from_address, question, arrChoices, signer, callbacks )
+{
+	var poll_data	=
+		{
+			question	: question,
+			choices		: arrChoices
+		};
+	composeContentJoint
+	(
+		from_address,
+		"poll",
+		poll_data,
+		signer,
+		callbacks
+	);
 }
 
-function composeVoteJoint(from_address, poll_unit, choice, signer, callbacks){
-	var vote_data = {unit: poll_unit, choice: choice};
-	composeContentJoint(from_address, "vote", vote_data, signer, callbacks);
+function composeVoteJoint( from_address, poll_unit, choice, signer, callbacks )
+{
+	var vote_data	=
+		{
+			unit	: poll_unit,
+			choice	: choice
+		};
+	composeContentJoint
+	(
+		from_address,
+		"vote",
+		vote_data,
+		signer,
+		callbacks
+	);
 }
 
-function composeProfileJoint(from_address, profile_data, signer, callbacks){
-	composeContentJoint(from_address, "profile", profile_data, signer, callbacks);
+function composeProfileJoint( from_address, profile_data, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"profile",
+		profile_data,
+		signer,
+		callbacks
+	);
 }
 
-function composeAttestationJoint(from_address, attested_address, profile_data, signer, callbacks){
-	composeContentJoint(from_address, "attestation", {address: attested_address, profile: profile_data}, signer, callbacks);
+function composeAttestationJoint( from_address, attested_address, profile_data, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"attestation",
+		{
+			address	: attested_address,
+			profile	: profile_data
+		},
+		signer,
+		callbacks
+	);
 }
 
-function composeAssetDefinitionJoint(from_address, asset_definition, signer, callbacks){
-	composeContentJoint(from_address, "asset", asset_definition, signer, callbacks);
+function composeAssetDefinitionJoint( from_address, asset_definition, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"asset",
+		asset_definition,
+		signer,
+		callbacks
+	);
 }
 
-function composeAssetAttestorsJoint(from_address, asset, arrNewAttestors, signer, callbacks){
-	composeContentJoint(from_address, "asset_attestors", {asset: asset, attestors: arrNewAttestors}, signer, callbacks);
+function composeAssetAttestorsJoint( from_address, asset, arrNewAttestors, signer, callbacks )
+{
+	composeContentJoint
+	(
+		from_address,
+		"asset_attestors",
+		{
+			asset		: asset,
+			attestors	: arrNewAttestors
+		},
+		signer,
+		callbacks
+	);
 }
 
-/*
-	params.signing_addresses must sign the message but they do not necessarily pay 
-	params.paying_addresses pay for byte outputs and commissions
-*/
-function composeJoint(params){
-	
-	var arrWitnesses = params.witnesses;
-	if (!arrWitnesses){
-		myWitnesses.readMyWitnesses(function(_arrWitnesses){
-			params.witnesses = _arrWitnesses;
-			composeJoint(params);
-		});
+/**
+ *	params.signing_addresses must sign the message but they do not necessarily pay
+ *	params.paying_addresses pay for byte outputs and commissions
+ */
+function composeJoint( params )
+{
+	var arrWitnesses	= params.witnesses;
+
+	if ( ! arrWitnesses )
+	{
+		myWitnesses.readMyWitnesses
+		(
+			function( _arrWitnesses )
+			{
+				params.witnesses = _arrWitnesses;
+				composeJoint( params );
+			}
+		);
 		return;
 	}
-	
+
 	/*if (conf.bLight && !params.lightProps){
 		var network = require('./network.js');
 		network.requestFromLightVendor(
@@ -398,49 +742,67 @@ function composeJoint(params){
 		return;
 	}*/
 	
-	// try to use as few paying_addresses as possible. Assuming paying_addresses are sorted such that the most well-funded addresses come first
-	if (params.minimal && !params.send_all){
-		var callbacks = params.callbacks;
-		var arrCandidatePayingAddresses = params.paying_addresses;
+	//	try to use as few paying_addresses as possible. Assuming paying_addresses are sorted such that the most well-funded addresses come first
+	if ( params.minimal && ! params.send_all )
+	{
+		var callbacks			= params.callbacks;
+		var arrCandidatePayingAddresses	= params.paying_addresses;
 
-		var trySubset = function(count){
-			if (count > constants.MAX_AUTHORS_PER_UNIT)
-				return callbacks.ifNotEnoughFunds("Too many authors.  Consider splitting the payment into two units.");
-			var try_params = _.clone(params);
+		var trySubset = function( count )
+		{
+			if ( count > constants.MAX_AUTHORS_PER_UNIT )
+			{
+				return callbacks.ifNotEnoughFunds( "Too many authors.  Consider splitting the payment into two units." );
+			}
+
+			//	...
+			var try_params	= _.clone(params);
 			delete try_params.minimal;
-			try_params.paying_addresses = arrCandidatePayingAddresses.slice(0, count);
-			try_params.callbacks = {
-				ifOk: callbacks.ifOk,
-				ifError: callbacks.ifError,
-				ifNotEnoughFunds: function(error_message){
-					if (count === arrCandidatePayingAddresses.length)
-						return callbacks.ifNotEnoughFunds(error_message);
-					trySubset(count+1); // add one more paying address
-				}
-			};
-			composeJoint(try_params);
+
+			//	...
+			try_params.paying_addresses	= arrCandidatePayingAddresses.slice( 0, count );
+			try_params.callbacks		=
+				{
+					ifOk			: callbacks.ifOk,
+					ifError			: callbacks.ifError,
+					ifNotEnoughFunds	: function( error_message )
+					{
+						if ( count === arrCandidatePayingAddresses.length )
+						{
+							return callbacks.ifNotEnoughFunds( error_message );
+						}
+
+						//	add one more paying address
+						trySubset( count + 1 );
+					}
+				};
+
+			//	...
+			composeJoint( try_params );
 		};
-		
-		return trySubset(1);
+
+		//	...
+		return trySubset( 1 );
 	}
-	
-	var arrSigningAddresses = params.signing_addresses || [];
-	var arrPayingAddresses = params.paying_addresses || [];
-	var arrOutputs = params.outputs || [];
-	var arrMessages = _.clone(params.messages || []);
-	var assocPrivatePayloads = params.private_payloads || {}; // those that correspond to a subset of params.messages
-	var fnRetrieveMessages = params.retrieveMessages;
-//	var lightProps = params.lightProps;
-	var signer = params.signer;
-	var callbacks = params.callbacks;
-	
+
+	//	...
+	var arrSigningAddresses		= params.signing_addresses || [];
+	var arrPayingAddresses		= params.paying_addresses || [];
+	var arrOutputs			= params.outputs || [];
+	var arrMessages			= _.clone( params.messages || [] );
+	var assocPrivatePayloads	= params.private_payloads || {};	//	those that correspond to a subset of params.messages
+	var fnRetrieveMessages		= params.retrieveMessages;
+//	var lightProps			= params.lightProps;
+	var signer			= params.signer;
+	var callbacks			= params.callbacks;
+
 //	if (conf.bLight && !lightProps)
 //		throw Error("no parent props for light");
 	
 	
 	//profiler.start();
-	var arrChangeOutputs = arrOutputs.filter(function(output) { return (output.amount === 0); });
-	var arrExternalOutputs = arrOutputs.filter(function(output) { return (output.amount > 0); });
+	var arrChangeOutputs		= arrOutputs.filter(function(output) { return (output.amount === 0); });
+	var arrExternalOutputs		= arrOutputs.filter(function(output) { return (output.amount > 0); });
 	if (arrChangeOutputs.length > 1)
 		throw Error("more than one change output");
 	if (arrChangeOutputs.length === 0)
