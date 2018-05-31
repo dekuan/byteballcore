@@ -88,7 +88,7 @@ function setMyDeviceProps( device_address, objTempPubkey )
 
 function sendMessage( ws, type, content )
 {
-	let message;
+	var message;
 
 	//	...
 	message	= JSON.stringify( [ type, content ] );
@@ -140,7 +140,7 @@ function sendErrorResult( ws, unit, error )
 
 function sendVersion( ws )
 {
-	let libraryPackageJson;
+	var libraryPackageJson;
 
 	//	...
 	libraryPackageJson	= require( './package.json' );
@@ -184,12 +184,12 @@ function sendErrorResponse( ws, tag, error )
  */
 function sendRequest( ws, command, params, bReroutable, responseHandler )
 {
-	let request;
-	let content;
-	let tag;
-	let reroute;
-	let reroute_timer;
-	let cancel_timer;
+	var request;
+	var content;
+	var tag;
+	var reroute;
+	var reroute_timer;
+	var cancel_timer;
 
 	//	...
 	request = { command : command };
@@ -312,7 +312,7 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 
 function handleResponse( ws, tag, response )
 {
-	let pendingRequest;
+	var pendingRequest;
 
 	//	...
 	pendingRequest	= ws.assocPendingRequests[ tag ];
@@ -363,8 +363,8 @@ function handleResponse( ws, tag, response )
 
 function cancelRequestsOnClosedConnection( ws )
 {
-	let tag;
-	let pendingRequest;
+	var tag;
+	var pendingRequest;
 
 	log.consoleLog( "websocket closed, will complete all outstanding requests" );
 
@@ -417,7 +417,7 @@ function findNextPeer( ws, handleNextPeer )
 		ws,
 		function( next_ws )
 		{
-			let peer;
+			var peer;
 
 			if ( next_ws )
 			{
@@ -444,10 +444,10 @@ function findNextPeer( ws, handleNextPeer )
 
 function tryFindNextPeer( ws, handleNextPeer )
 {
-	let arrOutboundSources;
-	let len;
-	let peer_index;
-	let next_peer_index;
+	var arrOutboundSources;
+	var len;
+	var peer_index;
+	var next_peer_index;
 
 	//	...
 	arrOutboundSources = m_arrOutboundPeers.filter
@@ -480,8 +480,8 @@ function getRandomInt( min, max )
 
 function findRandomInboundPeer( handleInboundPeer )
 {
-	let arrInboundSources;
-	let arrInboundHosts;
+	var arrInboundSources;
+	var arrInboundHosts;
 
 	//	...
 	arrInboundSources	= m_oWss.arrClients.filter
@@ -520,8 +520,8 @@ function findRandomInboundPeer( handleInboundPeer )
 		],
 		function( rows )
 		{
-			let host;
-			let ws;
+			var host;
+			var ws;
 
 			//	...
 			log.consoleLog( rows.length + " inbound peers" );
@@ -559,7 +559,7 @@ function findRandomInboundPeer( handleInboundPeer )
  */
 function checkIfHaveEnoughOutboundPeersAndAdd()
 {
-	let arrOutboundPeerUrls;
+	var arrOutboundPeerUrls;
 
 	//	...
 	arrOutboundPeerUrls = m_arrOutboundPeers.map
@@ -585,10 +585,10 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 		],
 		function( rows )
 		{
-			let count_good_peers;
-			let arrGoodPeerUrls;
-			let i;
-			let ws;
+			var count_good_peers;
+			var arrGoodPeerUrls;
+			var i;
+			var ws;
 
 			//	...
 			count_good_peers = rows.length;
@@ -633,8 +633,8 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 
 function connectToPeer( url, onOpen )
 {
-	let options;
-	let ws;
+	var options;
+	var ws;
 
 	//	...
 	addPeer( url );
@@ -691,7 +691,7 @@ function connectToPeer( url, onOpen )
 		'open',
 		function onWsOpen()
 		{
-			let another_ws_to_same_peer;
+			var another_ws_to_same_peer;
 
 			//	...
 			breadcrumbs.add( 'connected to ' + url );
@@ -769,7 +769,7 @@ function connectToPeer( url, onOpen )
 		'close',
 		function onWsClose()
 		{
-			let i;
+			var i;
 
 			//	...
 			i	= m_arrOutboundPeers.indexOf( ws );
@@ -795,7 +795,7 @@ function connectToPeer( url, onOpen )
 		'error',
 		function onWsError( e )
 		{
-			let err;
+			var err;
 
 			//	...
 			delete m_oAssocConnectingOutboundWebSockets[ url ];
@@ -834,10 +834,10 @@ function connectToPeer( url, onOpen )
  */
 function addOutboundPeers( multiplier )
 {
-	let order_by;
-	let arrOutboundPeerUrls;
-	let arrInboundHosts;
-	let max_new_outbound_peers;
+	var order_by;
+	var arrOutboundPeerUrls;
+	var arrInboundHosts;
+	var max_new_outbound_peers;
 
 	if ( ! multiplier )
 	{
@@ -903,7 +903,7 @@ function addOutboundPeers( multiplier )
 		],
 		function( rows )
 		{
-			let i;
+			var i;
 
 			//
 			//	TODO
@@ -926,7 +926,7 @@ function addOutboundPeers( multiplier )
 
 function getHostByPeer( peer )
 {
-	let matches;
+	var matches;
 
 	//	...
 	matches	= peer.match( /^wss?:\/\/(.*)$/i );
@@ -959,7 +959,7 @@ function addPeerHost( host, onDone )
 
 function addPeer( peer )
 {
-	let host;
+	var host;
 
 	if ( m_oAssocKnownPeers[ peer ] )
 	{
@@ -991,7 +991,7 @@ function addPeer( peer )
 
 function getOutboundPeerWsByUrl( url )
 {
-	let i;
+	var i;
 
 	//	...
 	log.consoleLog( "outbound peers: " + m_arrOutboundPeers.map( function( o ){ return o.peer; } ).join( ", " ) );
@@ -1010,7 +1010,7 @@ function getOutboundPeerWsByUrl( url )
 
 function getPeerWebSocket( peer )
 {
-	let i;
+	var i;
 
 	for ( i = 0; i < m_arrOutboundPeers.length; i ++ )
 	{
@@ -1035,7 +1035,7 @@ function getPeerWebSocket( peer )
 
 function findOutboundPeerOrConnect( url, onOpen )
 {
-	let ws;
+	var ws;
 
 	if ( ! url )
 	{
@@ -1117,7 +1117,7 @@ function purgePeerEvents()
  */
 function purgeDeadPeers()
 {
-	let arrOutboundPeerUrls;
+	var arrOutboundPeerUrls;
 
 	if ( conf.storage !== 'sqlite' )
 	{
@@ -1148,8 +1148,8 @@ function purgeDeadPeers()
 		"LIMIT 1",
 		function( lrows )
 		{
-			let last_rowid;
-			let last_event_ts;
+			var last_rowid;
+			var last_event_ts;
 
 			if ( lrows.length === 0 )
 			{
@@ -1187,10 +1187,10 @@ function purgeDeadPeers()
 								],
 								function( mrows )
 								{
-									let max_rowid;
-									let max_event_ts;
-									let count_other_events;
-									let days_since_last_event;
+									var max_rowid;
+									var max_event_ts;
+									var count_other_events;
+									var days_since_last_event;
 
 									//	...
 									max_rowid		= mrows[ 0 ].max_rowid || 0;
@@ -1239,11 +1239,11 @@ function requestPeers( ws )
 
 function handleNewPeers( ws, request, arrPeerUrls )
 {
-	let arrQueries;
-	let i;
-	let url;
-	let regexp;
-	let host;
+	var arrQueries;
+	var i;
+	var url;
+	var regexp;
+	var host;
 
 	if ( arrPeerUrls.error )
 	{
@@ -1300,7 +1300,7 @@ function handleNewPeers( ws, request, arrPeerUrls )
  */
 function heartbeat()
 {
-	let bJustResumed;
+	var bJustResumed;
 
 	//	just resumed after sleeping
 	bJustResumed		= ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > 2 * HEARTBEAT_TIMEOUT );
@@ -1312,8 +1312,8 @@ function heartbeat()
 	//
 	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach( function( ws )
 	{
-		let elapsed_since_last_received;
-		let elapsed_since_last_sent_heartbeat;
+		var elapsed_since_last_received;
+		var elapsed_since_last_sent_heartbeat;
 
 		if ( ws.bSleeping || ws.readyState !== ws.OPEN )
 		{
@@ -1530,7 +1530,7 @@ function sendJointsSinceMci( ws, mci )
 
 function requestFreeJointsFromAllOutboundPeers()
 {
-	let i;
+	var i;
 
 	for ( i = 0; i < m_arrOutboundPeers.length; i ++ )
 	{
@@ -1593,7 +1593,7 @@ function rerequestLostJoints()
 
 function requestNewMissingJoints( ws, arrUnits )
 {
-	let arrNewUnits;
+	var arrNewUnits;
 
 	//	...
 	arrNewUnits	= [];
@@ -1674,7 +1674,7 @@ function requestJoints( ws, arrUnits )
 	(
 		function( unit )
 		{
-			let diff;
+			var diff;
 
 			if ( m_oAssocRequestedUnits[ unit ] )
 			{
@@ -1712,8 +1712,8 @@ function requestJoints( ws, arrUnits )
 
 function handleResponseToJointRequest( ws, request, response )
 {
-	let unit;
-	let objJoint;
+	var unit;
+	var objJoint;
 
 	//	...
 	delete m_oAssocRequestedUnits[ request.params ];
@@ -1802,10 +1802,10 @@ function handleResponseToJointRequest( ws, request, response )
 
 function havePendingRequest( command )
 {
-	let arrPeers;
-	let i;
-	let assocPendingRequests;
-	let tag;
+	var arrPeers;
+	var i;
+	var assocPendingRequests;
+	var tag;
 
 	//	...
 	arrPeers = m_oWss.arrClients.concat( m_arrOutboundPeers );
@@ -1827,11 +1827,11 @@ function havePendingRequest( command )
 
 function havePendingJointRequest( unit )
 {
-	let arrPeers;
-	let i;
-	let assocPendingRequests;
-	let tag;
-	let request;
+	var arrPeers;
+	var i;
+	var assocPendingRequests;
+	var tag;
+	var request;
 
 	//	...
 	arrPeers	= m_oWss.arrClients.concat( m_arrOutboundPeers );
@@ -1898,7 +1898,7 @@ function purgeJointAndDependenciesAndNotifyPeers( objJoint, error, onDone )
 			//
 			//	this callback is called for each dependent unit
 			//
-			let ws;
+			var ws;
 
 			//	...
 			ws = getPeerWebSocket( peer );
@@ -1922,7 +1922,7 @@ function purgeDependenciesAndNotifyPeers( unit, error, onDone )
 			//
 			//	this callback is called for each dependent unit
 			//
-			let ws;
+			var ws;
 
 			//	...
 			ws = getPeerWebSocket( peer );
@@ -1951,8 +1951,8 @@ function forwardJoint( ws, objJoint )
 
 function handleJoint( ws, objJoint, bSaved, callbacks )
 {
-	let unit;
-	let validate;
+	var unit;
+	var validate;
 
 	//	...
 	unit = objJoint.unit.unit;
@@ -2135,7 +2135,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
  */
 function handlePostedJoint( ws, objJoint, onDone )
 {
-	let unit;
+	var unit;
 
 	if ( ! objJoint || ! objJoint.unit || ! objJoint.unit.unit )
 	{
@@ -2217,7 +2217,7 @@ function handlePostedJoint( ws, objJoint, onDone )
 
 function handleOnlineJoint( ws, objJoint, onDone )
 {
-	let unit;
+	var unit;
 
 	if ( ! onDone)
 	{
@@ -2328,8 +2328,8 @@ function handleOnlineJoint( ws, objJoint, onDone )
 
 function handleSavedJoint( objJoint, creation_ts, peer )
 {
-	let unit	= objJoint.unit.unit;
-	let ws		= getPeerWebSocket( peer );
+	var unit	= objJoint.unit.unit;
+	var ws		= getPeerWebSocket( peer );
 
 	if ( ws && ws.readyState !== ws.OPEN )
 	{
@@ -2488,13 +2488,13 @@ function addWatchedAddress( address )
  */
 function notifyWatchers( objJoint, source_ws )
 {
-	let objUnit;
-	let arrAddresses;
-	let i;
-	let j;
-	let message;
-	let payload;
-	let address;
+	var objUnit;
+	var arrAddresses;
+	var i;
+	var j;
+	var message;
+	var payload;
+	var address;
 
 	//	...
 	objUnit		= objJoint.unit;
@@ -2576,7 +2576,7 @@ function notifyWatchers( objJoint, source_ws )
 			(
 				function( row )
 				{
-					let ws;
+					var ws;
 
 					//	...
 					ws	= getPeerWebSocket( row.peer );
@@ -2681,7 +2681,7 @@ function notifyLightClientsAboutStableJoints( from_mci, to_mci )
 			(
 				function( row )
 				{
-					let ws;
+					var ws;
 
 					//	...
 					ws = getPeerWebSocket( row.peer );
@@ -2805,12 +2805,12 @@ function addLightWatchedAddress( address )
  */
 function flushEvents( forceFlushing )
 {
-	let arrQueryParams;
-	let objUpdatedHosts;
-	let host;
-	let columns_obj;
-	let sql_columns_updates;
-	let column;
+	var arrQueryParams;
+	var objUpdatedHosts;
+	var host;
+	var columns_obj;
+	var sql_columns_updates;
+	var column;
 
 	if ( m_arrPeerEventsBuffer.length === 0 || ( ! forceFlushing && m_arrPeerEventsBuffer.length !== 100 ) )
 	{
@@ -2824,10 +2824,10 @@ function flushEvents( forceFlushing )
 	//	...
 	m_arrPeerEventsBuffer.forEach( function( event_row )
 	{
-		let host;
-		let event;
-		let event_date;
-		let column;
+		var host;
+		var event;
+		var event_date;
+		var column;
 
 		//	...
 		host		= event_row.host;
@@ -2887,8 +2887,8 @@ function flushEvents( forceFlushing )
 
 function writeEvent( event, host )
 {
-	let column;
-	let event_date;
+	var column;
+	var event_date;
 
 	if ( conf.bLight )
 	{
@@ -3159,7 +3159,7 @@ function requestCatchup( ws )
 
 function handleCatchupChain( ws, request, response )
 {
-	let catchupChain;
+	var catchupChain;
 
 	if ( response.error )
 	{
@@ -3215,9 +3215,9 @@ function requestNextHashTree( ws )
 		"SELECT ball FROM catchup_chain_balls ORDER BY member_index LIMIT 2",
 		function( rows )
 		{
-			let from_ball;
-			let to_ball;
-			let tag;
+			var from_ball;
+			var to_ball;
+			var tag;
 
 			if ( rows.length === 0 )
 			{
@@ -3272,7 +3272,7 @@ function requestNextHashTree( ws )
 
 function handleHashTree( ws, request, response )
 {
-	let hashTree;
+	var hashTree;
 
 	if ( response.error )
 	{
@@ -3367,7 +3367,7 @@ function sendPrivatePaymentToWs( ws, arrChains )
  */
 function sendPrivatePayment( peer, arrChains )
 {
-	let ws;
+	var ws;
 
 	//	...
 	ws = getPeerWebSocket( peer );
@@ -3391,10 +3391,10 @@ function sendPrivatePayment( peer, arrChains )
  */
 function handleOnlinePrivatePayment( ws, arrPrivateElements, bViaHub, callbacks )
 {
-	let unit;
-	let message_index;
-	let output_index;
-	let savePrivatePayment;
+	var unit;
+	var message_index;
+	var output_index;
+	var savePrivatePayment;
 
 	if ( ! ValidationUtils.isNonemptyArray( arrPrivateElements ) )
 	{
@@ -3511,7 +3511,7 @@ function handleSavedPrivatePayments( unit )
 		[ "saved_private" ],
 		function( unlock )
 		{
-			let sql;
+			var sql;
 
 			//	...
 			sql = unit
@@ -3522,7 +3522,7 @@ function handleSavedPrivatePayments( unit )
 				sql,
 				function( rows )
 				{
-					let assocNewUnits;
+					var assocNewUnits;
 
 					if ( rows.length === 0 )
 					{
@@ -3537,9 +3537,9 @@ function handleSavedPrivatePayments( unit )
 						rows,
 						function( row, cb )
 						{
-							let arrPrivateElements;
-							let ws;
-							let validateAndSave;
+							var arrPrivateElements;
+							var ws;
+							var validateAndSave;
 
 							//	...
 							arrPrivateElements = JSON.parse( row.json );
@@ -3553,9 +3553,9 @@ function handleSavedPrivatePayments( unit )
 							//	...
 							validateAndSave = function()
 							{
-								let objHeadPrivateElement	= arrPrivateElements[ 0 ];
-								let payload_hash		= objectHash.getBase64Hash( objHeadPrivateElement.payload );
-								let key				= 'private_payment_validated-' + objHeadPrivateElement.unit + '-' + payload_hash + '-' + row.output_index;
+								var objHeadPrivateElement	= arrPrivateElements[ 0 ];
+								var payload_hash		= objectHash.getBase64Hash( objHeadPrivateElement.payload );
+								var key				= 'private_payment_validated-' + objHeadPrivateElement.unit + '-' + payload_hash + '-' + row.output_index;
 
 								privatePayment.validateAndSavePrivatePaymentChain
 								(
@@ -3650,7 +3650,7 @@ function handleSavedPrivatePayments( unit )
 						},
 						function()
 						{
-							let arrNewUnits;
+							var arrNewUnits;
 
 							//	...
 							unlock();
@@ -3736,7 +3736,7 @@ function rerequestLostJointsOfPrivatePayments()
 		"WHERE units.unit IS NULL",
 		function( rows )
 		{
-			let arrUnits;
+			var arrUnits;
 
 			if ( rows.length === 0 )
 			{
@@ -3810,7 +3810,7 @@ function requestHistoryFor( arrUnits, arrAddresses, onDone )
 	(
 		function( arrWitnesses )
 		{
-			let objHistoryRequest;
+			var objHistoryRequest;
 
 			//	...
 			objHistoryRequest	= { witnesses : arrWitnesses };
@@ -3895,7 +3895,7 @@ function requestUnfinishedPastUnitsOfSavedPrivateElements()
 				"SELECT json FROM unhandled_private_payments",
 				function( rows )
 				{
-					let arrChains;
+					var arrChains;
 
 					//	...
 					eventBus.emit( 'unhandled_private_payments_left', rows.length );
@@ -3911,7 +3911,7 @@ function requestUnfinishedPastUnitsOfSavedPrivateElements()
 					(
 						function( row )
 						{
-							let arrPrivateElements;
+							var arrPrivateElements;
 
 							//	...
 							arrPrivateElements = JSON.parse( row.json );
@@ -3947,7 +3947,7 @@ function requestUnfinishedPastUnitsOfSavedPrivateElements()
  */
 function checkThatEachChainElementIncludesThePrevious( arrPrivateElements, handleResult )
 {
-	let arrUnits;
+	var arrUnits;
 
 	//	an issue
 	if ( arrPrivateElements.length === 1 )
@@ -3969,7 +3969,7 @@ function checkThatEachChainElementIncludesThePrevious( arrPrivateElements, handl
 		arrUnits,
 		function( ws, request, response )
 		{
-			let arrChain;
+			var arrChain;
 
 			if ( response.error )
 			{
@@ -4142,7 +4142,7 @@ function sendStoredDeviceMessages( ws, device_address )
 
 function version2int( version )
 {
-	let arr;
+	var arr;
 
 	//	...
 	arr = version.split( '.' );
@@ -4155,12 +4155,12 @@ function version2int( version )
  */
 function handleJustsaying( ws, subject, body )
 {
-	let echo_string;
+	var echo_string;
 
 	switch ( subject )
 	{
 		case 'refresh':
-			let mci;
+			var mci;
 
 			if ( m_bCatchingUp )
 			{
@@ -4246,7 +4246,7 @@ function handleJustsaying( ws, subject, body )
 			break;
 
 		case 'joint':
-			let objJoint;
+			var objJoint;
 
 			//	...
 			objJoint = body;
@@ -4295,7 +4295,7 @@ function handleJustsaying( ws, subject, body )
 			break;
 
 		case 'private_payment':
-			let arrPrivateElements;
+			var arrPrivateElements;
 
 			if ( ! body )
 			{
@@ -4347,7 +4347,7 @@ function handleJustsaying( ws, subject, body )
 			break;
 
 		case 'my_url':
-			let url;
+			var url;
 
 			if ( ! body )
 			{
@@ -4387,7 +4387,7 @@ function handleJustsaying( ws, subject, body )
 				],
 				function( rows )
 				{
-					let latest_change;
+					var latest_change;
 
 					//	...
 					latest_change	= rows[0];
@@ -4429,7 +4429,7 @@ function handleJustsaying( ws, subject, body )
 			break;
 
 		case 'want_echo':
-			let reverse_ws;
+			var reverse_ws;
 
 			//	...
 			echo_string	= body;
@@ -4459,8 +4459,8 @@ function handleJustsaying( ws, subject, body )
 
 		case 'your_echo':
 			//	comes on the same ws as my_url, claimed_url is already set
-			let outbound_host;
-			let arrQueries;
+			var outbound_host;
+			var arrQueries;
 
 			//	...
 			echo_string = body;
@@ -4824,7 +4824,7 @@ function handleRequest( ws, tag, command, params )
 	switch ( command )
 	{
 		case 'heartbeat':
-			let bPaused;
+			var bPaused;
 
 			//	the peer is sending heartbeats, therefore he is awake
 			ws.bSleeping = false;
@@ -4944,7 +4944,7 @@ function handleRequest( ws, tag, command, params )
 			
 		case 'post_joint':
 			//	only light clients use this command to post joints they created
-			let objJoint;
+			var objJoint;
 
 			//	...
 			objJoint = params;
@@ -4960,7 +4960,7 @@ function handleRequest( ws, tag, command, params )
 			break;
 			
 		case 'catchup':
-			let catchupRequest;
+			var catchupRequest;
 
 			if ( ! ws.bSubscribed )
 			{
@@ -5001,7 +5001,7 @@ function handleRequest( ws, tag, command, params )
 			break;
 
 		case 'get_hash_tree':
-			let hashTreeRequest;
+			var hashTreeRequest;
 
 			if ( ! ws.bSubscribed )
 			{
@@ -5046,7 +5046,7 @@ function handleRequest( ws, tag, command, params )
 			break;
 
 		case 'get_peers':
-			let arrPeerUrls;
+			var arrPeerUrls;
 
 			//	...
 			arrPeerUrls	= m_arrOutboundPeers.map( function( ws ){ return ws.peer; } );
@@ -5077,7 +5077,7 @@ function handleRequest( ws, tag, command, params )
 
 		//	I'm a hub, the peer wants to deliver a message to one of my clients
 		case 'hub/deliver':
-			let objDeviceMessage;
+			var objDeviceMessage;
 			var bToMe;
 
 			//	...
@@ -5126,7 +5126,7 @@ function handleRequest( ws, tag, command, params )
 				[ objDeviceMessage.to ],
 				function( rows )
 				{
-					let message_hash;
+					var message_hash;
 
 					if ( rows.length === 0 )
 					{
@@ -5178,8 +5178,8 @@ function handleRequest( ws, tag, command, params )
 		//	I'm a hub, the peer wants to get a correspondent's temporary pubkey
 		//
 		case 'hub/get_temp_pubkey':
-			let permanent_pubkey;
-			let device_address;
+			var permanent_pubkey;
+			var device_address;
 
 			//	...
 			permanent_pubkey = params;
@@ -5215,7 +5215,7 @@ function handleRequest( ws, tag, command, params )
 				],
 				function( rows )
 				{
-					let objTempPubkey;
+					var objTempPubkey;
 
 					if ( rows.length === 0 )
 					{
@@ -5235,8 +5235,8 @@ function handleRequest( ws, tag, command, params )
 
 		//	I'm a hub, the peer wants to update its temporary pubkey
 		case 'hub/temp_pubkey':
-			let objTempPubkey;
-			let fnUpdate;
+			var objTempPubkey;
+			var fnUpdate;
 
 			if ( ! conf.bServeAsHub )
 				return sendErrorResponse( ws, tag, "I'm not a hub" );
@@ -5453,8 +5453,8 @@ function handleRequest( ws, tag, command, params )
 			break;
 
 	   case 'light/get_attestation':
-			let order;
-			let join;
+			var order;
+			var join;
 
 			if ( conf.bLight )
 			{
@@ -5487,7 +5487,7 @@ function handleRequest( ws, tag, command, params )
 				],
 				function( rows )
 				{
-					let attestation_unit;
+					var attestation_unit;
 
 					//	...
 					attestation_unit	= ( rows.length > 0 ) ? rows[ 0 ].unit : "";
@@ -5529,7 +5529,7 @@ function handleRequest( ws, tag, command, params )
 			break;
 			
 		case 'hub/get_asset_metadata':
-			let asset;
+			var asset;
 
 			//	...
 			asset	= params;
@@ -5560,10 +5560,10 @@ function handleRequest( ws, tag, command, params )
 
 function onWebsocketMessage( message )
 {
-	let ws;
-	let arrMessage;
-	let message_type;
-	let content;
+	var ws;
+	var arrMessage;
+	var message_type;
+	var content;
 
 	//	...
 	ws = this;
@@ -5648,8 +5648,8 @@ function startAcceptingConnections()
 		'connection',
 		function( ws )
 		{
-			let sRemoteAddress;
-			let bStatsCheckUnderWay;
+			var sRemoteAddress;
+			var bStatsCheckUnderWay;
 
 			//	...
 			sRemoteAddress = ws.upgradeReq.connection.remoteAddress;
@@ -5708,7 +5708,7 @@ function startAcceptingConnections()
 				],
 				function( rows )
 				{
-					let oStats;
+					var oStats;
 
 					//	...
 					bStatsCheckUnderWay	= false;
@@ -6040,7 +6040,7 @@ if ( process.browser )
 
 	WebSocket.prototype.on = function( event, callback )
 	{
-		let self;
+		var self;
 
 		//	...
 		self = this;

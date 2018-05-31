@@ -25,11 +25,11 @@ function checkLength( chash_length )
 
 function calcOffsets( chash_length )
 {
-	let arrOffsets;
-	let offset;
-	let index;
-	let i;
-	let relative_offset;
+	var arrOffsets;
+	var offset;
+	var index;
+	var i;
+	var relative_offset;
 
 	//	...
 	checkLength( chash_length );
@@ -75,14 +75,14 @@ function calcOffsets( chash_length )
 
 function separateIntoCleanDataAndChecksum( bin )
 {
-	let len;
-	let arrOffsets;
-	let arrFrags;
-	let arrChecksumBits;
-	let start;
-	let i;
-	let binCleanData;
-	let binChecksum;
+	var len;
+	var arrOffsets;
+	var arrFrags;
+	var arrChecksumBits;
+	var start;
+	var i;
+	var binCleanData;
+	var binChecksum;
 
 	//	...
 	len = bin.length;

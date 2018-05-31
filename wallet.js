@@ -39,15 +39,15 @@ function handleJustsaying( ws, subject, body )
 	{
 		//	I'm connected to a hub, received challenge
 		case 'hub/challenge':
-			let challenge = body;
+			var challenge = body;
 			device.handleChallenge(ws, challenge);
 			break;
 
 		// I'm connected to a hub, received a message through the hub
 		case 'hub/message':
-			let objDeviceMessage = body.message;
-			let message_hash = body.message_hash;
-			let respondWithError = function( error )
+			var objDeviceMessage = body.message;
+			var message_hash = body.message_hash;
+			var respondWithError = function( error )
 			{
 				network.sendError( ws, error );
 				network.sendJustsaying( ws, 'hub/delete', message_hash );
@@ -213,8 +213,8 @@ function sendSignature( device_address, signed_text, signature, signing_path, ad
  */
 function handleMessageFromHub( ws, json, device_pubkey, bIndirectCorrespondent, callbacks )
 {
-	let subject	= json.subject;
-	let body	= json.body;
+	var subject	= json.subject;
+	var body	= json.body;
 
 	if ( ! subject || typeof body === "undefined" )
 	{

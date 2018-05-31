@@ -197,23 +197,23 @@ function parseQueryString( str, delimiter )
 		delimiter = '&';
 	}
 
-	let arrPairs	= str.split(delimiter);
-	let assocParams	= {};
+	var arrPairs	= str.split(delimiter);
+	var assocParams	= {};
 
 	//	...
 	arrPairs.forEach
 	(
 		function( pair )
 		{
-			let arrNameValue = pair.split( '=' );
+			var arrNameValue = pair.split( '=' );
 			if ( arrNameValue.length !== 2 )
 			{
 				return;
 			}
 
 			//	...
-			let name	= decodeURIComponent( arrNameValue[ 0 ] );
-			let value	= decodeURIComponent( arrNameValue[ 1 ] );
+			var name	= decodeURIComponent( arrNameValue[ 0 ] );
+			var value	= decodeURIComponent( arrNameValue[ 1 ] );
 
 			//	...
 			assocParams[name] = value;

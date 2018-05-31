@@ -1,6 +1,6 @@
 'use strict';
 
-let log		= require( '../log.js' );
+var log		= require( '../log.js' );
 
 
 

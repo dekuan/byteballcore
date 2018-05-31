@@ -272,9 +272,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			],
 			function()
 			{
-				for ( let unit in storage.assocUnstableUnits )
+				for ( var unit in storage.assocUnstableUnits )
 				{
-					let o = storage.assocUnstableUnits[ unit ];
+					var o = storage.assocUnstableUnits[ unit ];
 					if ( o.main_chain_index > last_main_chain_index )
 					{
 						o.is_on_main_chain	= 0;
@@ -283,8 +283,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				}
 
 				//	...
-				let main_chain_index	= last_main_chain_index;
-				let main_chain_unit	= last_main_chain_unit;
+				var main_chain_index	= last_main_chain_index;
+				var main_chain_unit	= last_main_chain_unit;
 
 				//	...
 				conn.query
@@ -302,7 +302,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							//}
 						}
 
-						let arrDbNewMcUnits = rows.map
+						var arrDbNewMcUnits = rows.map
 						(
 							function( row )
 							{
@@ -332,7 +332,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								main_chain_index ++;
 
 								//	...
-								let arrUnits = [ row.unit ];
+								var arrUnits = [ row.unit ];
 
 								function goUp( arrStartUnits )
 								{
@@ -346,14 +346,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 										],
 										function( rows )
 										{
-											let arrNewStartUnits	= rows.map
+											var arrNewStartUnits	= rows.map
 											(
 												function( row )
 												{
 													return row.unit;
 												}
 											);
-											let arrNewStartUnits2	= [];
+											var arrNewStartUnits2	= [];
 											arrStartUnits.forEach
 											(
 												function( start_unit )
@@ -1245,7 +1245,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 												throw Error( "_findMinMcWitnessedLevel: not 1 row" );
 											}
 
-											let row	= rows[ 0 ];
+											var row	= rows[ 0 ];
 											if ( row.count > 0 && row.witnessed_level < min_mc_wl )
 											{
 												min_mc_wl = row.witnessed_level;

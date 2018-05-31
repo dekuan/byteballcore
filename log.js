@@ -7,9 +7,9 @@
  */
 function consoleLog()
 {
-	let oDate;
-	let sDateText;
-	let arrArgs;
+	var oDate;
+	var sDateText;
+	var arrArgs;
 
 	//	...
 	if ( "[object Arguments]" === Object.prototype.toString.call( arguments ) )

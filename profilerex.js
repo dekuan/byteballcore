@@ -1,17 +1,16 @@
 /*jslint node: true */
 "use strict";
 
-let _			= require( 'lodash' );
-let fs          	= require( 'fs' );
-let util		= require( 'util' );
-let log			= require( './log.js' );
-let desktopApp		= require( 'byteballcore/desktop_app.js' );
+var _			= require( 'lodash' );
+var fs          	= require( 'fs' );
+var log			= require( './log.js' );
+var desktopApp		= require( 'byteballcore/desktop_app.js' );
 
-let m_sAppDataDir	= desktopApp.getAppDataDir();
+var m_sAppDataDir	= desktopApp.getAppDataDir();
 
-let m_nProfilerExStart	= Date.now();
-let m_oData		= {};
-let m_oDefaultItem	= {
+var m_nProfilerExStart	= Date.now();
+var m_oData		= {};
+var m_oDefaultItem	= {
 	count		: 0,
 	time_first	: 0,
 	time_last	: 0,
@@ -77,62 +76,63 @@ function end( sTag )
 function print()
 {
 //	https://nodejs.org/api/fs.html#fs_fs_createwritestream_path_options
-	let m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-ex.txt', { flags: 'w' } );
+	var m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-ex.txt', { flags: 'w' } );
 
 	//	...
 	m_oWriteStream.write( "\n############################################################\r\n" );
 	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
 	m_oWriteStream.write( JSON.stringify( m_oData, null, 4 ) );
-	m_oWriteStream.write( JSON.stringify( getSummary(), null, 4 ) );
+	m_oWriteStream.write( JSON.stringify( getSortedDataObject( getSummary() ), null, 4 ) );
 
 	m_oWriteStream.end();
+}
 
 
-	//
-	// log.consoleLog( "############################################################" );
-	// log.consoleLog( "############################################################" );
-	// log.consoleLog( m_oData );
-	// log.consoleLog( "############################################################" );
-	// log.consoleLog( "############################################################" );
-	//
-	//
-	// let total	= 0;
-	// let tag;
-	//
-	//
-	//
-	// //	...
-	// log.consoleLog( "\nProfiling results:" );
-	//
-	// for ( tag in m_oTimes )
-	// {
-	// 	total += m_oTimes[ tag ];
-	// }
-	//
-	// for ( tag in m_oTimes )
-	// {
-	// 	log.consoleLog
-	// 	(
-	// 		pad_right( tag + ": ", 33 ) +
-	// 		pad_left( m_oTimes[ tag ], 5 ) + ', ' +
-	// 		pad_left( ( m_oTimes[ tag ] / m_nCount ).toFixed( 2 ), 5 ) + ' per unit, ' +
-	// 		pad_left( ( 100 * m_oTimes[ tag ] / total ).toFixed( 2 ), 5 ) + '%'
-	// 	);
-	// }
-	//
-	// //	...
-	// log.consoleLog( 'total: ' + total );
-	// log.consoleLog( ( total / m_nCount ) + ' per unit' );
+
+function getSortedDataObject( oData )
+{
+	var arrDataList	= [];
+	var sKey;
+	var oNewObject;
+
+	for ( sKey in oData )
+	{
+		oNewObject	= oData[ sKey ];
+		oNewObject.key	= sKey;
+		oNewObject.qps	= parseFloat( oNewObject.qps );
+
+		arrDataList.push( oNewObject );
+	}
+
+	arrDataList.sort
+	(
+		function( a, b )
+		{
+			return b.qps - a.qps;
+		}
+	);
+
+	return arrDataList.reduce
+	(
+		function( oAcc, oCurrent )
+		{
+			oAcc[ oCurrent.key ]	= oCurrent;
+			delete oAcc[ oCurrent.key ].key;
+
+			//	...
+			return oAcc;
+		},
+		{}
+	);
 }
 
 
 function getSummary()
 {
-	let oRet;
-	let arrDataList;
-	let nTotalTimeUsed;
-	let nTotalExecutedCount;
-	let nAverageQps;
+	var arrDataList;
+	var nTotalTimeUsed;
+	var nTotalExecutedCount;
+	var nAverageQps;
 
 	//	...
 	arrDataList		= Object.values( m_oData );

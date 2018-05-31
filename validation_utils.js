@@ -10,7 +10,7 @@ var chash	= require( './chash.js' );
  */
 function hasFieldsExcept( obj, arrFields )
 {
-	let field;
+	var field;
 
 	for ( field in obj )
 	{

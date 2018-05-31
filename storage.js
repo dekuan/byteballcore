@@ -53,7 +53,7 @@ function readJoint(conn, unit, callbacks)
 				return readJointDirectly(conn, unit, callbacks);
 			}
 
-			let objJoint	= JSON.parse( rows[ 0 ].json );
+			var objJoint	= JSON.parse( rows[ 0 ].json );
 			if ( ! objJoint.ball )
 			{
 				//	got there because of an old bug
@@ -108,19 +108,19 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 				return callbacks.ifNotFound();
 			}
 
-			let objUnit		= unit_rows[0];
-			let objJoint		= { unit : objUnit };
-			let main_chain_index	= objUnit.main_chain_index;
+			var objUnit		= unit_rows[0];
+			var objJoint		= { unit : objUnit };
+			var main_chain_index	= objUnit.main_chain_index;
 
 			//	delete objUnit.main_chain_index;
 			objUnit.timestamp	= parseInt( objUnit.timestamp );
-			let bFinalBad		= !! objUnit.content_hash;
-			let bStable		= objUnit.is_stable;
+			var bFinalBad		= !! objUnit.content_hash;
+			var bStable		= objUnit.is_stable;
 			delete objUnit.is_stable;
 
 			objectHash.cleanNulls( objUnit );
-			let bVoided		= ( objUnit.content_hash && main_chain_index < min_retrievable_mci );
-			let bRetrievable	= ( main_chain_index >= min_retrievable_mci || main_chain_index === null );
+			var bVoided		= ( objUnit.content_hash && main_chain_index < min_retrievable_mci );
+			var bRetrievable	= ( main_chain_index >= min_retrievable_mci || main_chain_index === null );
 
 			if ( ! conf.bLight && ! objUnit.last_ball && ! isGenesisUnit( unit ) )
 			{
@@ -1490,7 +1490,7 @@ function readLastMainChainIndex( handleLastMcIndex )
 		"SELECT MAX( main_chain_index ) AS last_mc_index FROM units",
 		function( rows )
 		{
-			let last_mc_index;
+			var last_mc_index;
 
 			//	...
 			last_mc_index	= rows[ 0 ].last_mc_index;

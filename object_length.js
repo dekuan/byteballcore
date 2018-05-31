@@ -23,7 +23,7 @@ function getLength( value )
 			//return value.toString().length;
 
 		case "object":
-			let len = 0;
+			var len = 0;
 			if ( Array.isArray( value ) )
 			{
 				value.forEach

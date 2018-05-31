@@ -1,14 +1,14 @@
 /*jslint node: true */
 "use strict";
 
-let log		= require( './log.js' );
-let eventBus	= require( './event_bus.js' );
-let constants	= require( './constants.js' );
-let conf	= require( './conf.js' );
-let async	= require( 'async' );
+var log		= require( './log.js' );
+var eventBus	= require( './event_bus.js' );
+var constants	= require( './constants.js' );
+var conf	= require( './conf.js' );
+var async	= require( 'async' );
 
-let VERSION	= 19;
-let bCordova	= ( typeof window === 'object' && window.cordova );
+var VERSION	= 19;
+var bCordova	= ( typeof window === 'object' && window.cordova );
 
 
 

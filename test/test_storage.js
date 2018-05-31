@@ -1,12 +1,12 @@
 /**
  *	test for storage
  */
-let assert      = require( 'assert' );
+var assert      = require( 'assert' );
 var async	= require( 'async' );
 
 
 //
-// let arrResultList	= [];
+// var arrResultList	= [];
 // async.series
 // (
 // 	[
@@ -48,9 +48,9 @@ describe( 'storage.js', function()
 {
 	describe( 'any testing', function()
 	{
-		describe( 'async.series', async function()
+		describe( 'async.series', function()
 		{
-			let arrResultList	= [];
+			var arrResultList	= [];
 
 			async.series
 			(

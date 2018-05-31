@@ -70,9 +70,9 @@ function getCountOfLocks()
 
 function _isAnyOfKeysLocked( arrKeys )
 {
-	let i;
-	let j;
-	let arrLockedKeys;
+	var i;
+	var j;
+	var arrLockedKeys;
 
 	for ( i = 0; i < m_arrLockedKeyArrays.length; i ++ )
 	{
@@ -91,7 +91,7 @@ function _isAnyOfKeysLocked( arrKeys )
 
 function _release( arrKeys )
 {
-	let i;
+	var i;
 
 	for ( i = 0; i < m_arrLockedKeyArrays.length; i ++ )
 	{
@@ -105,7 +105,7 @@ function _release( arrKeys )
 
 function _execute( arrKeys, procedure, nextProcedure )
 {
-	let bLocked;
+	var bLocked;
 
 	m_arrLockedKeyArrays.push( arrKeys );
 	console.log( "lock acquired", arrKeys );
@@ -138,8 +138,8 @@ function _execute( arrKeys, procedure, nextProcedure )
 
 function _handleQueue()
 {
-	let i;
-	let job;
+	var i;
+	var job;
 
 	//	...
 	console.log( "_handleQueue " + m_arrQueuedJobs.length + " items" );
@@ -169,8 +169,8 @@ function _handleQueue()
 
 function _checkForDeadlocks()
 {
-	let i;
-	let job;
+	var i;
+	var job;
 
 	for ( i = 0; i < m_arrQueuedJobs.length; i ++ )
 	{

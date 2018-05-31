@@ -1827,10 +1827,10 @@ function validateAuthentifiers( conn, address, this_asset, arrDefinition, objUni
 					args.filter,
 					function( res, arrFoundObjects )
 					{
-						let sum	= 0;
+						var sum	= 0;
 						if ( res )
 						{
-							for ( let i = 0; i < arrFoundObjects.length; i ++ )
+							for ( var i = 0; i < arrFoundObjects.length; i ++ )
 							{
 								sum += arrFoundObjects[ i ].amount;
 							}

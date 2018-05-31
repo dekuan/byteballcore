@@ -1,15 +1,15 @@
 /*jslint node: true */
 "use strict";
 
-let log			= require( './log.js' );
+var log			= require( './log.js' );
 
-let m_nCount		= 0;
-let m_oTimes		= {};
-let m_nStartTs		= 0;
+var m_nCount		= 0;
+var m_oTimes		= {};
+var m_nStartTs		= 0;
 
-let m_oTimer		= {};
-let m_oTimerResult	= {};
-let m_nProfilerStartTs	= Date.now();
+var m_oTimer		= {};
+var m_oTimerResult	= {};
+var m_nProfilerStartTs	= Date.now();
 
 
 
@@ -58,13 +58,13 @@ function mark_end( tag, id )
 
 function print_results()
 {
-	let tag;
-	let results;
-	let sum;
-	let max;
-	let min;
-	let i;
-	let v;
+	var tag;
+	var results;
+	var sum;
+	var max;
+	var min;
+	var i;
+	var v;
 
 	log.consoleLog( "\nBenchmarking results:" );
 
@@ -143,8 +143,8 @@ function stop( tag )
 
 function print()
 {
-	let total	= 0;
-	let tag;
+	var total	= 0;
+	var tag;
 
 	//	...
 	log.consoleLog( "\nProfiling results:" );
@@ -216,15 +216,15 @@ process.on
 
 String.prototype.padding = function( n, c )
 {
-        let val = this.valueOf();
+        var val = this.valueOf();
         if ( Math.abs( n ) <= val.length )
         {
                 return val;
         }
 
-        let m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
-        let pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
-//      let pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
+        var m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
+        var pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
+//      var pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
         return ( n < 0 ) ? pad + val : val + pad;
 //      return ( n < 0 ) ? val + pad : pad + val;
 };
@@ -246,7 +246,7 @@ setInterval
 
 
 
-let clog = log.consoleLog;
+var clog = log.consoleLog;
 //log.consoleLog = function(){};
 
 //exports.start = start;

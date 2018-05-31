@@ -1,15 +1,15 @@
 /*jslint node: true */
 "use strict";
 
-let async		= require( 'async' );
-let _			= require( 'lodash' );
-let log			= require( './log.js' );
-let storage		= require( './storage.js' );
-let objectHash		= require( './object_hash.js' );
-let db			= require( './db.js' );
-let mutex		= require( './mutex.js' );
-let validation		= require( './validation.js' );
-let witnessProof	= require( './witness_proof.js' );
+var async		= require( 'async' );
+var _			= require( 'lodash' );
+var log			= require( './log.js' );
+var storage		= require( './storage.js' );
+var objectHash		= require( './object_hash.js' );
+var db			= require( './db.js' );
+var mutex		= require( './mutex.js' );
+var validation		= require( './validation.js' );
+var witnessProof	= require( './witness_proof.js' );
 
 
 /**
@@ -26,9 +26,9 @@ function prepareCatchupChain( catchupRequest, callbacks )
 		return callbacks.ifError("no catchup request");
 	}
 
-	let last_stable_mci	= catchupRequest.last_stable_mci;
-	let last_known_mci	= catchupRequest.last_known_mci;
-	let arrWitnesses	= catchupRequest.witnesses;
+	var last_stable_mci	= catchupRequest.last_stable_mci;
+	var last_known_mci	= catchupRequest.last_known_mci;
+	var arrWitnesses	= catchupRequest.witnesses;
 
 	if ( typeof last_stable_mci !== "number" )
 	{
@@ -55,14 +55,14 @@ function prepareCatchupChain( catchupRequest, callbacks )
 		[ 'prepareCatchupChain' ],
 		function( unlock )
 		{
-			let start_ts		= Date.now();
-			let objCatchupChain	=
+			var start_ts		= Date.now();
+			var objCatchupChain	=
 			{
 				unstable_mc_joints			: [],
 				stable_last_ball_joints			: [],
 				witness_change_and_definition_joints	: []
 			};
-			let last_ball_unit = null;
+			var last_ball_unit = null;
 
 			//
 			//	async series
@@ -226,24 +226,24 @@ function processCatchupChain( catchupChain, peer, callbacks )
 			if ( err )
 				return callbacks.ifError( err );
 
-			let objFirstStableJoint	= catchupChain.stable_last_ball_joints[0];
-			let objFirstStableUnit	= objFirstStableJoint.unit;
+			var objFirstStableJoint	= catchupChain.stable_last_ball_joints[0];
+			var objFirstStableUnit	= objFirstStableJoint.unit;
 
 			if (arrLastBallUnits.indexOf(objFirstStableUnit.unit) === -1)
 				return callbacks.ifError("first stable unit is not last ball unit of any unstable unit");
 
-			let last_ball_unit	= objFirstStableUnit.unit;
-			let last_ball		= assocLastBallByLastBallUnit[ last_ball_unit ];
+			var last_ball_unit	= objFirstStableUnit.unit;
+			var last_ball		= assocLastBallByLastBallUnit[ last_ball_unit ];
 
 			if ( objFirstStableJoint.ball !== last_ball )
 				return callbacks.ifError( "last ball and last ball unit do not match: " + objFirstStableJoint.ball + "!==" + last_ball );
 
 			//	stable joints
-			let arrChainBalls = [];
-			for ( let i = 0; i < catchupChain.stable_last_ball_joints.length; i ++ )
+			var arrChainBalls = [];
+			for ( var i = 0; i < catchupChain.stable_last_ball_joints.length; i ++ )
 			{
-				let objJoint	= catchupChain.stable_last_ball_joints[i];
-				let objUnit	= objJoint.unit;
+				var objJoint	= catchupChain.stable_last_ball_joints[i];
+				var objUnit	= objJoint.unit;
 
 				if (!objJoint.ball)
 					return callbacks.ifError("stable but no ball");
@@ -273,7 +273,7 @@ function processCatchupChain( catchupChain, peer, callbacks )
 			//
 			//	async series
 			//
-			let unlock = null;
+			var unlock = null;
 			async.series
 			(
 				[
@@ -313,7 +313,7 @@ function processCatchupChain( catchupChain, peer, callbacks )
 									return cb( "first chain ball " + arrChainBalls[ 0 ] + " is not known" );
 								}
 
-								let objFirstChainBallProps	= rows[ 0 ];
+								var objFirstChainBallProps	= rows[ 0 ];
 
 								if ( objFirstChainBallProps.is_stable !== 1 )
 									return cb("first chain ball "+arrChainBalls[0]+" is not stable");
@@ -364,7 +364,7 @@ function processCatchupChain( catchupChain, peer, callbacks )
 					function( cb )
 					{
 						//	validation complete, now write the chain for future downloading of hash trees
-						let arrValues	= arrChainBalls.map
+						var arrValues	= arrChainBalls.map
 						(
 							function( ball )
 							{
@@ -418,9 +418,9 @@ function readHashTree( hashTreeRequest, callbacks )
 			if ( rows.length !== 2 )
 				return callbacks.ifError("some balls not found");
 
-			for ( let i = 0; i < rows.length; i ++ )
+			for ( var i = 0; i < rows.length; i ++ )
 			{
-				let props	= rows[ i ];
+				var props	= rows[ i ];
 				if ( props.is_stable !== 1 )
 					return callbacks.ifError("some balls not stable");
 

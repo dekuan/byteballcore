@@ -8,7 +8,7 @@ var log		= require( './log.js' );
 
 function sign( hash, priv_key )
 {
-	let res = ecdsa.sign( hash, priv_key );
+	var res = ecdsa.sign( hash, priv_key );
 	return res.signature.toString( "base64" );
 }
 
@@ -17,7 +17,7 @@ function verify( hash, b64_sig, b64_pub_key )
 	try
 	{
 		//	64 bytes (32+32)
-		let signature = new Buffer( b64_sig, "base64" );
+		var signature = new Buffer( b64_sig, "base64" );
 		return ecdsa.verify( hash, signature, new Buffer( b64_pub_key, "base64" ) );
 	}
 	catch( e )
