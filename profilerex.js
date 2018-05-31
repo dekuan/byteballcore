@@ -2,13 +2,14 @@
 "use strict";
 
 let _			= require( 'lodash' );
-var fs          	= require( 'fs' );
-var util		= require( 'util' );
+let fs          	= require( 'fs' );
+let util		= require( 'util' );
 let log			= require( './log.js' );
-var desktopApp		= require( 'byteballcore/desktop_app.js' );
+let desktopApp		= require( 'byteballcore/desktop_app.js' );
 
-var m_sAppDataDir	= desktopApp.getAppDataDir();
+let m_sAppDataDir	= desktopApp.getAppDataDir();
 
+let m_nProfilerExStart	= Date.now();
 let m_oData		= {};
 let m_oDefaultItem	= {
 	count		: 0,
@@ -116,28 +117,35 @@ function print()
 }
 
 
-
-function pad_right( str, len )
+function printResults()
 {
-	if ( str.length >= len )
-		return str;
+	let nTotalTimeUsed;
+	let nTotalExecutedCount;
 
-	//	...
-	return str + ' '.repeat( len - str.length );
-}
-
-function pad_left( str, len )
-{
-	//	...
-	str = str+'';
-
-	if ( str.length >= len )
+	log.consoleLog( "\nBenchmarking results:" );
+	nTotalTimeUsed = Object.values( m_oData ).reduce( function( oAccumulator, oCurrentValue )
 	{
-		return str;
-	}
+		return oAccumulator.time_used + oCurrentValue.time_used;
+	});
+	nTotalExecutedCount = Object.values( m_oData ).reduce( function( oAccumulator, oCurrentValue )
+	{
+		return oAccumulator.count + oCurrentValue.count;
+	});
 
-	return ' '.repeat( len - str.length ) + str;
+	log.consoleLog( Object.values( m_oData ) );
+
+	//	...
+	log.consoleLog
+	(
+		"\n\nStart time: " + String( m_nProfilerExStart ) + "\n"
+		+ "End time: " + String( Date.now() ) + "\n"
+		+ "Elapsed ms:" + String( Date.now() - m_nProfilerExStart ) + "\n"
+		+ "Total time used:" + String( nTotalTimeUsed ) + "\n"
+		+ "Total executed count:" + String( nTotalExecutedCount ) + "\n"
+		+ "Average qps:" + String( ( nTotalTimeUsed / nTotalExecutedCount ).toFixed( 2 ) ) + "\n\n\n\n\n"
+	);
 }
+
 
 
 
@@ -146,29 +154,16 @@ process.on
 	'SIGINT',
 	function()
 	{
-		log.consoleLog	= clog;
 		log.consoleLog( "received sigint" );
-		//print();
-		print_results();
+
+		//	print();
+		printResults();
+
+		//	...
 		process.exit();
 	}
 );
 
-
-String.prototype.padding = function( n, c )
-{
-	let val = this.valueOf();
-	if ( Math.abs( n ) <= val.length )
-	{
-		return val;
-	}
-
-	let m	= Math.max( ( Math.abs( n ) - this.length ) || 0, 0 );
-	let pad	= Array( m + 1 ).join( String( c || ' ' ).charAt( 0 ) );
-//      let pad = String(c || ' ').charAt(0).repeat(Math.abs(n) - this.length);
-	return ( n < 0 ) ? pad + val : val + pad;
-//      return ( n < 0 ) ? val + pad : pad + val;
-};
 
 
 

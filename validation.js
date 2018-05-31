@@ -270,13 +270,17 @@ function validate( objJoint, callbacks )
 				[
 					function( cb )
 					{
+						//	PPP
 						profilerex.begin( 'validation-takeConnectionFromPool' );
 
 						db.takeConnectionFromPool
 						(
 							function( new_conn )
 							{
+								//	PPP
 								profilerex.end( 'validation-takeConnectionFromPool' );
+
+								//	PPP
 								profilerex.begin( 'validation-BEGIN' );
 
 								conn = new_conn;
