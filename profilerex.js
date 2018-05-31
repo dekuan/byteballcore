@@ -81,8 +81,8 @@ function print()
 	//	...
 	m_oWriteStream.write( "\n############################################################\r\n" );
 	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
-	m_oWriteStream.write( JSON.stringify( m_oData, null, 4 ) );
-	m_oWriteStream.write( JSON.stringify( getSortedDataObject( getSummary() ), null, 4 ) );
+	m_oWriteStream.write( JSON.stringify( getSortedDataObject( m_oData ), null, 4 ) );
+	m_oWriteStream.write( JSON.stringify( getSummary(), null, 4 ) );
 
 	m_oWriteStream.end();
 }
