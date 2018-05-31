@@ -15,7 +15,8 @@ var m_oDefaultItem	= {
 	time_first	: 0,
 	time_last	: 0,
 	time_start	: 0,
-	time_used	: 0,
+	time_used_total	: 0,
+	time_used_avg	: 0,
 	qps		: 0
 };
 
@@ -61,10 +62,11 @@ function end( sTag )
 	//	...
 	m_oData[ sTag ].time_last	= Date.now();
 	m_oData[ sTag ].count ++;
-	m_oData[ sTag ].time_used	+= ( Date.now() - m_oData[ sTag ].time_start );
-	if ( m_oData[ sTag ].time_used > 0 )
+	m_oData[ sTag ].time_used_total	+= ( Date.now() - m_oData[ sTag ].time_start );
+	m_oData[ sTag ].time_used_avg	= ( m_oData[ sTag ].time_used_total / m_oData[ sTag ].count ).toFixed( 2 );
+	if ( m_oData[ sTag ].time_used_total > 0 )
 	{
-		m_oData[ sTag ].qps		= ( ( m_oData[ sTag ].count * 1000 ) / m_oData[ sTag ].time_used ).toFixed( 2 );
+		m_oData[ sTag ].qps		= ( ( m_oData[ sTag ].count * 1000 ) / m_oData[ sTag ].time_used_total ).toFixed( 2 );
 	}
 	else
 	{
@@ -145,9 +147,9 @@ function getSummary()
 		(
 			function( nAccumulator, oCurrentValue )
 			{
-				return parseInt( nAccumulator ) + parseInt( oCurrentValue.time_used );
+				return parseInt( nAccumulator ) + parseInt( oCurrentValue.time_used_total );
 			},
-			arrDataList[ 0 ].time_used
+			arrDataList[ 0 ].time_used_total
 		);
 		nTotalExecutedCount	= arrDataList.reduce
 		(
@@ -174,7 +176,7 @@ function getSummary()
 		"time_start"		: m_nProfilerExStart,
 		"time_end"		: Date.now(),
 		"time_elapsed"		: Date.now() - m_nProfilerExStart,
-		"time_used"		: nTotalTimeUsed,
+		"time_used_total"	: nTotalTimeUsed,
 		"count_executed"	: nTotalExecutedCount,
 		"average_qps"		: nAverageQps
 	};
