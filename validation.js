@@ -35,8 +35,6 @@ var isValidAddress		= ValidationUtils.isValidAddress;
 var isValidBase64		= ValidationUtils.isValidBase64;
 
 
-
-
 function hasValidHashes( objJoint )
 {
 	var objUnit = objJoint.unit;
