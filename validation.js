@@ -362,7 +362,13 @@ function validate( objJoint, callbacks )
 						//	...
 						objUnit.content_hash
 							? cb()
-							: validateMessages( conn, objUnit.messages, objUnit, objValidationState, cb );
+							: validateMessages
+							(
+								conn,
+								objUnit.messages,
+								objUnit,
+								objValidationState, cb
+							);
 					}
 				],
 				function( err )
@@ -1852,6 +1858,10 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
 	);
 }
 
+
+/**
+ *	the slowest function in whole project
+ */
 function validateMessage( conn, objMessage, message_index, objUnit, objValidationState, callback )
 {
 	if ( typeof objMessage.app !== "string" )
@@ -1866,11 +1876,13 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 	{
 		return callback( "no payload_location" );
 	}
-	if ( hasFieldsExcept( objMessage, [ "app", "payload_hash", "payload_location", "payload", "payload_uri", "payload_uri_hash", "spend_proofs" ] ) )
+	if ( hasFieldsExcept( objMessage,
+		[ "app", "payload_hash", "payload_location", "payload", "payload_uri", "payload_uri_hash", "spend_proofs" ] ) )
 	{
 		return callback( "unknown fields in message" );
 	}
-	
+
+	//	...
 	if ( "spend_proofs" in objMessage )
 	{
 		if ( ! Array.isArray( objMessage.spend_proofs ) ||
@@ -1880,6 +1892,7 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 			return callback( "spend_proofs must be non-empty array max " + constants.MAX_SPEND_PROOFS_PER_MESSAGE + " elements" );
 		}
 
+		//	...
 		var arrAuthorAddresses = objUnit.authors.map
 		(
 			function( author )
@@ -2030,12 +2043,36 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 	}
 
 
+	//
 	//	...
+	//
 	function validatePayload( cb )
 	{
 		if ( objMessage.payload_location === "inline" )
 		{
-			validateInlinePayload( conn, objMessage, message_index, objUnit, objValidationState, cb );
+			//	PPP
+			profilerex.begin( "validation-validateMessages-validatePayload-validateInlinePayload" );
+
+			validateInlinePayload
+			(
+				conn,
+				objMessage,
+				message_index,
+				objUnit,
+				objValidationState,
+				function ()
+				{
+					//	PPP
+					profilerex.end( "validation-validateMessages-validatePayload-validateInlinePayload" );
+
+					//
+					//	TODO
+					//	the parameter 1 might be invalid
+					//	##########
+					//
+					cb.apply( this, arguments );
+				}
+			);
 		}
 		else
 		{
@@ -2093,6 +2130,9 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 		);
 	}
 
+	//	PPP
+	profilerex.begin( "validation-validateMessages-bottom-async.series" );
+
 	//	...
 	async.series
 	(
@@ -2100,19 +2140,38 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 			validateSpendProofs,
 			validatePayload
 		],
-		callback
+		function ()
+		{
+			//	PPP
+			profilerex.end( "validation-validateMessages-bottom-async.series" );
+
+			//
+			//	TODO
+			//	the parameter 1 might be invalid
+			//	##########
+			//
+			callback.apply( this, arguments );
+		}
 	);
 }
 
 
 function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidationState, onAcceptedDoublespends, cb )
 {
+	//	PPP
+	profilerex.begin( "validation-validateMessages-checkForDoublespends" );
+
+	//	...
 	conn.query
 	(
 		sql, 
 		arrSqlArgs,
 		function( rows )
 		{
+			//	PPP
+			profilerex.end( "validation-validateMessages-checkForDoublespends" );
+
+			//	...
 			if ( rows.length === 0 )
 			{
 				return cb();
@@ -2126,6 +2185,10 @@ function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 				}
 			);
 
+
+			//	PPP
+			profilerex.begin( "validation-validateMessages-checkForDoublespends-async.eachSeries" );
+
 			//	...
 			async.eachSeries
 			(
@@ -2137,6 +2200,9 @@ function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 						throw Error( "conflicting " + type + " spent from another address?" );
 					}
 
+					//	PPP
+					profilerex.begin( "validation-validateMessages-checkForDoublespends-async.eachSeries-graph.determineIfIncludedOrEqual" );
+
 					//	...
 					graph.determineIfIncludedOrEqual
 					(
@@ -2145,6 +2211,9 @@ function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 						objUnit.parent_units,
 						function( bIncluded )
 						{
+							//	PPP
+							profilerex.end( "validation-validateMessages-checkForDoublespends-async.eachSeries-graph.determineIfIncludedOrEqual" );
+
 							if ( bIncluded )
 							{
 								var error	= objUnit.unit + ": conflicting " + type + " in inner unit " + objConflictingRecord.unit;
@@ -2190,6 +2259,9 @@ function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 				},
 				function( err )
 				{
+					//	PPP
+					profilerex.end( "validation-validateMessages-checkForDoublespends-async.eachSeries" );
+
 					if ( err )
 					{
 						return cb( err );
