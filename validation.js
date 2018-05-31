@@ -1860,6 +1860,7 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
 
 
 /**
+ *	***
  *	the slowest function in whole project
  */
 function validateMessage( conn, objMessage, message_index, objUnit, objValidationState, callback )
