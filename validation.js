@@ -1827,6 +1827,8 @@ function validateAuthor( conn, objAuthor, objUnit, objValidationState, callback 
 	}
 }
 
+
+
 function validateMessages( conn, arrMessages, objUnit, objValidationState, callback )
 {
 	log.consoleLog( "validateMessages " + objUnit.unit );
@@ -1837,7 +1839,30 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
 		arrMessages, 
 		function( objMessage, message_index, cb )
 		{
-			validateMessage( conn, objMessage, message_index, objUnit, objValidationState, cb );
+			//	PPP
+			profilerex.begin( 'validation-validateMessages-validateMessage[' + String( arrMessages.length ) + ']->' + String( message_index ) );
+
+			//	...
+			validateMessage
+			(
+				conn,
+				objMessage,
+				message_index,
+				objUnit,
+				objValidationState,
+				function ()
+				{
+					//	PPP
+					profilerex.end( 'validation-validateMessages-validateMessage[' + String( arrMessages.length ) + ']->' + String( message_index ) );
+
+					//
+					//	TODO
+					//	the parameter 1 might be invalid
+					//	##########
+					//
+					cb.apply( this, arguments );
+				}
+			);
 		},
 		function( err )
 		{
@@ -2052,6 +2077,7 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 			//	PPP
 			profilerex.begin( "validation-validateMessages-validatePayload-validateInlinePayload" );
 
+			//	...
 			validateInlinePayload
 			(
 				conn,
