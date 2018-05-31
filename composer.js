@@ -37,24 +37,25 @@ var WITNESSING_INPUT_SIZE = 10		//	type: "witnessing"
 
 var ADDRESS_SIZE	= 32;
 
-
-//	256 bits (32 bytes) base64: 44 bytes
-var hash_placeholder	= "--------------------------------------------";
-
-//	88 bytes
-var sig_placeholder	= "----------------------------------------------------------------------------------------";
-
-
 var TYPICAL_FEE		= 1000;
 var MAX_FEE		= 20000;
 
 
+//	256 bits (32 bytes) base64: 44 bytes
+var m_sHashPlaceholder	= "--------------------------------------------";
+
+//	88 bytes
+var m_sSigPlaceholder	= "----------------------------------------------------------------------------------------";
+
+var m_bGenesis		= false;
 
 
-var bGenesis		= false;
-exports.setGenesis	= function( _bGenesis ){ bGenesis = _bGenesis; };
 
 
+function setGenesis( bGenesis )
+{
+	m_bGenesis = bGenesis;
+}
 
 
 function repeatString( str, times )
@@ -752,14 +753,14 @@ function composeJoint( params )
 	//	try to use as few paying_addresses as possible. Assuming paying_addresses are sorted such that the most well-funded addresses come first
 	if ( params.minimal && ! params.send_all )
 	{
-		var callbacks			= params.callbacks;
+		var oCallbackFunctions		= params.callbacks;
 		var arrCandidatePayingAddresses	= params.paying_addresses;
 
 		var trySubset = function( count )
 		{
 			if ( count > constants.MAX_AUTHORS_PER_UNIT )
 			{
-				return callbacks.ifNotEnoughFunds( "Too many authors.  Consider splitting the payment into two units." );
+				return oCallbackFunctions.ifNotEnoughFunds( "Too many authors.  Consider splitting the payment into two units." );
 			}
 
 			//	...
@@ -768,15 +769,15 @@ function composeJoint( params )
 
 			//	...
 			try_params.paying_addresses	= arrCandidatePayingAddresses.slice( 0, count );
-			try_params.callbacks		=
+			try_params.oCallbackFunctions	=
 				{
-					ifOk			: callbacks.ifOk,
-					ifError			: callbacks.ifError,
+					ifOk			: oCallbackFunctions.ifOk,
+					ifError			: oCallbackFunctions.ifError,
 					ifNotEnoughFunds	: function( error_message )
 					{
 						if ( count === arrCandidatePayingAddresses.length )
 						{
-							return callbacks.ifNotEnoughFunds( error_message );
+							return oCallbackFunctions.ifNotEnoughFunds( error_message );
 						}
 
 						//	add one more paying address
@@ -835,7 +836,7 @@ function composeJoint( params )
 		{
 			app			: "payment",
 			payload_location	: "inline",
-			payload_hash		: hash_placeholder,
+			payload_hash		: m_sHashPlaceholder,
 			payload			:
 				{
 					//
@@ -1006,7 +1007,7 @@ function composeJoint( params )
 			function( cb )
 			{
 				//	parent units
-				if ( bGenesis )
+				if ( m_bGenesis )
 				{
 					return cb();
 				}
@@ -1193,7 +1194,7 @@ function composeJoint( params )
 			function( cb )
 			{
 				//	witnesses
-				if ( bGenesis )
+				if ( m_bGenesis )
 				{
 					objUnit.witnesses = arrWitnesses;
 					return cb();
@@ -1291,7 +1292,7 @@ function composeJoint( params )
 				objUnit.headers_commission	= objectLength.getHeadersSize( objUnit );
 				var naked_payload_commission	= objectLength.getTotalPayloadSize( objUnit );	//	without input coins
 
-				if ( bGenesis )
+				if ( m_bGenesis )
 				{
 					var issueInput	=
 						{
@@ -1490,7 +1491,7 @@ function composeJoint( params )
 
 							//	...
 							objUnit.unit	= objectHash.getUnitHash( objUnit );
-							if ( bGenesis )
+							if ( m_bGenesis )
 							{
 								objJoint.ball	= objectHash.getBallHash( objUnit.unit );
 							}
@@ -2010,6 +2011,8 @@ function generateBlinding()
 /**
  *	exports
  */
+exports.setGenesis					= setGenesis;
+
 exports.composePaymentAndTextJoint			= composePaymentAndTextJoint;
 exports.composeTextJoint				= composeTextJoint;
 exports.composePaymentJoint				= composePaymentJoint;

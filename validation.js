@@ -1833,6 +1833,9 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
 {
 	log.consoleLog( "validateMessages " + objUnit.unit );
 
+	//	PPP
+	profilerex.begin( 'validation-validateMessages-async.forEachOfSeries' );
+
 	//	...
 	async.forEachOfSeries
 	(
@@ -1866,6 +1869,10 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
 		},
 		function( err )
 		{
+			//	PPP
+			profilerex.end( 'validation-validateMessages-async.forEachOfSeries' );
+
+			//	...
 			if ( err )
 			{
 				return callback( err );
