@@ -40,7 +40,7 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 		if ( objJoint_.unit.parent_units.length > _constants.MAX_PARENTS_PER_UNIT )
 		{
 			//	anti-spam
-			return callback_( "too many parents: " + objJoint_.unit.parent_units.length );
+			return _callback( "too many parents: " + objJoint_.unit.parent_units.length );
 		}
 
 		//
@@ -183,7 +183,7 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 	{
 		if ( err )
 		{
-			return callback_( err );
+			return _callback( err );
 		}
 
 		if ( m_arrMissingParentUnits.length > 0 )
@@ -197,11 +197,11 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 				function( rows )
 				{
 					( rows.length > 0 )
-						? callback_
+						? _callback
 						(
 							"some of the unit's parents are known bad: " + rows[ 0 ].error
 						)
-						: callback_
+						: _callback
 						(
 							{
 								error_code	: "unresolved_dependency",
@@ -255,7 +255,10 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 				if ( rows.length !== 1 )
 				{
 					//	at the same time, direct parents already received
-					return callback_( "last ball unit " + m_sLastBallUnit + " not found" );
+					return _callback
+					(
+						"last ball unit " + m_sLastBallUnit + " not found"
+					);
 				}
 
 				//	...
@@ -273,11 +276,17 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 				}
 				if ( objLastBallUnitProps.is_on_main_chain !== 1 )
 				{
-					return callback_( "last ball " + m_sLastBall + " is not on MC" );
+					return _callback
+					(
+						"last ball " + m_sLastBall + " is not on MC"
+					);
 				}
 				if ( objLastBallUnitProps.ball && objLastBallUnitProps.ball !== m_sLastBall )
 				{
-					return callback_( "last_ball " + m_sLastBall + " and last_ball_unit " + m_sLastBallUnit + " do not match" );
+					return _callback
+					(
+						"last_ball " + m_sLastBall + " and last_ball_unit " + m_sLastBallUnit + " do not match"
+					);
 				}
 
 				//	...
@@ -285,14 +294,20 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 				objValidationState_.max_known_mci	= objLastBallUnitProps.max_known_mci;
 				if ( objValidationState_.max_parent_limci < objValidationState_.last_ball_mci )
 				{
-					return callback_( "last ball unit " + m_sLastBallUnit + " is not included in parents, unit " + objJoint_.unit.unit );
+					return _callback
+					(
+						"last ball unit " + m_sLastBallUnit + " is not included in parents, unit " + objJoint_.unit.unit
+					);
 				}
 				if ( objLastBallUnitProps.is_stable === 1 )
 				{
 					//	if it were not stable, we wouldn't have had the ball at all
 					if ( objLastBallUnitProps.ball !== m_sLastBall )
 					{
-						return callback_( "stable: last_ball " + m_sLastBall + " and last_ball_unit " + m_sLastBallUnit + " do not match" );
+						return _callback
+						(
+							"stable: last_ball " + m_sLastBall + " and last_ball_unit " + m_sLastBallUnit + " do not match"
+						);
 					}
 					if ( objValidationState_.last_ball_mci <= 1300000 )
 					{
@@ -317,7 +332,7 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 						else */
 						if ( ! bStable )
 						{
-							return callback_
+							return _callback
 							(
 								objJoint_.unit.unit + ": last ball unit " + m_sLastBallUnit + " is not stable in view of your parents " + objJoint_.unit.parent_units
 							);
@@ -338,7 +353,7 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 								}
 								if ( ball_rows[ 0 ].ball !== m_sLastBall )
 								{
-									return callback_
+									return _callback
 									(
 										"last_ball " + m_sLastBall + " and last_ball_unit "
 										+ m_sLastBallUnit + " do not match after advancing stability point"
@@ -377,7 +392,10 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 			{
 				if ( rows.length > 0 )
 				{
-					return callback_( "some addresses found more than once in parents, e.g. " + rows[ 0 ].address );
+					return _callback
+					(
+						"some addresses found more than once in parents, e.g. " + rows[ 0 ].address
+					);
 				}
 
 				//	...
@@ -402,14 +420,40 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 
 				if ( max_parent_last_ball_mci > objValidationState_.last_ball_mci )
 				{
-					return callback_( "last ball mci must not retreat, parents: " + objJoint_.unit.parent_units.join( ', ' ) );
+					return _callback
+					(
+						"last ball mci must not retreat, parents: " + objJoint_.unit.parent_units.join( ', ' )
+					);
 				}
 
 				//	...
-				callback_();
+				_callback();
 			}
 		);
 	}
+
+	/**
+	 *	call back
+	 *
+	 *	@param	vError
+	 *	@returns {*}
+	 *	@private
+	 */
+	function _callback( vError )
+	{
+		if ( vError )
+		{
+			console.log( "CValidateParents::_callback", vError );
+		}
+		else
+		{
+			console.log( "CValidateParents::_callback - @successfully" );
+		}
+
+		//	...
+		return callback_.apply( this, arguments );
+	}
+
 
 
 	//
