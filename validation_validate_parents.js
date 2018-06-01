@@ -1,3 +1,6 @@
+/*jslint node: true */
+"use strict";
+
 var _				= require( 'lodash' );
 var _async			= require( 'async' );
 var _graph			= require( './graph.js' );
