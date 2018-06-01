@@ -358,14 +358,26 @@ function validate( objJoint, callbacks )
 						profilerex.begin( 'validation-validateMessages' );
 
 						//	...
+						profilerex.begin( 'validation-validateMessages-NO.2' );
+
+						//	...
 						objUnit.content_hash
-							? cb()
+							? function ()
+							{
+								profilerex.end( 'validation-validateMessages-NO.2' );
+								cb();
+							}()
 							: validateMessages
 							(
 								conn,
 								objUnit.messages,
 								objUnit,
-								objValidationState, cb
+								objValidationState,
+								function ()
+								{
+									profilerex.end( 'validation-validateMessages-NO.2' );
+									cb.apply( this, arguments );
+								}
 							);
 					}
 				],
@@ -375,6 +387,9 @@ function validate( objJoint, callbacks )
 
 					if ( err )
 					{
+						profilerex.begin( 'validation-ROLLBACK' );
+
+						//	...
 						conn.query
 						(
 							"ROLLBACK",
@@ -383,6 +398,10 @@ function validate( objJoint, callbacks )
 								conn.release();
 								unlock();
 
+								//	PPP
+								profilerex.end( 'validation-ROLLBACK' );
+
+								//	...
 								if ( typeof err === "object" )
 								{
 									if ( err.error_code === "unresolved_dependency" )
@@ -2126,7 +2145,7 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 		}
 
 		//	...
-		var arrEqs	= objMessage.spend_proofs.map
+		var arrEqs = objMessage.spend_proofs.map
 		(
 			function( objSpendProof )
 			{
@@ -2134,8 +2153,8 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 					+ " AND address=" +
 					conn.escape
 					(
-						objSpendProof.address ?
-							objSpendProof.address
+						objSpendProof.address
+							? objSpendProof.address
 							: objUnit.authors[ 0 ].address
 					);
 			}
