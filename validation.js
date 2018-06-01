@@ -3,6 +3,7 @@
 
 var _				= require( 'lodash' );
 var _async			= require( 'async' );
+var callee			= require( './callee' );
 var _log			= require( './log.js' );
 var _storage			= require( './storage.js' );
 var _graph			= require( './graph.js' );
@@ -30,7 +31,14 @@ function hasValidHashes( objJoint )
 	return ( _object_hash.getUnitHash( objJoint.unit ) === objJoint.unit.unit );
 }
 
-function validate( objJoint, callbacks )
+
+/**
+ *	validate
+ *	@param objJoint
+ *	@param callbacks
+ *	@returns {*|void}
+ */
+function CValidate( objJoint, callbacks )
 {
 	var objUnit = objJoint.unit;
 
@@ -48,20 +56,23 @@ function validate( objJoint, callbacks )
 
 	if ( ! _validation_utils.isStringOfLength( objUnit.unit, _constants.HASH_LENGTH ) )
 	{
-		return callbacks.ifJointError( "wrong unit length" );
+		return callee.callee( callbacks, 'ifJointError', 'wrong unit length' );
 	}
 
 	try
 	{
-		//	UnitError is linked to objUnit.unit, so we need to ensure objUnit.unit is true before we throw any UnitErrors
+		//
+		//	UnitError is linked to objUnit.unit,
+		//	so we need to ensure objUnit.unit is true before we throw any UnitErrors
+		//
 		if ( _object_hash.getUnitHash( objUnit ) !== objUnit.unit )
 		{
-			return callbacks.ifJointError( "wrong unit hash: " + _object_hash.getUnitHash( objUnit ) + " != " + objUnit.unit );
+			return callee.callee( callbacks, 'ifJointError', "wrong unit hash: " + _object_hash.getUnitHash( objUnit ) + " != " + objUnit.unit );
 		}
 	}
 	catch ( e )
 	{
-		return callbacks.ifJointError( "failed to calc unit hash: " + e );
+		return callee.callee( callbacks, 'ifJointError', "failed to calc unit hash: " + e );
 	}
 
 
@@ -69,34 +80,34 @@ function validate( objJoint, callbacks )
 	{
 		if ( _validation_utils.hasFieldsExcept( objJoint, [ "unit", "unsigned" ] ) )
 		{
-			return callbacks.ifJointError( "unknown fields in unsigned unit-joint" );
+			return callee.callee( callbacks, 'ifJointError', "unknown fields in unsigned unit-joint" );
 		}
 	}
 	else if ( "ball" in objJoint )
 	{
 		if ( ! _validation_utils.isStringOfLength( objJoint.ball, _constants.HASH_LENGTH ) )
 		{
-			return callbacks.ifJointError( "wrong ball length" );
+			return callee.callee( callbacks, 'ifJointError', "wrong ball length" );
 		}
 		if ( _validation_utils.hasFieldsExcept( objJoint, [ "unit", "ball", "skiplist_units" ] ) )
 		{
-			return callbacks.ifJointError( "unknown fields in ball-joint" );
+			return callee.callee( callbacks, 'ifJointError', "unknown fields in ball-joint" );
 		}
 		if ( "skiplist_units" in objJoint )
 		{
 			if ( ! _validation_utils.isNonemptyArray( objJoint.skiplist_units ) )
 			{
-				return callbacks.ifJointError( "missing or empty skiplist array" );
+				return callee.callee( callbacks, 'ifJointError', "missing or empty skiplist array" );
 			}
 			//if (objUnit.unit.charAt(0) !== "0")
-			//    return callbacks.ifJointError("found skiplist while unit doesn't start with 0");
+			//    return callee.callee( callbacks, 'ifJointError', "found skiplist while unit doesn't start with 0");
 		}
 	}
 	else
 	{
 		if ( _validation_utils.hasFieldsExcept( objJoint, [ "unit" ] ) )
 		{
-			return callbacks.ifJointError( "unknown fields in unit-joint" );
+			return callee.callee( callbacks, 'ifJointError', "unknown fields in unit-joint" );
 		}
 	}
 
@@ -106,15 +117,15 @@ function validate( objJoint, callbacks )
 		//	nonserial and stripped off content
 		if ( ! _validation_utils.isStringOfLength( objUnit.content_hash, _constants.HASH_LENGTH ) )
 		{
-			return callbacks.ifUnitError( "wrong content_hash length" );
+			return callee.callee( callbacks, 'ifUnitError', "wrong content_hash length" );
 		}
 		if ( _validation_utils.hasFieldsExcept( objUnit, [ "unit", "version", "alt", "timestamp", "authors", "witness_list_unit", "witnesses", "content_hash", "parent_units", "last_ball", "last_ball_unit" ] ) )
 		{
-			return callbacks.ifUnitError( "unknown fields in nonserial unit" );
+			return callee.callee( callbacks, 'ifUnitError', "unknown fields in nonserial unit" );
 		}
 		if ( ! objJoint.ball )
 		{
-			return callbacks.ifJointError( "content_hash allowed only in finished ball" );
+			return callee.callee( callbacks, 'ifJointError', "content_hash allowed only in finished ball" );
 		}
 	}
 	else
@@ -122,34 +133,36 @@ function validate( objJoint, callbacks )
 		//	serial
 		if ( _validation_utils.hasFieldsExcept( objUnit, [ "unit", "version", "alt", "timestamp", "authors", "messages", "witness_list_unit", "witnesses", "earned_headers_commission_recipients", "last_ball", "last_ball_unit", "parent_units", "headers_commission", "payload_commission" ] ) )
 		{
-			return callbacks.ifUnitError( "unknown fields in unit" );
+			return callee.callee( callbacks, 'ifUnitError', "unknown fields in unit" );
 		}
 		if ( typeof objUnit.headers_commission !== "number" )
 		{
-			return callbacks.ifJointError( "no headers_commission" );
+			return callee.callee( callbacks, 'ifJointError', "no headers_commission" );
 		}
 		if ( typeof objUnit.payload_commission !== "number" )
 		{
-			return callbacks.ifJointError( "no payload_commission" );
+			return callee.callee( callbacks, 'ifJointError', "no payload_commission" );
 		}
 
 		if ( ! _validation_utils.isNonemptyArray( objUnit.messages ) )
 		{
-			return callbacks.ifUnitError( "missing or empty messages array" );
+			return callee.callee( callbacks, 'ifUnitError', "missing or empty messages array" );
 		}
 		if ( objUnit.messages.length > _constants.MAX_MESSAGES_PER_UNIT )
 		{
-			return callbacks.ifUnitError( "too many messages" );
+			return callee.callee( callbacks, 'ifUnitError', "too many messages" );
 		}
 
 		if ( _object_length.getHeadersSize( objUnit ) !== objUnit.headers_commission )
 		{
-			return callbacks.ifJointError( "wrong headers commission, expected " + _object_length.getHeadersSize( objUnit ) );
+			return callee.callee( callbacks, 'ifJointError', "wrong headers commission, expected " + _object_length.getHeadersSize( objUnit ) );
 		}
 		if ( _object_length.getTotalPayloadSize( objUnit ) !== objUnit.payload_commission )
 		{
-			return callbacks.ifJointError
+			return callee.callee
 			(
+				callbacks,
+				'ifJointError',
 				"wrong payload commission, unit "
 				+ objUnit.unit
 				+ ", calculated "
@@ -162,39 +175,76 @@ function validate( objJoint, callbacks )
 
 	if ( ! _validation_utils.isNonemptyArray( objUnit.authors ) )
 	{
-		return callbacks.ifUnitError( "missing or empty authors array" );
+		return callee.callee( callbacks, 'ifUnitError', "missing or empty authors array" );
 	}
 	if ( objUnit.version !== _constants.version )
 	{
-		return callbacks.ifUnitError( "wrong version" );
+		return callee.callee( callbacks, 'ifUnitError', "wrong version" );
 	}
 	if ( objUnit.alt !== _constants.alt )
 	{
-		return callbacks.ifUnitError( "wrong alt" );
+		return callee.callee( callbacks, 'ifUnitError', "wrong alt" );
 	}
 
 	if ( ! _storage.isGenesisUnit( objUnit.unit ) )
 	{
 		if ( ! _validation_utils.isNonemptyArray( objUnit.parent_units ) )
 		{
-			return callbacks.ifUnitError( "missing or empty parent units array" );
+			return callee.callee( callbacks, 'ifUnitError', "missing or empty parent units array" );
 		}
 		if ( ! _validation_utils.isStringOfLength( objUnit.last_ball, _constants.HASH_LENGTH ) )
 		{
-			return callbacks.ifUnitError( "wrong length of last ball" );
+			return callee.callee( callbacks, 'ifUnitError', "wrong length of last ball" );
 		}
 		if ( ! _validation_utils.isStringOfLength( objUnit.last_ball_unit, _constants.HASH_LENGTH ) )
 		{
-			return callbacks.ifUnitError( "wrong length of last ball unit" );
+			return callee.callee( callbacks, 'ifUnitError', "wrong length of last ball unit" );
 		}
 	}
 
-	if ( "witness_list_unit" in objUnit && "witnesses" in objUnit )
+	if ( "witness_list_unit" in objUnit &&
+		"witnesses" in objUnit )
 	{
-		return callbacks.ifUnitError( "ambiguous witnesses" );
+		return callee.callee( callbacks, 'ifUnitError', "ambiguous witnesses" );
 	}
 
+	if ( _conf.bLight )
+	{
+		if ( ! _validation_utils.isPositiveInteger( objUnit.timestamp ) && ! objJoint.unsigned )
+		{
+			return callee.callee( callbacks, 'ifJointError', "bad timestamp" );
+		}
+		if ( objJoint.ball )
+		{
+			return callee.callee( callbacks, 'ifJointError', "I'm light, can't accept stable unit " + objUnit.unit + " without proof" );
+		}
+
+		return objJoint.unsigned 
+			? callee.callee( callbacks, 'ifOkUnsigned', true )
+			: callee.callee
+			(
+				callbacks,
+				'ifOk',
+				{
+					sequence		: 'good',
+					arrDoubleSpendInputs	: [],
+					arrAdditionalQueries	: []
+				},
+				function(){}
+			);
+	}
+	else
+	{
+		if ( "timestamp" in objUnit && ! _validation_utils.isPositiveInteger( objUnit.timestamp ) )
+		{
+			return callee.callee( callbacks, 'ifJointError', "bad timestamp" );
+		}
+	}
+
+
+	//
 	//	...
+	//
 	var arrAuthorAddresses = objUnit.authors
 		? objUnit.authors.map
 		(
@@ -202,7 +252,8 @@ function validate( objJoint, callbacks )
 			{
 				return author.address;
 			}
-		) : [];
+		)
+		: [];
 
 	var objValidationState =
 		{
@@ -213,29 +264,6 @@ function validate( objJoint, callbacks )
 	if ( objJoint.unsigned )
 	{
 		objValidationState.bUnsigned	= true;
-	}
-
-	if ( _conf.bLight )
-	{
-		if ( ! _validation_utils.isPositiveInteger( objUnit.timestamp ) && ! objJoint.unsigned )
-		{
-			return callbacks.ifJointError( "bad timestamp" );
-		}
-		if ( objJoint.ball )
-		{
-			return callbacks.ifJointError( "I'm light, can't accept stable unit " + objUnit.unit + " without proof" );
-		}
-
-		return objJoint.unsigned 
-			? callbacks.ifOkUnsigned( true )
-			: callbacks.ifOk( { sequence : 'good', arrDoubleSpendInputs : [], arrAdditionalQueries : [] }, function(){} );
-	}
-	else
-	{
-		if ( "timestamp" in objUnit && ! _validation_utils.isPositiveInteger( objUnit.timestamp ) )
-		{
-			return callbacks.ifJointError( "bad timestamp" );
-		}
 	}
 
 	//	...
@@ -265,12 +293,14 @@ function validate( objJoint, callbacks )
 								//	PPP
 								_profiler_ex.begin( 'validation-BEGIN' );
 
+								//	...
 								conn = new_conn;
 								conn.query
 								(
 									"BEGIN",
 									function()
 									{
+										_profiler_ex.end( 'validation-BEGIN' );
 										cb();
 									}
 								);
@@ -279,7 +309,6 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-BEGIN' );
 						_profiler_ex.begin( 'validation-checkDuplicate' );
 
 						checkDuplicate( conn, objUnit.unit, cb );
@@ -390,21 +419,21 @@ function validate( objJoint, callbacks )
 								{
 									if ( err.error_code === "unresolved_dependency" )
 									{
-										callbacks.ifNeedParentUnits( err.arrMissingUnits );
+										callee.callee( callbacks, 'ifNeedParentUnits', err.arrMissingUnits );
 									}
 									else if ( err.error_code === "need_hash_tree" )
 									{
 										//	need to download hash tree to catch up
-										callbacks.ifNeedHashTree();
+										callee.callee( callbacks, 'ifNeedHashTree' );
 									}
 									else if ( err.error_code === "invalid_joint" )
 									{
 										//	ball found in hash tree but with another unit
-										callbacks.ifJointError( err.message );
+										callee.callee( callbacks, 'ifJointError', err.message );
 									}
 									else if ( err.error_code === "transient" )
 									{
-										callbacks.ifTransientError( err.message );
+										callee.callee( callbacks, 'ifTransientError', err.message );
 									}
 									else
 									{
@@ -413,7 +442,7 @@ function validate( objJoint, callbacks )
 								}
 								else
 								{
-									callbacks.ifUnitError( err );
+									callee.callee( callbacks, 'ifUnitError', err );
 								}
 							}
 						);
@@ -435,11 +464,11 @@ function validate( objJoint, callbacks )
 								if ( objJoint.unsigned )
 								{
 									unlock();
-									callbacks.ifOkUnsigned( objValidationState.sequence === 'good' );
+									callee.callee( callbacks, 'ifOkUnsigned', objValidationState.sequence === 'good' );
 								}
 								else
 								{
-									callbacks.ifOk( objValidationState, unlock );
+									callee.callee( callbacks, 'ifOk', objValidationState, unlock );
 								}
 							}
 						);
@@ -449,6 +478,14 @@ function validate( objJoint, callbacks )
 		}
 	);
 }
+
+function validate( objJoint, callbacks )
+{
+	var objValidate;
+
+	objValidate	= new CValidate( objJoint, callbacks );
+}
+
 
 
 
@@ -2614,7 +2651,7 @@ function validateInlinePayload( conn, objMessage, message_index, objUnit, objVal
 
 			//	...
 			objValidationState.assocHasAssetAttestors[ payload.asset ] = true;
-			validateAssetorListUpdate
+			validateAssertorListUpdate
 			(
 				conn,
 				payload,
@@ -2688,28 +2725,43 @@ function validatePayment( conn, payload, message_index, objUnit, objValidationSt
 		function( err, objAsset )
 		{
 			if ( err )
+			{
 				return callback( err );
+			}
 
 			if ( _validation_utils.hasFieldsExcept( payload, [ "inputs", "outputs", "asset", "denomination" ] ) )
+			{
 				return callback( "unknown fields in payment message" );
+			}
 			if ( ! _validation_utils.isNonemptyArray( payload.inputs ) )
+			{
 				return callback( "no inputs" );
+			}
 			if ( ! _validation_utils.isNonemptyArray( payload.outputs ) )
+			{
 				return callback( "no outputs" );
+			}
 			if ( objAsset.fixed_denominations )
 			{
 				if ( ! _validation_utils.isPositiveInteger( payload.denomination ) )
+				{
 					return callback( "no denomination" );
+				}
 			}
 			else
 			{
 				if ( "denomination" in payload )
-					return callback( "denomination in arbitrary-amounts asset" )
+				{
+					return callback( "denomination in arbitrary-amounts asset" );
+				}
 			}
 
 			if ( !! objAsset.is_private !== !! objValidationState.bPrivate )
+			{
 				return callback( "asset privacy mismatch" );
+			}
 
+			//	...
 			var bIssue	= ( payload.inputs[ 0 ].type === "issue" );
 			var issuer_address;
 
@@ -2777,6 +2829,7 @@ function validatePayment( conn, payload, message_index, objUnit, objValidationSt
 	);
 }
 
+
 /**
  *	divisible assets (including base asset)
  */
@@ -2832,15 +2885,18 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 			{
 				return callback( "output_hash must be present with fixed denominations only" );
 			}
-			if ( "output_hash" in output && ! _validation_utils.isStringOfLength( output.output_hash, _constants.HASH_LENGTH ) )
+			if ( "output_hash" in output &&
+				! _validation_utils.isStringOfLength( output.output_hash, _constants.HASH_LENGTH ) )
 			{
 				return callback( "invalid output hash" );
 			}
-			if ( ! objAsset.fixed_denominations && ! ( ( "blinding" in output ) && ( "address" in output ) ) )
+			if ( ! objAsset.fixed_denominations &&
+				! ( ( "blinding" in output ) && ( "address" in output ) ) )
 			{
 				return callback( "no blinding or address" );
 			}
-			if ( "blinding" in output && ! _validation_utils.isStringOfLength( output.blinding, 16 ) )
+			if ( "blinding" in output &&
+				! _validation_utils.isStringOfLength( output.blinding, 16 ) )
 			{
 				return callback( "bad blinding" );
 			}
@@ -2848,7 +2904,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 			{
 				return callback( "address and bilinding must come together" );
 			}
-			if ( "address" in output && ! _validation_utils.isValidAddressAnyCase( output.address ) )
+			if ( "address" in output &&
+				! _validation_utils.isValidAddressAnyCase( output.address ) )
 			{
 				return callback( "output address " + output.address + " invalid" );
 			}
@@ -2875,7 +2932,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 			{
 				return callback( "output addresses not sorted" );
 			}
-			else if ( prev_address === output.address && prev_amount > output.amount )
+			else if ( prev_address === output.address &&
+				prev_amount > output.amount )
 			{
 				return callback( "output amounts for same address not sorted" );
 			}
@@ -2885,7 +2943,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 			prev_amount	= output.amount;
 		}
 
-		if ( output.address && arrOutputAddresses.indexOf( output.address ) === -1 )
+		if ( output.address &&
+			arrOutputAddresses.indexOf( output.address ) === -1 )
 		{
 			arrOutputAddresses.push( output.address );
 		}
@@ -2894,7 +2953,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 		total_output += output.amount;
 	}
 
-	if ( objAsset && objAsset.is_private && count_open_outputs !== 1 )
+	if ( objAsset && objAsset.is_private &&
+		count_open_outputs !== 1 )
 	{
 		return callback( "found " + count_open_outputs + " open outputs, expected 1" );
 	}
@@ -2980,7 +3040,6 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 			}
 
 			var type		= input.type || "transfer";
-
 			var doubleSpendFields	= "unit, address, message_index, input_index, main_chain_index, sequence, is_stable";
 			var doubleSpendWhere;
 			var doubleSpendVars	= [];
@@ -3154,7 +3213,9 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 					arrInputAddresses = [ address ];
 					if ( objAsset )
 					{
-						if ( objAsset.cap && ! objAsset.fixed_denominations && input.amount !== objAsset.cap )
+						if ( objAsset.cap &&
+							! objAsset.fixed_denominations &&
+							input.amount !== objAsset.cap )
 						{
 							return cb( "issue must be equal to cap" );
 						}
@@ -3230,7 +3291,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 				case "transfer":
 					//	if (objAsset)
 					//		profiler2.start();
-					if ( bHaveHeadersComissions || bHaveWitnessings )
+					if ( bHaveHeadersComissions ||
+						bHaveWitnessings )
 					{
 						return cb( "all transfers must come before hc and witnessings" );
 					}
@@ -3271,7 +3333,9 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 					//	because we validate the entire chain before saving anything.
 					//	Instead we prepopulate objValidationState with denomination and src_output
 					//
-					if ( objAsset && objAsset.is_private && objAsset.fixed_denominations )
+					if ( objAsset &&
+						objAsset.is_private &&
+						objAsset.fixed_denominations )
 					{
 						if ( ! objValidationState.src_coin )
 						{
@@ -3301,11 +3365,13 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 						{
 							return cb( "private denomination mismatch" );
 						}
-						if ( objAsset.auto_destroy && owner_address === objAsset.definer_address )
+						if ( objAsset.auto_destroy &&
+							owner_address === objAsset.definer_address )
 						{
 							return cb( "this output was destroyed by sending to definer address" );
 						}
-						if ( objAsset.spender_attested && objAsset.arrAttestedAddresses.indexOf( owner_address ) === -1 )
+						if ( objAsset.spender_attested &&
+							objAsset.arrAttestedAddresses.indexOf( owner_address ) === -1 )
 						{
 							return cb( "owner address is not attested" );
 						}
@@ -3314,7 +3380,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 							arrInputAddresses.push( owner_address );
 						}
 
-						total_input	+= src_coin.amount;
+						//	...
+						total_input += src_coin.amount;
 						_log.consoleLog( "-- val state " + JSON.stringify( objValidationState ) );
 						//	if (objAsset)
 						//		profiler2.stop('validate transfer');
@@ -3365,7 +3432,8 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 							}
 							if ( objValidationState.last_ball_mci < _constants.spendUnconfirmedUpgradeMci )
 							{
-								if ( ! objAsset || ! objAsset.is_private )
+								if ( ! objAsset ||
+									! objAsset.is_private )
 								{
 									//	for public payments, you can't spend unconfirmed transactions
 									if ( src_output.main_chain_index > objValidationState.last_ball_mci ||
@@ -3645,14 +3713,16 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 						function( cb )
 						{
 							if ( ! objAsset.spender_attested )
+							{
 								return cb();
+							}
 
 							//	...
 							_storage.filterAttestedAddresses
 							(
 								conn,
 								objAsset,
-								lobjValidationState.last_ball_mci,
+								objValidationState.last_ball_mci,
 								arrOutputAddresses,
 								function( arrAttestedOutputAddresses )
 								{
@@ -3692,7 +3762,9 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 										return cb( cond_err );
 									}
 									if ( ! bSatisfiesCondition )
+									{
 										return cb( "transfer or issue condition not satisfied" );
+									}
 
 									//	...
 									_log.consoleLog( "validatePaymentInputsAndOutputs with transfer/issue conditions done" );
@@ -3784,6 +3856,8 @@ function initPrivatePaymentValidationState( conn, unit, message_index, payload, 
 				{
 					unit	: unit
 				};
+
+			//	...
 			_storage.readUnitAuthors
 			(
 				conn,
@@ -4002,7 +4076,7 @@ function validateAssetDefinition( conn, payload, objUnit, objValidationState, ca
 	);
 }
 
-function validateAssetorListUpdate( conn, payload, objUnit, objValidationState, callback )
+function validateAssertorListUpdate( conn, payload, objUnit, objValidationState, callback )
 {
 	if ( objUnit.authors.length !== 1 )
 	{
