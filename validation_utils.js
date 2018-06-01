@@ -5,6 +5,29 @@ var log		= require( './log.js' );
 var chash	= require( './chash.js' );
 
 
+
+
+/**
+ *	A problem is with the joint rather than with the unit.
+ *	That is, the field that has an issue is not covered by unit hash.
+ */
+function createJointError( err )
+{
+	return {
+		error_code	: "invalid_joint",
+		message		: err
+	};
+}
+
+function createTransientError( err )
+{
+	return {
+		error_code	: "transient",
+		message		: err
+	};
+}
+
+
 /**
  *	True if there is at least one field in obj that is not in arrFields.
  */
@@ -123,6 +146,8 @@ function isValidEmail( str )
 /**
  *	exports
  */
+exports.createJointError	= createJointError;
+exports.createTransientError	= createTransientError;
 exports.hasFieldsExcept		= hasFieldsExcept;
 
 exports.isNonemptyString	= isNonemptyString;

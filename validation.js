@@ -21,11 +21,19 @@ var _definition			= require( './definition.js' );
 var _conf			= require( './conf.js' );
 var _profiler_ex		= require( './profilerex.js' );
 var _breadcrumbs		= require( './breadcrumbs.js' );
-var _validation_utils		= require( './validation_utils.js' );
+
+var _validation_utils			= require( './validation_utils.js' );
+var _validation_validate_parents	= require( './validation_validate_parents.js' );
 
 
 
 
+/**
+ *	@public
+ *
+ *	@param objJoint
+ *	@returns {boolean}
+ */
 function hasValidHashes( objJoint )
 {
 	return ( _object_hash.getUnitHash( objJoint.unit ) === objJoint.unit.unit );
@@ -33,12 +41,14 @@ function hasValidHashes( objJoint )
 
 
 /**
+ *	@public
  *	validate
+ *
  *	@param objJoint
  *	@param callbacks
  *	@returns {*|void}
  */
-function CValidate( objJoint, callbacks )
+function validate( objJoint, callbacks )
 {
 	var objUnit = objJoint.unit;
 
@@ -287,10 +297,7 @@ function CValidate( objJoint, callbacks )
 						(
 							function( new_conn )
 							{
-								//	PPP
 								_profiler_ex.end( 'validation-takeConnectionFromPool' );
-
-								//	PPP
 								_profiler_ex.begin( 'validation-BEGIN' );
 
 								//	...
@@ -311,7 +318,7 @@ function CValidate( objJoint, callbacks )
 					{
 						_profiler_ex.begin( 'validation-checkDuplicate' );
 
-						checkDuplicate( conn, objUnit.unit, cb );
+						_checkDuplicate( conn, objUnit.unit, cb );
 					},
 					function( cb )
 					{
@@ -320,7 +327,7 @@ function CValidate( objJoint, callbacks )
 
 						objUnit.content_hash
 							? cb()
-							: validateHeadersCommissionRecipients(objUnit, cb);
+							: _validateHeadersCommissionRecipients(objUnit, cb);
 					},
 					function( cb )
 					{
@@ -329,7 +336,7 @@ function CValidate( objJoint, callbacks )
 
 						! objUnit.parent_units
 							? cb()
-							: validateHashTree( conn, objJoint, objValidationState, cb );
+							: _validateHashTree( conn, objJoint, objValidationState, cb );
 					},
 					function( cb )
 					{
@@ -338,7 +345,7 @@ function CValidate( objJoint, callbacks )
 
 						! objUnit.parent_units
 							? cb()
-							: validateParents( conn, objJoint, objValidationState, cb );
+							: _validateParents( conn, objJoint, objValidationState, cb );
 					},
 					function( cb )
 					{
@@ -347,7 +354,7 @@ function CValidate( objJoint, callbacks )
 
 						! objJoint.skiplist_units
 							? cb()
-							: validateSkiplist( conn, objJoint.skiplist_units, cb );
+							: _validateSkipList( conn, objJoint.skiplist_units, cb );
 					},
 					function( cb )
 					{
@@ -355,7 +362,7 @@ function CValidate( objJoint, callbacks )
 						_profiler_ex.begin( 'validation-validateWitnesses' );
 
 						//	...
-						validateWitnesses( conn, objUnit, objValidationState, cb );
+						_validateWitnesses( conn, objUnit, objValidationState, cb );
 					},
 					function( cb )
 					{
@@ -363,7 +370,7 @@ function CValidate( objJoint, callbacks )
 						_profiler_ex.begin( 'validation-validateAuthors' );
 
 						//	...
-						validateAuthors( conn, objUnit.authors, objUnit, objValidationState, cb );
+						_validateAuthors( conn, objUnit.authors, objUnit, objValidationState, cb );
 					},
 					function( cb )
 					{
@@ -380,7 +387,7 @@ function CValidate( objJoint, callbacks )
 								_profiler_ex.end( 'validation-validateMessages-NO.2' );
 								cb();
 							}()
-							: validateMessages
+							: _validateMessages
 							(
 								conn,
 								objUnit.messages,
@@ -479,11 +486,434 @@ function CValidate( objJoint, callbacks )
 	);
 }
 
-function validate( objJoint, callbacks )
+/**
+ *	@public
+ *
+ *	used for both public and private payments
+ */
+function validatePayment( conn, payload, message_index, objUnit, objValidationState, callback )
 {
-	var objValidate;
+	if ( ! ( "asset" in payload ) )
+	{
+		//	base currency
+		if ( _validation_utils.hasFieldsExcept( payload, [ "inputs", "outputs" ] ) )
+		{
+			return callback( "unknown fields in payment message" );
+		}
+		if ( objValidationState.bHasBasePayment )
+		{
+			return callback( "can have only one base payment" );
+		}
 
-	objValidate	= new CValidate( objJoint, callbacks );
+		//	...
+		objValidationState.bHasBasePayment = true;
+		return _validatePaymentInputsAndOutputs( conn, payload, null, message_index, objUnit, objValidationState, callback );
+	}
+
+	//	asset
+	if ( ! _validation_utils.isStringOfLength( payload.asset, _constants.HASH_LENGTH ) )
+	{
+		return callback( "invalid asset" );
+	}
+
+	//	...
+	var arrAuthorAddresses = objUnit.authors.map
+	(
+		function( author )
+		{
+			return author.address;
+		}
+	);
+
+	//	note that light clients cannot check attestations
+	_storage.loadAssetWithListOfAttestedAuthors
+	(
+		conn,
+		payload.asset,
+		objValidationState.last_ball_mci,
+		arrAuthorAddresses,
+		function( err, objAsset )
+		{
+			if ( err )
+			{
+				return callback( err );
+			}
+
+			if ( _validation_utils.hasFieldsExcept( payload, [ "inputs", "outputs", "asset", "denomination" ] ) )
+			{
+				return callback( "unknown fields in payment message" );
+			}
+			if ( ! _validation_utils.isNonemptyArray( payload.inputs ) )
+			{
+				return callback( "no inputs" );
+			}
+			if ( ! _validation_utils.isNonemptyArray( payload.outputs ) )
+			{
+				return callback( "no outputs" );
+			}
+			if ( objAsset.fixed_denominations )
+			{
+				if ( ! _validation_utils.isPositiveInteger( payload.denomination ) )
+				{
+					return callback( "no denomination" );
+				}
+			}
+			else
+			{
+				if ( "denomination" in payload )
+				{
+					return callback( "denomination in arbitrary-amounts asset" );
+				}
+			}
+
+			if ( !! objAsset.is_private !== !! objValidationState.bPrivate )
+			{
+				return callback( "asset privacy mismatch" );
+			}
+
+			//	...
+			var bIssue	= ( payload.inputs[ 0 ].type === "issue" );
+			var issuer_address;
+
+			if ( bIssue )
+			{
+				if ( arrAuthorAddresses.length === 1 )
+				{
+					issuer_address	= arrAuthorAddresses[ 0 ];
+				}
+				else
+				{
+					issuer_address	= payload.inputs[ 0 ].address;
+					if ( arrAuthorAddresses.indexOf( issuer_address ) === -1 )
+					{
+						return callback( "issuer not among authors" );
+					}
+				}
+
+				if ( objAsset.issued_by_definer_only && issuer_address !== objAsset.definer_address )
+				{
+					return callback( "only definer can issue this asset" );
+				}
+			}
+
+			if ( objAsset.cosigned_by_definer && arrAuthorAddresses.indexOf( objAsset.definer_address ) === -1 )
+			{
+				return callback( "must be cosigned by definer" );
+			}
+
+			if ( objAsset.spender_attested )
+			{
+				if ( _conf.bLight && objAsset.is_private )
+				{
+					//
+					//	in light clients,
+					//	we don't have the attestation data but if the asset is public,
+					// 	we trust witnesses to have checked attestations
+					//
+					//	TODO:
+					//	request history
+					return callback( "being light, I can't check attestations for private assets" );
+				}
+				if ( objAsset.arrAttestedAddresses.length === 0 )
+				{
+					return callback( "none of the authors is attested" );
+				}
+				if ( bIssue && objAsset.arrAttestedAddresses.indexOf( issuer_address ) === -1 )
+				{
+					return callback( "issuer is not attested" );
+				}
+			}
+
+			//	...
+			_validatePaymentInputsAndOutputs
+			(
+				conn,
+				payload,
+				objAsset,
+				message_index,
+				objUnit,
+				objValidationState,
+				callback
+			);
+		}
+	);
+}
+
+
+/**
+ *	@public
+ *
+ *	@param conn
+ *	@param unit
+ *	@param message_index
+ *	@param payload
+ *	@param onError
+ *	@param onDone
+ */
+function initPrivatePaymentValidationState( conn, unit, message_index, payload, onError, onDone )
+{
+	//	...
+	conn.query
+	(
+		"SELECT payload_hash, app, units.sequence, units.is_stable, lb_units.main_chain_index AS last_ball_mci \n\
+		FROM messages JOIN units USING(unit) \n\
+		LEFT JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
+		WHERE messages.unit=? AND message_index=?",
+		[
+			unit,
+			message_index
+		],
+		function( rows )
+		{
+			if ( rows.length > 1 )
+			{
+				throw Error( "more than 1 message by index" );
+			}
+			if ( rows.length === 0 )
+			{
+				return onError( "message not found" );
+			}
+
+			//	...
+			var row	= rows[ 0 ];
+
+			if ( row.sequence !== "good" && row.is_stable === 1 )
+			{
+				return onError( "unit is final nonserial" );
+			}
+
+			//	it's ok if the unit is not stable yet
+			var bStable	= ( row.is_stable === 1 );
+			if ( row.app !== "payment" )
+			{
+				return onError( "invalid app" );
+			}
+			if ( _object_hash.getBase64Hash( payload ) !== row.payload_hash )
+			{
+				return onError( "payload hash does not match" );
+			}
+
+			var objValidationState =
+				{
+					last_ball_mci		: row.last_ball_mci,
+					arrDoubleSpendInputs	: [],
+					arrInputKeys		: [],
+					bPrivate		: true
+				};
+			var objPartialUnit =
+				{
+					unit	: unit
+				};
+
+			//	...
+			_storage.readUnitAuthors
+			(
+				conn,
+				unit,
+				function( arrAuthors )
+				{
+					//	array of objects {address: address}
+					objPartialUnit.authors = arrAuthors.map
+					(
+						function( address )
+						{
+							return { address: address };
+						}
+					);
+
+					//	we need parent_units in _checkForDoubleSpends in case it is a doublespend
+					conn.query
+					(
+						"SELECT parent_unit FROM parenthoods WHERE child_unit=? ORDER BY parent_unit",
+						[
+							unit
+						],
+						function( prows )
+						{
+							objPartialUnit.parent_units = prows.map
+							(
+								function( prow )
+								{
+									return prow.parent_unit;
+								}
+							);
+
+							//	...
+							onDone( bStable, objPartialUnit, objValidationState );
+						}
+					);
+				}
+			);
+		}
+	);
+}
+
+/**
+ *	@public
+ *
+ *	@param objAuthor
+ *	@param objUnit
+ *	@param arrAddressDefinition
+ *	@param callback
+ */
+function validateAuthorSignaturesWithoutReferences( objAuthor, objUnit, arrAddressDefinition, callback )
+{
+	var objValidationState =
+		{
+			unit_hash_to_sign: _object_hash.getUnitHashToSign(objUnit),
+			last_ball_mci: -1,
+			bNoReferences: true
+		};
+
+	_definition.validateAuthentifiers
+	(
+		null,
+		objAuthor.address,
+		null,
+		arrAddressDefinition,
+		objUnit,
+		objValidationState,
+		objAuthor.authentifiers,
+		function( err, res )
+		{
+			if ( err )
+			{
+				//	error in address definition
+				return callback( err );
+			}
+			if ( ! res )
+			{
+				//	wrong signature or the like
+				return callback( "authentifier verification failed" );
+			}
+
+			//	...
+			callback();
+		}
+	);
+}
+
+
+/**
+ *	@public
+ *
+ *	@param objSignedMessage
+ *	@param handleResult
+ *	@returns {*}
+ */
+function validateSignedMessage( objSignedMessage, handleResult )
+{
+	if ( typeof objSignedMessage !== 'object' )
+	{
+		return handleResult( "not an object" );
+	}
+	if ( _validation_utils.hasFieldsExcept( objSignedMessage, [ "signed_message", "authors" ] ) )
+	{
+		return handleResult( "unknown fields" );
+	}
+	if ( typeof objSignedMessage.signed_message !== 'string' )
+	{
+		return handleResult( "signed message not a string" );
+	}
+	if ( ! Array.isArray( objSignedMessage.authors ) )
+	{
+		return handleResult( "authors not an array" );
+	}
+	if ( ! _validation_utils.isArrayOfLength( objSignedMessage.authors, 1 ) )
+	{
+		return handleResult( "authors not an array of len 1" );
+	}
+
+	var objAuthor = objSignedMessage.authors[ 0 ];
+	if ( ! objAuthor )
+	{
+		return handleResult( "no authors[0]" );
+	}
+	if ( ! _validation_utils.isValidAddress( objAuthor.address ) )
+	{
+		return handleResult( "not valid address" );
+	}
+	if ( typeof objAuthor.authentifiers !== 'object' )
+	{
+		return handleResult( "not valid authentifiers" );
+	}
+
+	//	...
+	var arrAddressDefinition	= objAuthor.definition;
+	if ( _object_hash.getChash160( arrAddressDefinition ) !== objAuthor.address )
+	{
+		return handleResult( "wrong definition: " + _object_hash.getChash160( arrAddressDefinition ) + "!==" + objAuthor.address );
+	}
+
+	//	...
+	var objUnit		= _.clone( objSignedMessage );
+	objUnit.messages	= [];	//	some ops need it
+	var objValidationState	=
+		{
+			unit_hash_to_sign	: _object_hash.getUnitHashToSign( objSignedMessage ),
+			last_ball_mci		: -1,
+			bNoReferences		: true
+		};
+
+	//	passing _db as null
+	_definition.validateAuthentifiers
+	(
+		null,
+		objAuthor.address,
+		null,
+		arrAddressDefinition,
+		objUnit,
+		objValidationState,
+		objAuthor.authentifiers,
+		function( err, res )
+		{
+			if ( err )
+			{
+				//	error in address definition
+				return handleResult( err );
+			}
+			if ( ! res )
+			{
+				//	wrong signature or the like
+				return handleResult( "authentifier verification failed" );
+			}
+
+			//	...
+			handleResult();
+		}
+	);
+}
+
+/**
+ *	@public
+ *
+ * 	inconsistent for multisig addresses
+ *	@param objSignedMessage
+ *	@returns {*}
+ */
+function validateSignedMessageSync( objSignedMessage )
+{
+	var err;
+	var bCalledBack = false;
+
+	//	...
+	validateSignedMessage
+	(
+		objSignedMessage,
+		function( _err )
+		{
+			err = _err;
+			bCalledBack = true;
+		}
+	);
+
+	if ( ! bCalledBack )
+	{
+		throw Error( "validateSignedMessage is not sync" );
+	}
+
+	//	...
+	return err;
 }
 
 
@@ -491,10 +921,15 @@ function validate( objJoint, callbacks )
 
 
 
-//  ----------------    
 
 
-function checkDuplicate( conn, unit, cb )
+
+//	--------------------------------------------------------------------------------
+//	Private
+//	--------------------------------------------------------------------------------
+
+
+function _checkDuplicate( conn, unit, cb )
 {
 	conn.query
 	(
@@ -514,7 +949,7 @@ function checkDuplicate( conn, unit, cb )
 	);
 }
 
-function validateHashTree( conn, objJoint, objValidationState, callback )
+function _validateHashTree( conn, objJoint, objValidationState, callback )
 {
 	if ( ! objJoint.ball )
 	{
@@ -546,7 +981,7 @@ function validateHashTree( conn, objJoint, objValidationState, callback )
 			{
 				return callback
 				(
-					createJointError( "ball " + objJoint.ball + " unit " + objUnit.unit + " contradicts hash tree" )
+					_validation_utils.createJointError( "ball " + objJoint.ball + " unit " + objUnit.unit + " contradicts hash tree" )
 				);
 			}
 
@@ -568,7 +1003,7 @@ function validateHashTree( conn, objJoint, objValidationState, callback )
 						//	while the child is found in hash tree
 						return callback
 						(
-							createJointError( "some parents not found in balls nor in hash tree" )
+							_validation_utils.createJointError( "some parents not found in balls nor in hash tree" )
 						);
 					}
 
@@ -601,7 +1036,7 @@ function validateHashTree( conn, objJoint, objValidationState, callback )
 							{
 								return callback
 								(
-									createJointError( "some skiplist balls not found" )
+									_validation_utils.createJointError( "some skiplist balls not found" )
 								);
 							}
 
@@ -631,7 +1066,7 @@ function validateHashTree( conn, objJoint, objValidationState, callback )
 
 						if ( hash !== objJoint.ball )
 						{
-							return callback( createJointError( "ball hash is wrong" ) );
+							return callback( _validation_utils.createJointError( "ball hash is wrong" ) );
 						}
 
 						//	...
@@ -647,7 +1082,7 @@ function validateHashTree( conn, objJoint, objValidationState, callback )
  *	we cannot verify that skiplist units lie on MC if they are unstable yet,
  *	but if they don't, we'll get unmatching ball hash when the current unit reaches stability
  */
-function validateSkiplist( conn, arrSkiplistUnits, callback )
+function _validateSkipList( conn, arrSkiplistUnits, callback )
 {
 	var prev = "";
 
@@ -661,7 +1096,7 @@ function validateSkiplist( conn, arrSkiplistUnits, callback )
 			//		return cb("skiplist unit doesn't start with 0");
 			if ( skiplist_unit <= prev )
 			{
-				return cb( createJointError( "skiplist units not ordered" ) );
+				return cb( _validation_utils.createJointError( "skiplist units not ordered" ) );
 			}
 
 			//	...
@@ -707,347 +1142,19 @@ function validateSkiplist( conn, arrSkiplistUnits, callback )
 }
 
 
-function validateParents( conn, objJoint, objValidationState, callback )
+function _validateParents( conn, objJoint, objValidationState, callback )
 {
-	//	avoid merging the obvious nonserials
-	function checkNoSameAddressInDifferentParents()
-	{
-		if ( objUnit.parent_units.length === 1 )
-		{
-			return checkLastBallDidNotRetreat();
-		}
-
-		//	...
-		conn.query
-		(
-			"SELECT address, COUNT(*) AS c FROM unit_authors WHERE unit IN(?) GROUP BY address HAVING c>1",
-			[
-				objUnit.parent_units
-			],
-			function( rows )
-			{
-				if ( rows.length > 0 )
-				{
-					return callback( "some addresses found more than once in parents, e.g. " + rows[ 0 ].address );
-				}
-
-				//	...
-				return checkLastBallDidNotRetreat();
-			}
-		);
-	}
-
-	function checkLastBallDidNotRetreat()
-	{
-		conn.query
-		(
-			"SELECT MAX(lb_units.main_chain_index) AS max_parent_last_ball_mci \n\
-			FROM units JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
-			WHERE units.unit IN(?)",
-			[
-				objUnit.parent_units
-			],
-			function( rows )
-			{
-				var max_parent_last_ball_mci	= rows[ 0 ].max_parent_last_ball_mci;
-
-				if ( max_parent_last_ball_mci > objValidationState.last_ball_mci )
-				{
-					return callback( "last ball mci must not retreat, parents: " + objUnit.parent_units.join( ', ' ) );
-				}
-
-				//	...
-				callback();
-			}
-		);
-	}
-
-	//
-	//	...
-	//
-	var objUnit	= objJoint.unit;
-	if ( objUnit.parent_units.length > _constants.MAX_PARENTS_PER_UNIT )
-	{
-		//	anti-spam
-		return callback( "too many parents: " + objUnit.parent_units.length );
-	}
-
-	//
-	//	obsolete: when handling a ball, we can't trust parent list before we verify ball hash
-	//	obsolete: when handling a fresh unit, we can begin trusting parent list earlier, after we verify parents_hash
-	//
-	var createError	= objJoint.ball
-		?
-		createJointError
-		: function( err )
-		{
-			return err;
-		};
-
-	//
-	//	after this point, we can trust parent list as it either agrees with parents_hash or agrees with hash tree
-	//	hence, there are no more joint errors, except unordered parents or skiplist units
-	//
-	var last_ball			= objUnit.last_ball;
-	var last_ball_unit		= objUnit.last_ball_unit;
-	var prev			= "";
-	var arrMissingParentUnits	= [];
-	var arrPrevParentUnitProps	= [];
-
-	objValidationState.max_parent_limci	= 0;
-	var join	= objJoint.ball ? 'LEFT JOIN balls USING(unit) LEFT JOIN hash_tree_balls ON units.unit=hash_tree_balls.unit' : '';
-	var field	= objJoint.ball ? ', IFNULL(balls.ball, hash_tree_balls.ball) AS ball' : '';
-
-	//	...
-	_async.eachSeries
+	return ( new _validation_validate_parents.CValidateParents
 	(
-		objUnit.parent_units, 
-		function( parent_unit, cb )
-		{
-			if ( parent_unit <= prev )
-			{
-				return cb( createError( "parent units not ordered" ) );
-			}
-
-			//	...
-			prev	= parent_unit;
-
-			//	...
-			conn.query
-			(
-				"SELECT units.*" + field + " FROM units " + join + " WHERE units.unit=?",
-				[
-					parent_unit
-				],
-				function( rows )
-				{
-					if ( rows.length === 0 )
-					{
-						arrMissingParentUnits.push( parent_unit );
-						return cb();
-					}
-
-					var objParentUnitProps	= rows[0];
-
-					//	already checked in validateHashTree that the parent ball is known, that's why we throw
-					if ( objJoint.ball && objParentUnitProps.ball === null )
-					{
-						throw Error( "no ball corresponding to parent unit " + parent_unit );
-					}
-					if ( objParentUnitProps.latest_included_mc_index > objValidationState.max_parent_limci )
-					{
-						objValidationState.max_parent_limci = objParentUnitProps.latest_included_mc_index;
-					}
-
-					//	...
-					_async.eachSeries
-					(
-						arrPrevParentUnitProps,
-						function( objPrevParentUnitProps, cb2 )
-						{
-							_graph.compareUnitsByProps
-							(
-								conn,
-								objPrevParentUnitProps,
-								objParentUnitProps,
-								function( result )
-								{
-									( result === null )
-										?
-										cb2()
-										: cb2( "parent unit " + parent_unit + " is related to one of the other parent units" );
-								}
-							);
-						},
-						function( err )
-						{
-							if ( err )
-							{
-								return cb( err );
-							}
-
-							//	...
-							arrPrevParentUnitProps.push( objParentUnitProps );
-							cb();
-						}
-					);
-				}
-			);
-		}, 
-		function( err )
-		{
-			if ( err )
-			{
-				return callback( err );
-			}
-
-			if ( arrMissingParentUnits.length > 0 )
-			{
-				conn.query
-				(
-					"SELECT error FROM known_bad_joints WHERE unit IN(?)",
-					[
-						arrMissingParentUnits
-					],
-					function( rows )
-					{
-						( rows.length > 0 )
-							? callback
-							(
-								"some of the unit's parents are known bad: " + rows[ 0 ].error
-							)
-							: callback
-							(
-								{
-									error_code	: "unresolved_dependency",
-									arrMissingUnits	: arrMissingParentUnits
-								}
-							);
-					}
-				);
-				return;
-			}
-
-			//	this is redundant check, already checked in validateHashTree()
-			if ( objJoint.ball )
-			{
-				var arrParentBalls = arrPrevParentUnitProps.map
-				(
-					function( objParentUnitProps )
-					{
-						return objParentUnitProps.ball;
-					}
-				).sort();
-				//if (arrParentBalls.indexOf(null) === -1){
-				var hash = _object_hash.getBallHash
-				(
-					objUnit.unit,
-					arrParentBalls,
-					objValidationState.arrSkiplistBalls,
-					!! objUnit.content_hash
-				);
-				if ( hash !== objJoint.ball )
-				{
-					//	shouldn't happen, already validated in validateHashTree()
-					throw Error( "ball hash is wrong" );
-				}
-				//}
-			}
-
-			//	...
-			conn.query
-			(
-				"SELECT is_stable, is_on_main_chain, main_chain_index, ball, (SELECT MAX(main_chain_index) FROM units) AS max_known_mci \n\
-				FROM units LEFT JOIN balls USING(unit) WHERE unit=?", 
-				[
-					last_ball_unit
-				],
-				function( rows )
-				{
-					if ( rows.length !== 1 )
-					{
-						//	at the same time, direct parents already received
-						return callback( "last ball unit " + last_ball_unit + " not found" );
-					}
-
-					var objLastBallUnitProps	= rows[ 0 ];
-
-					//
-					//	it can be unstable and have a received (not self-derived) ball
-					//	if (objLastBallUnitProps.ball !== null && objLastBallUnitProps.is_stable === 0)
-					//		throw "last ball "+last_ball+" is unstable";
-					//
-					if ( objLastBallUnitProps.ball === null &&
-						objLastBallUnitProps.is_stable === 1 )
-					{
-						throw Error( "last ball unit " + last_ball_unit + " is stable but has no ball" );
-					}
-					if ( objLastBallUnitProps.is_on_main_chain !== 1 )
-					{
-						return callback( "last ball " + last_ball + " is not on MC" );
-					}
-					if ( objLastBallUnitProps.ball && objLastBallUnitProps.ball !== last_ball )
-					{
-						return callback( "last_ball " + last_ball + " and last_ball_unit " + last_ball_unit + " do not match" );
-					}
-
-					//	...
-					objValidationState.last_ball_mci	= objLastBallUnitProps.main_chain_index;
-					objValidationState.max_known_mci	= objLastBallUnitProps.max_known_mci;
-					if ( objValidationState.max_parent_limci < objValidationState.last_ball_mci )
-					{
-						return callback( "last ball unit " + last_ball_unit + " is not included in parents, unit " + objUnit.unit );
-					}
-					if ( objLastBallUnitProps.is_stable === 1 )
-					{
-						//	if it were not stable, we wouldn't have had the ball at all
-						if ( objLastBallUnitProps.ball !== last_ball )
-						{
-							return callback( "stable: last_ball " + last_ball + " and last_ball_unit " + last_ball_unit + " do not match" );
-						}
-						if ( objValidationState.last_ball_mci <= 1300000 )
-						{
-							return checkNoSameAddressInDifferentParents();
-						}
-					}
-
-					//	Last ball is not stable yet in our view. Check if it is stable in view of the parents
-					_main_chain.determineIfStableInLaterUnitsAndUpdateStableMcFlag
-					(
-						conn,
-						last_ball_unit,
-						objUnit.parent_units,
-						objLastBallUnitProps.is_stable,
-						function( bStable )
-						{
-							/*if (!bStable && objLastBallUnitProps.is_stable === 1){
-								var eventBus = require('./event_bus.js');
-								eventBus.emit('nonfatal_error', "last ball is stable, but not stable in parents, unit "+objUnit.unit, new Error());
-								return checkNoSameAddressInDifferentParents();
-							}
-							else */
-							if ( ! bStable )
-							{
-								return callback
-								(
-									objUnit.unit + ": last ball unit " + last_ball_unit + " is not stable in view of your parents " + objUnit.parent_units
-								);
-							}
-
-							//	...
-							conn.query
-							(
-								"SELECT ball FROM balls WHERE unit=?",
-								[
-									last_ball_unit
-								],
-								function( ball_rows )
-								{
-									if ( ball_rows.length === 0 )
-										throw Error( "last ball unit " + last_ball_unit + " just became stable but ball not found" );
-
-									if ( ball_rows[ 0 ].ball !== last_ball )
-									{
-										return callback
-										(
-											"last_ball " + last_ball + " and last_ball_unit "
-											+ last_ball_unit + " do not match after advancing stability point"
-										);
-									}
-
-									//	...
-									checkNoSameAddressInDifferentParents();
-								}
-							);
-						}
-					);
-				}
-			);
-		}
-	);
+		conn,
+		objJoint,
+		objValidationState,
+		callback
+	) ).handle();
 }
 
-function validateWitnesses( conn, objUnit, objValidationState, callback )
+
+function _validateWitnesses( conn, objUnit, objValidationState, callback )
 {
 	function validateWitnessListMutations( arrWitnesses )
 	{
@@ -1157,7 +1264,6 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 			}
 		);
 	}
-
 
 
 	//	...
@@ -1284,7 +1390,7 @@ function validateWitnesses( conn, objUnit, objValidationState, callback )
 	}
 }
 
-function validateHeadersCommissionRecipients( objUnit, cb )
+function _validateHeadersCommissionRecipients( objUnit, cb )
 {
 	if ( objUnit.authors.length > 1 && typeof objUnit.earned_headers_commission_recipients !== "object" )
 	{
@@ -1338,7 +1444,7 @@ function validateHeadersCommissionRecipients( objUnit, cb )
 	cb();
 }
 
-function validateAuthors( conn, arrAuthors, objUnit, objValidationState, callback )
+function _validateAuthors( conn, arrAuthors, objUnit, objValidationState, callback )
 {
 	if ( arrAuthors.length > _constants.MAX_AUTHORS_PER_UNIT )
 	{
@@ -1372,13 +1478,13 @@ function validateAuthors( conn, arrAuthors, objUnit, objValidationState, callbac
 		arrAuthors,
 		function( objAuthor, cb )
 		{
-			validateAuthor( conn, objAuthor, objUnit, objValidationState, cb );
+			_validateAuthor( conn, objAuthor, objUnit, objValidationState, cb );
 		},
 		callback
 	);
 }
 
-function validateAuthor( conn, objAuthor, objUnit, objValidationState, callback )
+function _validateAuthor( conn, objAuthor, objUnit, objValidationState, callback )
 {
 	if ( ! _validation_utils.isStringOfLength( objAuthor.address, 32 ) )
 	{
@@ -1869,7 +1975,8 @@ function validateAuthor( conn, objAuthor, objUnit, objValidationState, callback 
 
 
 
-function validateMessages( conn, arrMessages, objUnit, objValidationState, callback )
+
+function _validateMessages( conn, arrMessages, objUnit, objValidationState, callback )
 {
 	_log.consoleLog( "validateMessages " + objUnit.unit );
 
@@ -1886,7 +1993,7 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
 			_profiler_ex.begin( 'validation-validateMessages-validateMessage[' + String( arrMessages.length ) + ']->' + String( message_index ) );
 
 			//	...
-			validateMessage
+			_validateMessage
 			(
 				conn,
 				objMessage,
@@ -1933,7 +2040,7 @@ function validateMessages( conn, arrMessages, objUnit, objValidationState, callb
  *	***
  *	the slowest function in whole project
  */
-function validateMessage( conn, objMessage, message_index, objUnit, objValidationState, callback )
+function _validateMessage( conn, objMessage, message_index, objUnit, objValidationState, callback )
 {
 	if ( typeof objMessage.app !== "string" )
 	{
@@ -2125,7 +2232,7 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 			_profiler_ex.begin( "validation-validateMessages-validatePayload-validateInlinePayload" );
 
 			//	...
-			validateInlinePayload
+			_validateInlinePayload
 			(
 				conn,
 				objMessage,
@@ -2182,7 +2289,7 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 		);
 
 		//	...
-		checkForDoublespends
+		_checkForDoubleSpends
 		(
 			conn,
 			"spend proof",
@@ -2228,7 +2335,7 @@ function validateMessage( conn, objMessage, message_index, objUnit, objValidatio
 }
 
 
-function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidationState, onAcceptedDoublespends, cb )
+function _checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidationState, onAcceptedDoublespends, cb )
 {
 	//	PPP
 	_profiler_ex.begin( "validation-validateMessages-checkForDoublespends" );
@@ -2350,7 +2457,7 @@ function checkForDoublespends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 	);
 }
 
-function validateInlinePayload( conn, objMessage, message_index, objUnit, objValidationState, callback )
+function _validateInlinePayload( conn, objMessage, message_index, objUnit, objValidationState, callback )
 {
 	var payload = objMessage.payload;
 
@@ -2636,7 +2743,7 @@ function validateInlinePayload( conn, objMessage, message_index, objUnit, objVal
 
 			//	...
 			objValidationState.bHasAssetDefinition = true;
-			validateAssetDefinition( conn, payload, objUnit, objValidationState, callback );
+			_validateAssetDefinition( conn, payload, objUnit, objValidationState, callback );
 			break;
 
 		case "asset_attestors":
@@ -2651,7 +2758,7 @@ function validateInlinePayload( conn, objMessage, message_index, objUnit, objVal
 
 			//	...
 			objValidationState.assocHasAssetAttestors[ payload.asset ] = true;
-			validateAssertorListUpdate
+			_validateAssertorListUpdate
 			(
 				conn,
 				payload,
@@ -2678,162 +2785,11 @@ function validateInlinePayload( conn, objMessage, message_index, objUnit, objVal
 	}
 }
 
-/**
- *	used for both public and private payments
- */
-function validatePayment( conn, payload, message_index, objUnit, objValidationState, callback )
-{
-	if ( ! ( "asset" in payload ) )
-	{
-		//	base currency
-		if ( _validation_utils.hasFieldsExcept( payload, [ "inputs", "outputs" ] ) )
-		{
-			return callback( "unknown fields in payment message" );
-		}
-		if ( objValidationState.bHasBasePayment )
-		{
-			return callback( "can have only one base payment" );
-		}
-
-		//	...
-		objValidationState.bHasBasePayment = true;
-		return validatePaymentInputsAndOutputs( conn, payload, null, message_index, objUnit, objValidationState, callback );
-	}
-
-	//	asset
-	if ( ! _validation_utils.isStringOfLength( payload.asset, _constants.HASH_LENGTH ) )
-	{
-		return callback( "invalid asset" );
-	}
-
-	//	...
-	var arrAuthorAddresses = objUnit.authors.map
-	(
-		function( author )
-		{
-			return author.address;
-		}
-	);
-
-	//	note that light clients cannot check attestations
-	_storage.loadAssetWithListOfAttestedAuthors
-	(
-		conn,
-		payload.asset,
-		objValidationState.last_ball_mci,
-		arrAuthorAddresses,
-		function( err, objAsset )
-		{
-			if ( err )
-			{
-				return callback( err );
-			}
-
-			if ( _validation_utils.hasFieldsExcept( payload, [ "inputs", "outputs", "asset", "denomination" ] ) )
-			{
-				return callback( "unknown fields in payment message" );
-			}
-			if ( ! _validation_utils.isNonemptyArray( payload.inputs ) )
-			{
-				return callback( "no inputs" );
-			}
-			if ( ! _validation_utils.isNonemptyArray( payload.outputs ) )
-			{
-				return callback( "no outputs" );
-			}
-			if ( objAsset.fixed_denominations )
-			{
-				if ( ! _validation_utils.isPositiveInteger( payload.denomination ) )
-				{
-					return callback( "no denomination" );
-				}
-			}
-			else
-			{
-				if ( "denomination" in payload )
-				{
-					return callback( "denomination in arbitrary-amounts asset" );
-				}
-			}
-
-			if ( !! objAsset.is_private !== !! objValidationState.bPrivate )
-			{
-				return callback( "asset privacy mismatch" );
-			}
-
-			//	...
-			var bIssue	= ( payload.inputs[ 0 ].type === "issue" );
-			var issuer_address;
-
-			if ( bIssue )
-			{
-				if ( arrAuthorAddresses.length === 1 )
-				{
-					issuer_address	= arrAuthorAddresses[ 0 ];
-				}
-				else
-				{
-					issuer_address	= payload.inputs[ 0 ].address;
-					if ( arrAuthorAddresses.indexOf( issuer_address ) === -1 )
-					{
-						return callback( "issuer not among authors" );
-					}
-				}
-
-				if ( objAsset.issued_by_definer_only && issuer_address !== objAsset.definer_address )
-				{
-					return callback( "only definer can issue this asset" );
-				}
-			}
-
-			if ( objAsset.cosigned_by_definer && arrAuthorAddresses.indexOf( objAsset.definer_address ) === -1 )
-			{
-				return callback( "must be cosigned by definer" );
-			}
-
-			if ( objAsset.spender_attested )
-			{
-				if ( _conf.bLight && objAsset.is_private )
-				{
-					//
-					//	in light clients,
-					//	we don't have the attestation data but if the asset is public,
-					// 	we trust witnesses to have checked attestations
-					//
-					//	TODO:
-					//	request history
-					return callback( "being light, I can't check attestations for private assets" );
-				}
-				if ( objAsset.arrAttestedAddresses.length === 0 )
-				{
-					return callback( "none of the authors is attested" );
-				}
-				if ( bIssue && objAsset.arrAttestedAddresses.indexOf( issuer_address ) === -1 )
-				{
-					return callback( "issuer is not attested" );
-				}
-			}
-
-			//	...
-			validatePaymentInputsAndOutputs
-			(
-				conn,
-				payload,
-				objAsset,
-				message_index,
-				objUnit,
-				objValidationState,
-				callback
-			);
-		}
-	);
-}
-
 
 /**
  *	divisible assets (including base asset)
  */
-function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index, objUnit, objValidationState, callback )
+function _validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index, objUnit, objValidationState, callback )
 {
 //	if (objAsset)
 //		profiler2.start();
@@ -3062,7 +3018,7 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 
 				//	...
 				var doubleSpendQuery	= "SELECT " + doubleSpendFields + " FROM inputs JOIN units USING(unit) WHERE " + doubleSpendWhere;
-				checkForDoublespends
+				_checkForDoubleSpends
 				(
 					conn,
 					"divisible input",
@@ -3422,7 +3378,7 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 							}
 
 							//if (src_output.is_stable !== 1) // we allow immediate spends, that's why the error is transient
-							//    return cb(createTransientError("input unit is not on stable MC yet, unit "+objUnit.unit+", input "+input.unit));
+							//    return cb(_validation_utils.createTransientError("input unit is not on stable MC yet, unit "+objUnit.unit+", input "+input.unit));
 
 							if ( src_output.main_chain_index !== null &&
 								src_output.main_chain_index <= objValidationState.last_ball_mci &&
@@ -3767,7 +3723,7 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 									}
 
 									//	...
-									_log.consoleLog( "validatePaymentInputsAndOutputs with transfer/issue conditions done" );
+									_log.consoleLog( "_validatePaymentInputsAndOutputs with transfer/issue conditions done" );
 
 									//	...
 									cb();
@@ -3793,7 +3749,7 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 				callback();
 			}
 
-			//	_log.consoleLog("validatePaymentInputsAndOutputs done");
+			//	_log.consoleLog("_validatePaymentInputsAndOutputs done");
 			//	if (objAsset)
 			//		profiler2.stop('validate IO');
 			//	callback();
@@ -3802,106 +3758,9 @@ function validatePaymentInputsAndOutputs( conn, payload, objAsset, message_index
 }
 
 
-function initPrivatePaymentValidationState( conn, unit, message_index, payload, onError, onDone )
-{
-	//	...
-	conn.query
-	(
-		"SELECT payload_hash, app, units.sequence, units.is_stable, lb_units.main_chain_index AS last_ball_mci \n\
-		FROM messages JOIN units USING(unit) \n\
-		LEFT JOIN units AS lb_units ON units.last_ball_unit=lb_units.unit \n\
-		WHERE messages.unit=? AND message_index=?", 
-		[
-			unit,
-			message_index
-		],
-		function( rows )
-		{
-			if ( rows.length > 1 )
-			{
-				throw Error( "more than 1 message by index" );
-			}
-			if ( rows.length === 0 )
-			{
-				return onError( "message not found" );
-			}
-
-			//	...
-			var row	= rows[ 0 ];
-
-			if ( row.sequence !== "good" && row.is_stable === 1 )
-			{
-				return onError( "unit is final nonserial" );
-			}
-
-			//	it's ok if the unit is not stable yet
-			var bStable	= ( row.is_stable === 1 );
-			if ( row.app !== "payment" )
-			{
-				return onError( "invalid app" );
-			}
-			if ( _object_hash.getBase64Hash( payload ) !== row.payload_hash )
-			{
-				return onError( "payload hash does not match" );
-			}
-
-			var objValidationState =
-				{
-					last_ball_mci		: row.last_ball_mci,
-					arrDoubleSpendInputs	: [],
-					arrInputKeys		: [],
-					bPrivate		: true
-				};
-			var objPartialUnit =
-				{
-					unit	: unit
-				};
-
-			//	...
-			_storage.readUnitAuthors
-			(
-				conn,
-				unit,
-				function( arrAuthors )
-				{
-					//	array of objects {address: address}
-					objPartialUnit.authors = arrAuthors.map
-					(
-						function( address )
-						{
-							return { address: address };
-						}
-					);
-
-					//	we need parent_units in checkForDoublespends in case it is a doublespend
-					conn.query
-					(
-						"SELECT parent_unit FROM parenthoods WHERE child_unit=? ORDER BY parent_unit",
-						[
-							unit
-						],
-						function( prows )
-						{
-							objPartialUnit.parent_units = prows.map
-							(
-								function( prow )
-								{
-									return prow.parent_unit;
-								}
-							);
-
-							//	...
-							onDone( bStable, objPartialUnit, objValidationState );
-						}
-					);
-				}
-			);
-		}
-	);
-}
 
 
-function validateAssetDefinition( conn, payload, objUnit, objValidationState, callback )
+function _validateAssetDefinition( conn, payload, objUnit, objValidationState, callback )
 {
 	if ( objUnit.authors.length !== 1 )
 	{
@@ -3931,7 +3790,7 @@ function validateAssetDefinition( conn, payload, objUnit, objValidationState, ca
 
 	//	attestors
 	var err;
-	if ( payload.spender_attested && ( err = checkAttestorList( payload.attestors ) ) )
+	if ( payload.spender_attested && ( err = _checkAttestorList( payload.attestors ) ) )
 	{
 		return callback( err );
 	}
@@ -4076,7 +3935,7 @@ function validateAssetDefinition( conn, payload, objUnit, objValidationState, ca
 	);
 }
 
-function validateAssertorListUpdate( conn, payload, objUnit, objValidationState, callback )
+function _validateAssertorListUpdate( conn, payload, objUnit, objValidationState, callback )
 {
 	if ( objUnit.authors.length !== 1 )
 	{
@@ -4109,7 +3968,7 @@ function validateAssertorListUpdate( conn, payload, objUnit, objValidationState,
 			}
 
 			//	...
-			err = checkAttestorList( payload.attestors );
+			err = _checkAttestorList( payload.attestors );
 			if ( err )
 			{
 				return callback( err );
@@ -4121,7 +3980,7 @@ function validateAssertorListUpdate( conn, payload, objUnit, objValidationState,
 	);
 }
 
-function checkAttestorList( arrAttestors )
+function _checkAttestorList( arrAttestors )
 {
 	if ( ! _validation_utils.isNonemptyArray( arrAttestors ) )
 	{
@@ -4153,174 +4012,6 @@ function checkAttestorList( arrAttestors )
 	return null;
 }
 
-
-function validateAuthorSignaturesWithoutReferences( objAuthor, objUnit, arrAddressDefinition, callback )
-{
-	var objValidationState =
-	{
-		unit_hash_to_sign: _object_hash.getUnitHashToSign(objUnit),
-		last_ball_mci: -1,
-		bNoReferences: true
-	};
-
-	_definition.validateAuthentifiers
-	(
-		null,
-		objAuthor.address,
-		null,
-		arrAddressDefinition,
-		objUnit,
-		objValidationState,
-		objAuthor.authentifiers,
-		function( err, res )
-		{
-			if ( err )
-			{
-				//	error in address definition
-				return callback( err );
-			}
-			if ( ! res )
-			{
-				//	wrong signature or the like
-				return callback( "authentifier verification failed" );
-			}
-
-			//	...
-			callback();
-		}
-	);
-}
-
-
-function createTransientError( err )
-{
-	return {
-		error_code	: "transient",
-		message		: err
-	};
-}
-
-
-/**
- *	A problem is with the joint rather than with the unit. That is, the field that has an issue is not covered by unit hash.
- */
-function createJointError( err )
-{
-	return {
-		error_code	: "invalid_joint",
-		message		: err
-	};
-}
-
-
-function validateSignedMessage( objSignedMessage, handleResult )
-{
-	if ( typeof objSignedMessage !== 'object' )
-	{
-		return handleResult( "not an object" );
-	}
-	if ( _validation_utils.hasFieldsExcept( objSignedMessage, [ "signed_message", "authors" ] ) )
-	{
-		return handleResult( "unknown fields" );
-	}
-	if ( typeof objSignedMessage.signed_message !== 'string' )
-	{
-		return handleResult( "signed message not a string" );
-	}
-	if ( ! Array.isArray( objSignedMessage.authors ) )
-	{
-		return handleResult( "authors not an array" );
-	}
-	if ( ! _validation_utils.isArrayOfLength( objSignedMessage.authors, 1 ) )
-	{
-		return handleResult( "authors not an array of len 1" );
-	}
-
-	var objAuthor = objSignedMessage.authors[ 0 ];
-	if ( ! objAuthor )
-	{
-		return handleResult( "no authors[0]" );
-	}
-	if ( ! _validation_utils.isValidAddress( objAuthor.address ) )
-	{
-		return handleResult( "not valid address" );
-	}
-	if ( typeof objAuthor.authentifiers !== 'object' )
-	{
-		return handleResult( "not valid authentifiers" );
-	}
-
-	//	...
-	var arrAddressDefinition	= objAuthor.definition;
-	if ( _object_hash.getChash160( arrAddressDefinition ) !== objAuthor.address )
-	{
-		return handleResult( "wrong definition: " + _object_hash.getChash160( arrAddressDefinition ) + "!==" + objAuthor.address );
-	}
-
-	//	...
-	var objUnit		= _.clone( objSignedMessage );
-	objUnit.messages	= [];	//	some ops need it
-	var objValidationState	=
-		{
-			unit_hash_to_sign	: _object_hash.getUnitHashToSign( objSignedMessage ),
-			last_ball_mci		: -1,
-			bNoReferences		: true
-		};
-
-	//	passing _db as null
-	_definition.validateAuthentifiers
-	(
-		null,
-		objAuthor.address,
-		null,
-		arrAddressDefinition,
-		objUnit,
-		objValidationState,
-		objAuthor.authentifiers,
-		function( err, res )
-		{
-			if ( err )
-			{
-				//	error in address definition
-				return handleResult( err );
-			}
-			if ( ! res )
-			{
-				//	wrong signature or the like
-				return handleResult( "authentifier verification failed" );
-			}
-
-			//	...
-			handleResult();
-		}
-	);
-}
-
-// inconsistent for multisig addresses
-function validateSignedMessageSync( objSignedMessage )
-{
-	var err;
-	var bCalledBack = false;
-
-	//	...
-	validateSignedMessage
-	(
-		objSignedMessage,
-		function( _err )
-		{
-			err = _err;
-			bCalledBack = true;
-		}
-	);
-
-	if ( ! bCalledBack )
-	{
-		throw Error( "validateSignedMessage is not sync" );
-	}
-
-	//	...
-	return err;
-}
 
 
 
