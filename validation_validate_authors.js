@@ -49,7 +49,7 @@ function CValidateAuthors( conn_, arrAuthors_, objUnit_, objValidationState_, ca
 			//	this is anti-spam.
 			//	Otherwise an attacker would send nonserial balls signed by zillions of authors.
 			//
-			return callback_( "too many authors" );
+			return _callback( "too many authors" );
 		}
 
 		for ( i = 0; i < arrAuthors_.length; i++ )
@@ -57,7 +57,7 @@ function CValidateAuthors( conn_, arrAuthors_, objUnit_, objValidationState_, ca
 			objAuthor	= arrAuthors_[ i ];
 			if ( objAuthor.address <= m_sPrevAddress )
 			{
-				return callback_( "author addresses not sorted" );
+				return _callback( "author addresses not sorted" );
 			}
 
 			//	...
@@ -80,7 +80,7 @@ function CValidateAuthors( conn_, arrAuthors_, objUnit_, objValidationState_, ca
 			{
 				_validateAuthor( objAuthorItem, pfnCallback );
 			},
-			callback_
+			_callback
 		);
 	};
 
@@ -626,6 +626,29 @@ function CValidateAuthors( conn_, arrAuthors_, objUnit_, objValidationState_, ca
 		//
 		callback();
 	}
+
+	/**
+	 *	call back
+	 *
+	 *	@param	vError
+	 *	@returns {*}
+	 *	@private
+	 */
+	function _callback( vError )
+	{
+		if ( vError )
+		{
+			console.log( "CValidateAuthors::_callback", vError );
+		}
+		else
+		{
+			console.log( "CValidateAuthors::_callback - @successfully" );
+		}
+
+		//	...
+		return callback_.apply( this, arguments );
+	}
+
 
 
 
