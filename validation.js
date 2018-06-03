@@ -25,6 +25,7 @@ var _breadcrumbs		= require( './breadcrumbs.js' );
 var _validation_utils			= require( './validation_utils.js' );
 var _validation_validate_parents	= require( './validation_validate_parents.js' );
 var _validation_validate_witnesses	= require( './validation_validate_witnesses.js' );
+var _validation_validate_authors	= require( './validation_validate_authors.js' );
 
 
 
@@ -1226,11 +1227,17 @@ function _validateHeadersCommissionRecipients( objUnit, cb )
 }
 
 
-
-
 function _validateAuthors( conn, arrAuthors, objUnit, objValidationState, callback )
 {
-	//	###########
+	return ( new _validation_validate_authors.CValidateAuthors
+	(
+		conn,
+		arrAuthors,
+		objUnit,
+		objValidationState,
+		callback
+
+	) ).handle();
 }
 
 
