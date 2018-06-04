@@ -147,6 +147,7 @@ function getSummary()
 {
 	var arrDataList;
 	var nTotalTimeUsed;
+	var nTotalTimeUnitProcess;
 	var nTotalExecutedCount;
 	var nAverageNormalQps;
 	var nAverageUnitProcessQps;
@@ -177,10 +178,19 @@ function getSummary()
 	}
 
 	//	...
+	nTotalTimeUnitProcess	= 0;
+
 	if ( nTotalTimeUsed > 0 )
 	{
 		nAverageNormalQps	= ( ( nTotalExecutedCount * 1000 ) / nTotalTimeUsed ).toFixed( 2 );
-		nAverageUnitProcessQps	= ( ( m_nProcessedUnitCount * 1000 ) / nTotalTimeUsed ).toFixed( 2 );
+
+		//
+		//	...
+		//
+		nTotalTimeUnitProcess	+= m_oData.hasOwnProperty( '#updateMainChain' ) ? m_oData[ '#updateMainChain' ].time_used_total : 0;
+		nTotalTimeUnitProcess	+= m_oData.hasOwnProperty( '#validate' ) ? m_oData[ '#validate' ].time_used_total : 0;
+		nTotalTimeUnitProcess	+= m_oData.hasOwnProperty( '#saveJoint' ) ? m_oData[ '#saveJoint' ].time_used_total : 0;
+		nAverageUnitProcessQps	= ( ( m_nProcessedUnitCount * 1000 ) / nTotalTimeUnitProcess ).toFixed( 2 );
 	}
 	else
 	{
@@ -190,13 +200,17 @@ function getSummary()
 
 	//	...
 	return {
-		"time_start"			: m_nProfilerExStart,
-		"time_end"			: Date.now(),
-		"time_elapsed"			: Date.now() - m_nProfilerExStart,
-		"time_used_total"		: nTotalTimeUsed,
-		"count_executed"		: nTotalExecutedCount,
-		"average_normal_qps"		: nAverageNormalQps,
-		"average_unit_process_qps"	: nAverageUnitProcessQps
+		"time_start"				: m_nProfilerExStart,
+		"time_end"				: Date.now(),
+		"time_elapsed"				: Date.now() - m_nProfilerExStart,
+		"time_used_total"			: nTotalTimeUsed,
+		"count_executed"			: nTotalExecutedCount,
+		"average_normal_qps"			: nAverageNormalQps,
+		"units"	: {
+			"time_used_total_processed_units"	: nTotalTimeUnitProcess,
+			"count_processed_units"			: m_nProcessedUnitCount,
+			"average_unit_process_qps"		: nAverageUnitProcessQps
+		}
 	};
 }
 

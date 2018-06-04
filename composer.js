@@ -1269,6 +1269,8 @@ function composeJoint( params )
 			},
 			function( cb )
 			{
+				//	********
+				//	********
 				//	input coins
 				objUnit.headers_commission	= objectLength.getHeadersSize( objUnit );
 				var naked_payload_commission	= objectLength.getTotalPayloadSize( objUnit );	//	without input coins
@@ -1317,6 +1319,7 @@ function composeJoint( params )
 					? Infinity
 					: ( total_amount + objUnit.headers_commission + naked_payload_commission );
 
+				//	********
 				pickDivisibleCoinsForAmount
 				(
 					conn,

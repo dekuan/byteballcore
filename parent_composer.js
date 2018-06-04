@@ -220,6 +220,13 @@ function trimParentList(conn, arrParentUnits, arrWitnesses, handleTrimmedList){
 	);
 }
 
+
+/**
+ * 	********
+ * @param conn
+ * @param arrWitnesses
+ * @param onDone
+ */
 function pickParentUnitsAndLastBall(conn, arrWitnesses, onDone){
 	pickParentUnits(conn, arrWitnesses, function(err, arrParentUnits){
 		if (err)
@@ -227,6 +234,10 @@ function pickParentUnitsAndLastBall(conn, arrWitnesses, onDone){
 		findLastStableMcBall(conn, arrWitnesses, function(err, last_stable_mc_ball, last_stable_mc_ball_unit, last_stable_mc_ball_mci){
 			if (err)
 				return onDone(err);
+
+			/**
+			 * 	******
+			 */
 			adjustLastStableMcBallAndParents(
 				conn, last_stable_mc_ball_unit, arrParentUnits, arrWitnesses, 
 				function(last_stable_ball, last_stable_unit, last_stable_mci, arrAdjustedParentUnits){

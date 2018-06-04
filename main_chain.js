@@ -1,20 +1,20 @@
 /*jslint node: true */
 "use strict";
 
-var _			= require( 'lodash' );
-var async		= require( 'async' );
-var log			= require( './log.js' );
-var db			= require( './db.js' );
-var constants		= require( "./constants.js" );
-var storage		= require( './storage.js' );
-var graph		= require( './graph.js' );
-var objectHash		= require( './object_hash.js' );
-var paid_witnessing	= require( './paid_witnessing.js' );
-var headers_commission	= require( './headers_commission.js' );
-var mutex		= require( './mutex.js' );
-var eventBus		= require( './event_bus.js' );
-var profilerex		= require( './profilerex.js' );
-var breadcrumbs		= require( './breadcrumbs.js' );
+var _				= require( 'lodash' );
+var _async			= require( 'async' );
+var _log			= require( './log.js' );
+var _db				= require( './db.js' );
+var _constants			= require( "./constants.js" );
+var _storage			= require( './storage.js' );
+var _graph			= require( './graph.js' );
+var _object_hash		= require( './object_hash.js' );
+var _paid_witnessing		= require( './paid_witnessing.js' );
+var _headers_commission		= require( './headers_commission.js' );
+var _mutex			= require( './mutex.js' );
+var _event_bus			= require( './event_bus.js' );
+var _profilerex			= require( './profilerex.js' );
+var _breadcrumbs		= require( './breadcrumbs.js' );
 
 
 
@@ -41,6 +41,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	var arrAllParents	= [];
 	var arrNewMcUnits	= [];
 
+	//	...
+	_profilerex.begin( "#updateMainChain" );
+
 	//
 	//	if unit === null, read free balls
 	//
@@ -54,7 +57,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			}
 
 			//	...
-			log.consoleLog( "unit " + unit + ", best parent " + props.best_parent_unit + ", wlevel " + props.witnessed_level );
+			_log.consoleLog( "unit " + unit + ", best parent " + props.best_parent_unit + ", wlevel " + props.witnessed_level );
 			handleUnit( props.best_parent_unit );
 		}
 
@@ -108,7 +111,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		//	...
 		unit
 			?
-			storage.readStaticUnitProps( conn, unit, _handleProps )
+			_storage.readStaticUnitProps( conn, unit, _handleProps )
 			:
 			_readLastUnitProps( _handleProps );
 	}
@@ -116,34 +119,34 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 	function _goUpFromUnit( unit )
 	{
-		if ( storage.isGenesisUnit( unit ) )
+		if ( _storage.isGenesisUnit( unit ) )
 		{
 			return _checkNotRebuildingStableMainChainAndGoDown( 0, unit );
 		}
 
 		//	...
-		profilerex.begin( 'mc-goUpFromUnit' );
+		_profilerex.begin( 'mc-goUpFromUnit' );
 		_findNextUpMainChainUnit
 		(
 			unit,
 			function( best_parent_unit )
 			{
-				storage.readUnitProps
+				_storage.readUnitProps
 				(
 					conn,
 					best_parent_unit,
 					function( objBestParentUnitProps )
 					{
-						var objBestParentUnitProps2 = storage.assocUnstableUnits[ best_parent_unit ];
+						var objBestParentUnitProps2 = _storage.assocUnstableUnits[ best_parent_unit ];
 						if ( ! objBestParentUnitProps2 )
 						{
-							if ( storage.isGenesisUnit( best_parent_unit ) )
+							if ( _storage.isGenesisUnit( best_parent_unit ) )
 							{
-								objBestParentUnitProps2 = storage.assocStableUnits[ best_parent_unit ];
+								objBestParentUnitProps2 = _storage.assocStableUnits[ best_parent_unit ];
 							}
 							else
 							{
-								profilerex.end( 'mc-goUpFromUnit' );
+								_profilerex.end( 'mc-goUpFromUnit' );
 								throw Error( "unstable unit not found: " + best_parent_unit );
 							}
 						}
@@ -154,7 +157,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 						if ( ! _.isEqual( objBestParentUnitPropsForCheck, objBestParentUnitProps ) )
 						{
-							profilerex.end( 'mc-goUpFromUnit' );
+							_profilerex.end( 'mc-goUpFromUnit' );
 							_throwError
 							(
 								"different props, db: "
@@ -180,7 +183,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									arrNewMcUnits.push( best_parent_unit );
 
 									//	...
-									profilerex.end( 'mc-goUpFromUnit' );
+									_profilerex.end( 'mc-goUpFromUnit' );
 
 									_goUpFromUnit( best_parent_unit );
 								}
@@ -188,7 +191,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 						}
 						else
 						{
-							profilerex.end( 'mc-goUpFromUnit' );
+							_profilerex.end( 'mc-goUpFromUnit' );
 
 							if ( unit === null )
 							{
@@ -215,8 +218,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 	function _checkNotRebuildingStableMainChainAndGoDown( last_main_chain_index, last_main_chain_unit )
 	{
-		log.consoleLog( "_checkNotRebuildingStableMainChainAndGoDown " + from_unit );
-		profilerex.begin( 'mc-checkNotRebuilding' );
+		_log.consoleLog( "_checkNotRebuildingStableMainChainAndGoDown " + from_unit );
+		_profilerex.begin( 'mc-checkNotRebuilding' );
 
 		//	...
 		conn.query
@@ -227,7 +230,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			],
 			function( rows )
 			{
-				profilerex.end( 'mc-checkNotRebuilding' );
+				_profilerex.end( 'mc-checkNotRebuilding' );
 				if ( rows.length > 0 )
 				{
 					throw Error
@@ -260,7 +263,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	function _goDownAndUpdateMainChainIndex( last_main_chain_index, last_main_chain_unit )
 	{
 		//	PPP
-		profilerex.begin( 'mc-goDown' );
+		_profilerex.begin( 'mc-goDown' );
 
 		//	...
 		conn.query
@@ -272,9 +275,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			],
 			function()
 			{
-				for ( var unit in storage.assocUnstableUnits )
+				for ( var unit in _storage.assocUnstableUnits )
 				{
-					var o = storage.assocUnstableUnits[ unit ];
+					var o = _storage.assocUnstableUnits[ unit ];
 					if ( o.main_chain_index > last_main_chain_index )
 					{
 						o.is_on_main_chain	= 0;
@@ -297,7 +300,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							//if (last_main_chain_index > 0)
 								throw Error( "no unindexed MC units after adding " + last_added_unit );
 							//else{
-							//    log.consoleLog("last MC=0, no unindexed MC units");
+							//    _log.consoleLog("last MC=0, no unindexed MC units");
 							//    return _updateLatestIncludedMcIndex(last_main_chain_index, true);
 							//}
 						}
@@ -323,7 +326,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 						}
 
 						//	...
-						async.eachSeries
+						_async.eachSeries
 						(
 							rows, 
 							function( row, cb )
@@ -358,12 +361,12 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 											(
 												function( start_unit )
 												{
-													storage.assocUnstableUnits[ start_unit ].parent_units.forEach
+													_storage.assocUnstableUnits[ start_unit ].parent_units.forEach
 													(
 														function( parent_unit )
 														{
-															if ( storage.assocUnstableUnits[ parent_unit ] &&
-																storage.assocUnstableUnits[ parent_unit ].main_chain_index === null &&
+															if ( _storage.assocUnstableUnits[ parent_unit ] &&
+																_storage.assocUnstableUnits[ parent_unit ].main_chain_index === null &&
 																arrNewStartUnits2.indexOf( parent_unit ) === -1 )
 															{
 																arrNewStartUnits2.push( parent_unit );
@@ -399,10 +402,10 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								{
 									arrUnits.forEach( function( unit )
 									{
-										storage.assocUnstableUnits[unit].main_chain_index = main_chain_index;
+										_storage.assocUnstableUnits[unit].main_chain_index = main_chain_index;
 									});
 
-									var strUnitList = arrUnits.map(db.escape).join(', ');
+									var strUnitList = arrUnits.map(_db.escape).join(', ');
 									conn.query
 									(
 										"UPDATE units SET main_chain_index=? WHERE unit IN(" + strUnitList + ")",
@@ -426,7 +429,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							}, 
 							function( err )
 							{
-								log.consoleLog("_goDownAndUpdateMainChainIndex done");
+								_log.consoleLog("_goDownAndUpdateMainChainIndex done");
 								if ( err )
 								{
 									throw Error( "_goDownAndUpdateMainChainIndex eachSeries failed" );
@@ -439,7 +442,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									function()
 									{
 										//	PPP
-										profilerex.end( 'mc-goDown' );
+										_profilerex.end( 'mc-goDown' );
 										_updateLatestIncludedMcIndex(last_main_chain_index, true);
 									}
 								);
@@ -455,7 +458,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	{
 		function _checkAllLatestIncludedMcIndexesAreSet()
 		{
-			profilerex.begin( 'mc-limci-check' );
+			_profilerex.begin( 'mc-limci-check' );
 			if ( ! _.isEqual( assocDbLimcisByUnit, assocLimcisByUnit ) )
 			{
 				_throwError( "different  LIMCIs, mem: " + JSON.stringify( assocLimcisByUnit ) + ", db: " + JSON.stringify( assocDbLimcisByUnit ) );
@@ -472,7 +475,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					}
 
 					//	PPP
-					profilerex.end( 'mc-limci-check' );
+					_profilerex.end( 'mc-limci-check' );
 
 					//	...
 					_updateStableMcFlag();
@@ -482,10 +485,10 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 		function _propagateLIMCI()
 		{
-			log.consoleLog( "_propagateLIMCI " + last_main_chain_index );
+			_log.consoleLog( "_propagateLIMCI " + last_main_chain_index );
 
 			//	PPP
-			profilerex.begin( 'mc-limci-select-propagate' );
+			_profilerex.begin( 'mc-limci-select-propagate' );
 
 			// the 1st condition in WHERE is the same that was used 2 queries ago to NULL limcis
 			conn.query
@@ -514,7 +517,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				function( rows )
 				{
 					//	PPP
-					profilerex.end( 'mc-limci-select-propagate' );
+					_profilerex.end( 'mc-limci-select-propagate' );
 
 					if ( rows.length === 0 )
 					{
@@ -522,10 +525,10 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					}
 
 					//	PPP
-					profilerex.begin( 'mc-limci-update-propagate' );
+					_profilerex.begin( 'mc-limci-update-propagate' );
 
 					//	...
-					async.eachSeries
+					_async.eachSeries
 					(
 						rows,
 						function( row, cb )
@@ -547,7 +550,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 						function()
 						{
 							//	PPP
-							profilerex.end( 'mc-limci-update-propagate' );
+							_profilerex.end( 'mc-limci-update-propagate' );
 
 							//	...
 							_propagateLIMCI();
@@ -559,26 +562,26 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 		function _loadUnitProps( unit, handleProps )
 		{
-			if ( storage.assocUnstableUnits[ unit ] )
+			if ( _storage.assocUnstableUnits[ unit ] )
 			{
-				return handleProps( storage.assocUnstableUnits[ unit ] );
+				return handleProps( _storage.assocUnstableUnits[ unit ] );
 			}
 
 			//	...
-			storage.readUnitProps( conn, unit, handleProps );
+			_storage.readUnitProps( conn, unit, handleProps );
 		}
 
 		function _calcLIMCIs( onUpdated )
 		{
 			var arrFilledUnits = [];
 
-			async.forEachOfSeries
+			_async.forEachOfSeries
 			(
 				assocChangedUnits,
 				function( props, unit, cb )
 				{
 					var max_limci = -1;
-					async.eachSeries
+					_async.eachSeries
 					(
 						props.parent_units,
 						function( parent_unit, cb2 )
@@ -650,18 +653,18 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		}
 
 		//	...
-		log.consoleLog( "_updateLatestIncludedMcIndex " + last_main_chain_index );
+		_log.consoleLog( "_updateLatestIncludedMcIndex " + last_main_chain_index );
 
 		//	PPP
-		profilerex.begin( 'mc-limci-set-null' );
+		_profilerex.begin( 'mc-limci-set-null' );
 
 		//	...
 		var assocChangedUnits	= {};
 		var assocLimcisByUnit	= {};
 		var assocDbLimcisByUnit	= {};
-		for ( var unit in storage.assocUnstableUnits )
+		for ( var unit in _storage.assocUnstableUnits )
 		{
-			var o	= storage.assocUnstableUnits[ unit ];
+			var o	= _storage.assocUnstableUnits[ unit ];
 			if ( o.main_chain_index > last_main_chain_index || o.main_chain_index === null )
 			{
 				o.latest_included_mc_index	= null;
@@ -681,14 +684,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					],
 					function( res )
 					{
-						log.consoleLog( "update LIMCI=NULL done, matched rows: " + res.affectedRows );
+						_log.consoleLog( "update LIMCI=NULL done, matched rows: " + res.affectedRows );
 
 						//	PPP
-						profilerex.end( 'mc-limci-set-null' );
+						_profilerex.end( 'mc-limci-set-null' );
 
 						//	...
 						//	PPP
-						profilerex.begin( 'mc-limci-select-initial' );
+						_profilerex.begin( 'mc-limci-select-initial' );
 
 						//	...
 						conn.query
@@ -724,20 +727,20 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							],
 							function( rows )
 							{
-								log.consoleLog( rows.length + " rows" );
+								_log.consoleLog( rows.length + " rows" );
 
 								//	PPP
-								profilerex.end( 'mc-limci-select-initial' );
+								_profilerex.end( 'mc-limci-select-initial' );
 
 								//
 								//	PPP
-								profilerex.begin( 'mc-limci-update-initial' );
+								_profilerex.begin( 'mc-limci-update-initial' );
 
 								//	...
 								if ( rows.length === 0 && bRebuiltMc )
 								{
 									//	PPP
-									profilerex.end( 'mc-limci-update-initial' );
+									_profilerex.end( 'mc-limci-update-initial' );
 									throw Error
 									(
 										"no latest_included_mc_index updated, last_mci=" + last_main_chain_index
@@ -745,12 +748,12 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									);
 								}
 
-								async.eachSeries
+								_async.eachSeries
 								(
 									rows,
 									function( row, cb )
 									{
-										log.consoleLog( row.main_chain_index, row.unit );
+										_log.consoleLog( row.main_chain_index, row.unit );
 
 										assocDbLimcisByUnit[ row.unit ]	= row.main_chain_index;
 										conn.query
@@ -769,7 +772,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									function()
 									{
 										//	PPP
-										profilerex.end( 'mc-limci-update-initial' );
+										_profilerex.end( 'mc-limci-update-initial' );
 
 										//	...
 										_propagateLIMCI();
@@ -801,19 +804,19 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	
 	function _updateStableMcFlag()
 	{
-		log.consoleLog( "_updateStableMcFlag" );
+		_log.consoleLog( "_updateStableMcFlag" );
 
 		//	PPP
-		profilerex.begin( 'mc-stableFlag' );
+		_profilerex.begin( 'mc-stableFlag' );
 
 		//	...
 		_readLastStableMcUnit
 		(
 			function( last_stable_mc_unit )
 			{
-				log.consoleLog( "last stable mc unit " + last_stable_mc_unit );
+				_log.consoleLog( "last stable mc unit " + last_stable_mc_unit );
 
-				storage.readWitnesses
+				_storage.readWitnesses
 				(
 					conn,
 					last_stable_mc_unit,
@@ -830,7 +833,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								if ( rows.length === 0 )
 								{
 									//	PPP
-									profilerex.end( 'mc-stableFlag' );
+									_profilerex.end( 'mc-stableFlag' );
 
 									//	if (isGenesisUnit(last_stable_mc_unit))
 									//    return _finish();
@@ -860,7 +863,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								if ( arrMcRows.length !== 1 )
 								{
 									//	PPP
-									profilerex.end( 'mc-stableFlag' );
+									_profilerex.end( 'mc-stableFlag' );
 
 									//	...
 									throw Error( "not a single MC child?" );
@@ -881,7 +884,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								function advanceLastStableMcUnitAndTryNext()
 								{
 									//	PPP
-									profilerex.end( 'mc-stableFlag' );
+									_profilerex.end( 'mc-stableFlag' );
 
 									//	...
 									_markMcIndexStable
@@ -943,7 +946,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 														WHERE is_on_main_chain=1 AND main_chain_index>=? AND address IN(?)",
 														[first_unstable_mc_index, arrWitnesses],
 														function(count_witnesses_rows){
-															(count_witnesses_rows[0].count_witnesses === constants.COUNT_WITNESSES)
+															(count_witnesses_rows[0].count_witnesses === _constants.COUNT_WITNESSES)
 																? advanceLastStableMcUnitAndTryNext() : _finish();
 														}
 													);
@@ -975,7 +978,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 															[
 																arrAltBestChildren,
 																arrWitnesses,
-																constants.COUNT_WITNESSES - constants.MAX_WITNESS_LIST_MUTATIONS
+																_constants.COUNT_WITNESSES - _constants.MAX_WITNESS_LIST_MUTATIONS
 															],
 															function( max_alt_rows )
 															{
@@ -1029,8 +1032,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					if ( rows.length === 0 )
 						return cb();
 
-					//	log.consoleLog("unit", arrStartUnits, "best children:", rows.map(function(row){ return row.unit; }), "free units:", rows.reduce(function(sum, row){ return sum+row.is_free; }, 0));
-					async.eachSeries
+					//	_log.consoleLog("unit", arrStartUnits, "best children:", rows.map(function(row){ return row.unit; }), "free units:", rows.reduce(function(sum, row){ return sum+row.is_free; }, 0));
+					_async.eachSeries
 					(
 						rows,
 						function( row, cb2 )
@@ -1064,18 +1067,22 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 	function _finish()
 	{
+		//	...
+		_profilerex.end( "#updateMainChain" );
+
 		//	PPP
-		profilerex.end( 'mc-stableFlag' );
+		_profilerex.end( 'mc-stableFlag' );
 
 		//	...
-		log.consoleLog( "done updating MC\n" );
+		_log.consoleLog( "done updating MC\n" );
 		if ( onDone )
 		{
 			onDone();
 		}
 	}
 
-	log.consoleLog( "\nwill update MC" );
+	//	...
+	_log.consoleLog( "\nwill update MC" );
 
 	/*if (from_unit === null && m_arrRetreatingUnits.indexOf(last_added_unit) >= 0){
 		conn.query("UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?", [last_added_unit], function(){
@@ -1120,7 +1127,7 @@ function createListOfPrivateMcUnits(start_unit, min_level, handleList){
 
 function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handleResult )
 {
-	if ( storage.isGenesisUnit( earlier_unit ) )
+	if ( _storage.isGenesisUnit( earlier_unit ) )
 	{
 		return handleResult( true );
 	}
@@ -1137,7 +1144,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 		return handleResult( true );
 	}
 
-	storage.readPropsOfUnits
+	_storage.readPropsOfUnits
 	(
 		conn,
 		earlier_unit,
@@ -1218,9 +1225,9 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 									return row.unit;
 								}
 							);
-							//log.consoleLog("first_unstable_mc_index", first_unstable_mc_index);
-							//log.consoleLog("first_unstable_mc_level", first_unstable_mc_level);
-							//log.consoleLog("alt", arrAltBranchRootUnits);
+							//_log.consoleLog("first_unstable_mc_index", first_unstable_mc_index);
+							//_log.consoleLog("first_unstable_mc_level", first_unstable_mc_level);
+							//_log.consoleLog("alt", arrAltBranchRootUnits);
 				
 							function _findMinMcWitnessedLevel( handleMinMcWl )
 							{
@@ -1252,7 +1259,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 											}
 
 											count += row.count;
-											( count < constants.MAJORITY_OF_WITNESSES )
+											( count < _constants.MAJORITY_OF_WITNESSES )
 												?
 												goUp( row.best_parent_unit )
 												:
@@ -1298,12 +1305,12 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 								}
 
 								//	check if alt branches are included by later units
-								async.eachSeries
+								_async.eachSeries
 								(
 									arrAltBranchRootUnits,
 									function( alt_root_unit, cb )
 									{
-										graph.determineIfIncludedOrEqual
+										_graph.determineIfIncludedOrEqual
 										(
 											conn,
 											alt_root_unit,
@@ -1347,7 +1354,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 											}
 
 											//	...
-											async.eachSeries
+											_async.eachSeries
 											(
 												rows,
 												function( row, cb2 )
@@ -1372,7 +1379,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 													}
 													else
 													{
-														graph.determineIfIncludedOrEqual
+														_graph.determineIfIncludedOrEqual
 														(
 															conn,
 															row.unit,
@@ -1409,7 +1416,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 												throw Error( "no alt branch root units?" );
 											}
 
-											async.eachSeries
+											_async.eachSeries
 											(
 												rows,
 												function( row, cb2 )
@@ -1428,7 +1435,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 													}
 													else
 													{
-														graph.determineIfIncludedOrEqual
+														_graph.determineIfIncludedOrEqual
 														(
 															conn,
 															row.unit,
@@ -1442,7 +1449,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 												},
 												function()
 												{
-													//	log.consoleLog('filtered:', arrFilteredAltBranchRootUnits);
+													//	_log.consoleLog('filtered:', arrFilteredAltBranchRootUnits);
 													_goDownAndCollectBestChildren( arrFilteredAltBranchRootUnits, cb );
 												}
 											);
@@ -1454,7 +1461,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 								(
 									function()
 									{
-										//log.consoleLog('best children:', arrBestChildren);
+										//_log.consoleLog('best children:', arrBestChildren);
 										handleBestChildrenList(arrBestChildren);
 									}
 								);
@@ -1464,14 +1471,14 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 							(
 								function( min_mc_wl )
 								{
-									//	log.consoleLog("min mc wl", min_mc_wl);
+									//	_log.consoleLog("min mc wl", min_mc_wl);
 									_determineIfHasAltBranches
 									(
 										function( bHasAltBranches )
 										{
 											if ( ! bHasAltBranches )
 											{
-												//	log.consoleLog("no alt");
+												//	_log.consoleLog("no alt");
 												if ( min_mc_wl >= first_unstable_mc_level )
 												{
 													return handleResult( true );
@@ -1486,8 +1493,8 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 													WHERE is_on_main_chain=1 AND main_chain_index>=? AND address IN(?)",
 													[first_unstable_mc_index, arrWitnesses],
 													function(count_witnesses_rows){
-														log.consoleLog(count_witnesses_rows[0]);
-														handleResult(count_witnesses_rows[0].count_witnesses === constants.COUNT_WITNESSES);
+														_log.consoleLog(count_witnesses_rows[0]);
+														handleResult(count_witnesses_rows[0].count_witnesses === _constants.COUNT_WITNESSES);
 													}
 												);
 												return;
@@ -1520,7 +1527,7 @@ function determineIfStableInLaterUnits( conn, earlier_unit, arrLaterUnits, handl
 														[
 															arrAltBestChildren,
 															arrWitnesses,
-															constants.COUNT_WITNESSES - constants.MAX_WITNESS_LIST_MUTATIONS
+															_constants.COUNT_WITNESSES - _constants.MAX_WITNESS_LIST_MUTATIONS
 														],
 														function( max_alt_rows )
 														{
@@ -1563,7 +1570,7 @@ function determineIfStableInLaterUnitsAndUpdateStableMcFlag( conn, earlier_unit,
 		arrLaterUnits,
 		function( bStable )
 		{
-			log.consoleLog( "determineIfStableInLaterUnits", earlier_unit, arrLaterUnits, bStable );
+			_log.consoleLog( "determineIfStableInLaterUnits", earlier_unit, arrLaterUnits, bStable );
 
 			if ( ! bStable )
 			{
@@ -1575,19 +1582,19 @@ function determineIfStableInLaterUnitsAndUpdateStableMcFlag( conn, earlier_unit,
 			}
 
 			//	...
-			breadcrumbs.add( 'stable in parents, will wait for write lock' );
-			mutex.lock
+			_breadcrumbs.add( 'stable in parents, will wait for write lock' );
+			_mutex.lock
 			(
 				[ "write" ],
 				function( unlock )
 				{
-					breadcrumbs.add( 'stable in parents, got write lock' );
-					storage.readLastStableMcIndex
+					_breadcrumbs.add( 'stable in parents, got write lock' );
+					_storage.readLastStableMcIndex
 					(
 						conn,
 						function( last_stable_mci )
 						{
-							storage.readUnitProps
+							_storage.readUnitProps
 							(
 								conn,
 								earlier_unit,
@@ -1630,13 +1637,13 @@ function determineIfStableInLaterUnitsAndUpdateStableMcFlag( conn, earlier_unit,
 
 function _readBestParentAndItsWitnesses( conn, unit, handleBestParentAndItsWitnesses )
 {
-	storage.readStaticUnitProps
+	_storage.readStaticUnitProps
 	(
 		conn,
 		unit,
 		function( props )
 		{
-			storage.readWitnesses
+			_storage.readWitnesses
 			(
 				conn,
 				props.best_parent_unit,
@@ -1653,18 +1660,18 @@ function _readBestParentAndItsWitnesses( conn, unit, handleBestParentAndItsWitne
 function _markMcIndexStable( conn, mci, onDone )
 {
 	//	PPP
-	profilerex.begin( 'mc-mark-stable' );
+	_profilerex.begin( 'mc-mark-stable' );
 
 	//	...
 	var arrStabilizedUnits = [];
 
-	for ( var unit in storage.assocUnstableUnits )
+	for ( var unit in _storage.assocUnstableUnits )
 	{
-		var o	= storage.assocUnstableUnits[ unit ];
+		var o	= _storage.assocUnstableUnits[ unit ];
 		if ( o.main_chain_index === mci && o.is_stable === 0 )
 		{
 			o.is_stable	= 1;
-			storage.assocStableUnits[ unit ] = o;
+			_storage.assocStableUnits[ unit ] = o;
 			arrStabilizedUnits.push( unit );
 		}
 	}
@@ -1674,7 +1681,7 @@ function _markMcIndexStable( conn, mci, onDone )
 	(
 		function( unit )
 		{
-			delete storage.assocUnstableUnits[ unit ];
+			delete _storage.assocUnstableUnits[ unit ];
 		}
 	);
 
@@ -1704,7 +1711,7 @@ function _markMcIndexStable( conn, mci, onDone )
 				var arrFinalBadUnits	= [];
 
 				//	...
-				async.eachSeries
+				_async.eachSeries
 				(
 					rows,
 					function( row, cb )
@@ -1728,7 +1735,7 @@ function _markMcIndexStable( conn, mci, onDone )
 							function( arrConflictingUnits )
 							{
 								var sequence	= ( arrConflictingUnits.length > 0 ) ? 'final-bad' : 'good';
-								log.consoleLog( "unit " + row.unit + " has competitors " + arrConflictingUnits + ", it becomes " + sequence );
+								_log.consoleLog( "unit " + row.unit + " has competitors " + arrConflictingUnits + ", it becomes " + sequence );
 
 								conn.query
 								(
@@ -1772,7 +1779,7 @@ function _markMcIndexStable( conn, mci, onDone )
 						(
 							function( unit )
 							{
-								storage.assocStableUnits[ unit ].sequence = 'final-bad';
+								_storage.assocStableUnits[ unit ].sequence = 'final-bad';
 							}
 						);
 						_propagateFinalBad( arrFinalBadUnits, _addBalls );
@@ -1784,7 +1791,7 @@ function _markMcIndexStable( conn, mci, onDone )
 
 	function _setContentHash( unit, onSet )
 	{
-		storage.readJoint
+		_storage.readJoint
 		(
 			conn,
 			unit,
@@ -1795,7 +1802,7 @@ function _markMcIndexStable( conn, mci, onDone )
 				},
 				ifFound : function( objJoint )
 				{
-					var content_hash	= objectHash.getUnitContentHash( objJoint.unit );
+					var content_hash	= _object_hash.getUnitContentHash( objJoint.unit );
 
 					conn.query
 					(
@@ -1856,7 +1863,7 @@ function _markMcIndexStable( conn, mci, onDone )
 						(
 							function( unit )
 							{
-								storage.assocUnstableUnits[ unit ].sequence = 'final-bad';
+								_storage.assocUnstableUnits[ unit ].sequence = 'final-bad';
 							}
 						);
 
@@ -1907,12 +1914,12 @@ function _markMcIndexStable( conn, mci, onDone )
 			function( rows )
 			{
 				var arrConflictingUnits = [];
-				async.eachSeries
+				_async.eachSeries
 				(
 					rows,
 					function( row, cb )
 					{
-						graph.compareUnitsByProps
+						_graph.compareUnitsByProps
 						(
 							conn,
 							row,
@@ -1956,7 +1963,7 @@ function _markMcIndexStable( conn, mci, onDone )
 				}
 
 				//	...
-				async.eachSeries
+				_async.eachSeries
 				(
 					unit_rows,
 					function( objUnitProps, cb )
@@ -2025,14 +2032,14 @@ function _markMcIndexStable( conn, mci, onDone )
 								//	...
 								function addBall()
 								{
-									var ball = objectHash.getBallHash
+									var ball = _object_hash.getBallHash
 									(
 										unit,
 										arrParentBalls,
 										arrSkiplistBalls.sort(),
 										objUnitProps.sequence === 'final-bad'
 									);
-									log.consoleLog( "ball=" + ball );
+									_log.consoleLog( "ball=" + ball );
 
 									if ( objUnitProps.ball )
 									{
@@ -2104,14 +2111,14 @@ function _markMcIndexStable( conn, mci, onDone )
 
 	function _updateRetrievable()
 	{
-		storage.updateMinRetrievableMciAfterStabilizingMci
+		_storage.updateMinRetrievableMciAfterStabilizingMci
 		(
 			conn,
 			mci,
 			function( min_retrievable_mci )
 			{
 				//	PPP
-				profilerex.end( 'mc-mark-stable' );
+				_profilerex.end( 'mc-mark-stable' );
 
 				//	...
 				_calcCommissions();
@@ -2126,24 +2133,24 @@ function _markMcIndexStable( conn, mci, onDone )
 	////////////////////////////////////////////////////////////
 	function _calcCommissions()
 	{
-		async.series
+		_async.series
 		(
 			[
 				function( cb )
 				{
 					//	PPP
-					profilerex.begin( 'mc-headers-commissions' );
+					_profilerex.begin( 'mc-headers-commissions' );
 
 					//	...
-					headers_commission.calcHeadersCommissions( conn, cb );
+					_headers_commission.calcHeadersCommissions( conn, cb );
 				},
 				function( cb )
 				{
 					//	PPP
-					profilerex.end( 'mc-headers-commissions' );
+					_profilerex.end( 'mc-headers-commissions' );
 
 					//	...
-					paid_witnessing.updatePaidWitnesses( conn, cb );
+					_paid_witnessing.updatePaidWitnesses( conn, cb );
 				}
 			],
 			function()
@@ -2153,7 +2160,7 @@ function _markMcIndexStable( conn, mci, onDone )
 					function()
 					{
 						//	don't call it synchronously with event emitter
-						eventBus.emit( "mci_became_stable", mci );
+						_event_bus.emit( "mci_became_stable", mci );
 					}
 				);
 				onDone();
@@ -2197,7 +2204,7 @@ function _throwError( msg )
 	}
 	else
 	{
-		eventBus.emit( 'nonfatal_error', msg, new Error() );
+		_event_bus.emit( 'nonfatal_error', msg, new Error() );
 	}
 }
 
@@ -2214,7 +2221,7 @@ exports.determineIfStableInLaterUnits				= determineIfStableInLaterUnits;
 
 
 /*
-determineIfStableInLaterUnits(db, "oeS2p87yO9DFkpjj+z+mo+RNoieaTN/8vOPGn/cUHhM=", [ '8vh0/buS3NaknEjBF/+vyLS3X5T0t5imA2mg8juVmJQ=', 'oO/INGsFr8By+ggALCdVkiT8GIPzB2k3PQ3TxPWq8Ac='], function(bStable){
-	log.consoleLog(bStable);
+determineIfStableInLaterUnits(_db, "oeS2p87yO9DFkpjj+z+mo+RNoieaTN/8vOPGn/cUHhM=", [ '8vh0/buS3NaknEjBF/+vyLS3X5T0t5imA2mg8juVmJQ=', 'oO/INGsFr8By+ggALCdVkiT8GIPzB2k3PQ3TxPWq8Ac='], function(bStable){
+	_log.consoleLog(bStable);
 });
 */

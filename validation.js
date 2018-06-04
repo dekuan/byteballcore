@@ -278,6 +278,9 @@ function validate( objJoint, callbacks )
 	}
 
 	//	...
+	_profiler_ex.begin( "#validate" );
+
+	//	...
 	_mutex.lock
 	(
 		arrAuthorAddresses,
@@ -492,6 +495,9 @@ function validate( objJoint, callbacks )
 							"ROLLBACK",
 							function()
 							{
+								_profiler_ex.end( "#validate" );
+
+								//	...
 								conn.release();
 								unlock();
 
@@ -540,6 +546,9 @@ function validate( objJoint, callbacks )
 						(
 							"COMMIT", function()
 							{
+								_profiler_ex.end( "#validate" );
+
+								//	...
 								conn.release();
 
 								//	...

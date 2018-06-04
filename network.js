@@ -26,6 +26,10 @@ var ecdsaSig		= require( './signature.js' );
 var eventBus		= require( './event_bus.js' );
 var light		= require( './light.js' );
 var breadcrumbs		= require( './breadcrumbs.js' );
+var _profilerex		= require( './profilerex.js' );
+
+
+
 
 var mail				= process.browser ? null : require( './mail.js' + '' );
 
@@ -2057,6 +2061,8 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 					}
 
 					//	...
+					_profilerex.begin( "#saveJoint" );
+
 					writer.saveJoint
 					(
 						objJoint,
@@ -2064,6 +2070,10 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 						null,
 						function()
 						{
+							//	...
+							_profilerex.end( "#saveJoint" );
+
+							//	...
 							validation_unlock();
 							callbacks.ifOk();
 
