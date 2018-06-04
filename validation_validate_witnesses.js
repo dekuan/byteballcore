@@ -30,16 +30,13 @@ function CValidateWitnesses( conn_, objUnit_, objValidationState_, callback_ )
 	 */
 	this.handle = function()
 	{
-		//	...
-		_profiler_ex.begin( 'validation-witnesses-read-list' );
-
-		//	...
 		m_sLastBallUnit	= objUnit_.last_ball_unit;
 
 		//	...
 		if ( "string" === typeof objUnit_.witness_list_unit )
 		{
 			//	...
+			_profiler_ex.begin( 'validation-CValidateWitnesses_handle.query_string_unit' );
 			conn_.query
 			(
 				"SELECT sequence, is_stable, main_chain_index FROM units WHERE unit=?",
@@ -48,6 +45,8 @@ function CValidateWitnesses( conn_, objUnit_, objValidationState_, callback_ )
 				],
 				function( unit_rows )
 				{
+					_profiler_ex.end( 'validation-CValidateWitnesses_handle.query_string_unit' );
+
 					if ( unit_rows.length === 0 )
 					{
 						return _callback
@@ -73,19 +72,21 @@ function CValidateWitnesses( conn_, objUnit_, objValidationState_, callback_ )
 					}
 
 					//	...
+					_profiler_ex.begin( 'validation-CValidateWitnesses_handle.readWitnessList' );
 					_storage.readWitnessList
 					(
 						conn_,
 						objUnit_.witness_list_unit,
 						function( arrWitnesses )
 						{
+							_profiler_ex.end( 'validation-CValidateWitnesses_handle.readWitnessList' );
+
 							if ( arrWitnesses.length === 0 )
 							{
 								return _callback( "referenced witness list unit " + objUnit_.witness_list_unit + " has no witnesses" );
 							}
 
 							//	...
-							_profiler_ex.end( 'validation-witnesses-read-list' );
 							_validateWitnessListMutations( arrWitnesses );
 						},
 						true
@@ -143,13 +144,12 @@ function CValidateWitnesses( conn_, objUnit_, objValidationState_, callback_ )
 				],
 				function( rows )
 				{
+					_profiler_ex.end( 'validation-witnesses-stable' );
+
 					if ( rows[ 0 ].count_stable_good_witnesses !== _constants.COUNT_WITNESSES )
 					{
 						return _callback( "some witnesses are not stable, not serial, or don't come before last ball" );
 					}
-
-					//	...
-					_profiler_ex.end( 'validation-witnesses-stable' );
 
 					//	...
 					_validateWitnessListMutations( objUnit_.witnesses );
@@ -205,10 +205,10 @@ function CValidateWitnesses( conn_, objUnit_, objValidationState_, callback_ )
 
 	function _checkNoReferencesInWitnessAddressDefinitions( arrWitnesses )
 	{
-		_profiler_ex.begin( 'validation-checkNoReferencesInWitnessAddressDefinitions' );
-
 		//	correct the query planner
 		var cross	= ( _conf.storage === 'sqlite' ) ? 'CROSS' : '';
+
+		_profiler_ex.begin( 'validation-checkNoReferencesInWitnessAddressDefinitions' );
 
 		//	...
 		conn_.query

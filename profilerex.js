@@ -121,7 +121,14 @@ function getSortedDataObject( oData )
 		}
 	);
 
-	return arrDataList.reduce
+	return arrDataList.filter
+	(
+		function ( oObject )
+		{
+			return oObject.qps >= 0;
+		}
+	)
+	.reduce
 	(
 		function( oAcc, oCurrent )
 		{

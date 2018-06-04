@@ -299,6 +299,8 @@ function validate( objJoint, callbacks )
 							function( new_conn )
 							{
 								_profiler_ex.end( 'validation-takeConnectionFromPool' );
+
+								//	...
 								_profiler_ex.begin( 'validation-BEGIN' );
 
 								//	...
@@ -318,7 +320,6 @@ function validate( objJoint, callbacks )
 					function( cb )
 					{
 						_profiler_ex.begin( 'validation-checkDuplicate' );
-						_profiler_ex.begin( 'validation-checkDuplicate-inner' );
 
 						//	...
 						_checkDuplicate
@@ -327,7 +328,7 @@ function validate( objJoint, callbacks )
 							objUnit.unit,
 							function ()
 							{
-								_profiler_ex.end( 'validation-checkDuplicate-inner' );
+								_profiler_ex.end( 'validation-checkDuplicate' );
 
 								//	...
 								cb.apply( this, arguments );
@@ -336,69 +337,133 @@ function validate( objJoint, callbacks )
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-checkDuplicate' );
 						_profiler_ex.begin( 'validation-validateHeadersCommissionRecipients' );
 
 						objUnit.content_hash
-							? cb()
-							: _validateHeadersCommissionRecipients( objUnit, cb );
+							? function ()
+							{
+								_profiler_ex.end( 'validation-validateHeadersCommissionRecipients' );
+								cb();
+							}()
+							: _validateHeadersCommissionRecipients
+							(
+								objUnit,
+								function ()
+								{
+									_profiler_ex.end( 'validation-validateHeadersCommissionRecipients' );
+									cb.apply( this, arguments );
+								}
+							);
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-validateHeadersCommissionRecipients' );
 						_profiler_ex.begin( 'validation-validateHashTree' );
 
 						! objUnit.parent_units
-							? cb()
-							: _validateHashTree( conn, objJoint, objValidationState, cb );
+							? function ()
+							{
+								_profiler_ex.end( 'validation-validateHashTree' );
+								cb();
+							}()
+							: _validateHashTree
+							(
+								conn,
+								objJoint,
+								objValidationState,
+								function ()
+								{
+									_profiler_ex.end( 'validation-validateHashTree' );
+									cb.apply( this, arguments );
+								}
+							);
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-validateHashTree' );
 						_profiler_ex.begin( 'validation-validateParents' );
 
 						! objUnit.parent_units
-							? cb()
-							: _validateParents( conn, objJoint, objValidationState, cb );
+							? function ()
+							{
+								_profiler_ex.end( 'validation-validateParents' );
+								cb();
+							}()
+							: _validateParents
+							(
+								conn,
+								objJoint,
+								objValidationState,
+								function ()
+								{
+									_profiler_ex.end( 'validation-validateParents' );
+									cb.apply( this, arguments );
+								}
+							);
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-validateParents' );
 						_profiler_ex.begin( 'validation-validateSkiplist' );
 
 						! objJoint.skiplist_units
-							? cb()
-							: _validateSkipList( conn, objJoint.skiplist_units, cb );
+							? function ()
+							{
+								_profiler_ex.end( 'validation-validateSkiplist' );
+								cb();
+							}()
+							: _validateSkipList
+							(
+								conn,
+								objJoint.skiplist_units,
+								function ()
+								{
+									_profiler_ex.end( 'validation-validateSkiplist' );
+									cb.apply( this, arguments );
+								}
+							);
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-validateSkiplist' );
 						_profiler_ex.begin( 'validation-validateWitnesses' );
 
 						//	...
-						_validateWitnesses( conn, objUnit, objValidationState, cb );
+						_validateWitnesses
+						(
+							conn,
+							objUnit,
+							objValidationState,
+							function ()
+							{
+								_profiler_ex.end( 'validation-validateWitnesses' );
+								cb.apply( this, arguments );
+							}
+						);
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-validateWitnesses' );
 						_profiler_ex.begin( 'validation-validateAuthors' );
 
 						//	...
-						_validateAuthors( conn, objUnit.authors, objUnit, objValidationState, cb );
+						_validateAuthors
+						(
+							conn,
+							objUnit.authors,
+							objUnit,
+							objValidationState,
+							function ()
+							{
+								_profiler_ex.end( 'validation-validateAuthors' );
+								cb.apply( this, arguments );
+							}
+						);
 					},
 					function( cb )
 					{
-						_profiler_ex.end( 'validation-validateAuthors' );
 						_profiler_ex.begin( 'validation-validateMessages' );
-
-						//	...
-						_profiler_ex.begin( 'validation-validateMessages-NO.2' );
 
 						//	...
 						objUnit.content_hash
 							? function ()
 							{
-								_profiler_ex.end( 'validation-validateMessages-NO.2' );
+								_profiler_ex.end( 'validation-validateMessages' );
 								cb();
 							}()
 							: _validateMessages
@@ -409,7 +474,7 @@ function validate( objJoint, callbacks )
 								objValidationState,
 								function ()
 								{
-									_profiler_ex.end( 'validation-validateMessages-NO.2' );
+									_profiler_ex.end( 'validation-validateMessages' );
 									cb.apply( this, arguments );
 								}
 							);
@@ -417,10 +482,6 @@ function validate( objJoint, callbacks )
 				],
 				function( err )
 				{
-					console.log( "********validate->main::callback( err ): ", err );
-
-					_profiler_ex.end( 'validation-validateMessages' );
-
 					if ( err )
 					{
 						_profiler_ex.begin( 'validation-ROLLBACK' );

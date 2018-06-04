@@ -11,7 +11,7 @@ var _profiler_ex		= require( './profilerex.js' );
 function checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidationState, onAcceptedDoublespends, cb )
 {
 	//	PPP
-	_profiler_ex.begin( "validation-validateMessages-checkForDoublespends" );
+	_profiler_ex.begin( "validation-validateMessages_CheckForDoublespends" );
 
 	//	...
 	conn.query
@@ -21,7 +21,7 @@ function checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 		function( rows )
 		{
 			//	PPP
-			_profiler_ex.end( "validation-validateMessages-checkForDoublespends" );
+			_profiler_ex.end( "validation-validateMessages_CheckForDoublespends" );
 
 			//	...
 			if ( rows.length === 0 )
@@ -39,7 +39,7 @@ function checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 
 
 			//	PPP
-			_profiler_ex.begin( "validation-validateMessages-checkForDoublespends-async.eachSeries" );
+			_profiler_ex.begin( "validation-validateMessages_checkForDoublespends_async.eachSeries" );
 
 			//	...
 			_async.eachSeries
@@ -53,7 +53,7 @@ function checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 					}
 
 					//	PPP
-					_profiler_ex.begin( "validation-validateMessages-checkForDoublespends-async.eachSeries-graph.determineIfIncludedOrEqual" );
+					_profiler_ex.begin( "validation-validateMessages_checkForDoublespends_async.eachSeries_graph.determineIfIncludedOrEqual" );
 
 					//	...
 					_graph.determineIfIncludedOrEqual
@@ -64,7 +64,7 @@ function checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 						function( bIncluded )
 						{
 							//	PPP
-							_profiler_ex.end( "validation-validateMessages-checkForDoublespends-async.eachSeries-graph.determineIfIncludedOrEqual" );
+							_profiler_ex.end( "validation-validateMessages_checkForDoublespends_async.eachSeries_graph.determineIfIncludedOrEqual" );
 
 							if ( bIncluded )
 							{
@@ -112,7 +112,7 @@ function checkForDoubleSpends( conn, type, sql, arrSqlArgs, objUnit, objValidati
 				function( err )
 				{
 					//	PPP
-					_profiler_ex.end( "validation-validateMessages-checkForDoublespends-async.eachSeries" );
+					_profiler_ex.end( "validation-validateMessages_checkForDoublespends_async.eachSeries" );
 
 					if ( err )
 					{

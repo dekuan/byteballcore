@@ -1297,14 +1297,15 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 												err ? "ROLLBACK" : "COMMIT",
 												function()
 												{
+													//	PPP
+													profilerex.end( 'writer-saveJoint-ROLLBACK-COMMIT' );
+
+													//	...
 													conn.release();
 													log.consoleLog
 													(
 														( err ? ( err + ", therefore rolled back unit " ) : "committed unit " ) + objUnit.unit
 													);
-
-													//	PPP
-													profilerex.end( 'writer-saveJoint-ROLLBACK-COMMIT' );
 
 													//
 													//	we have processed a unit
