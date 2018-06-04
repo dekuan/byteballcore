@@ -277,8 +277,6 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 			}
 
 
-
-
 			//
 			//	build author addresses
 			//
@@ -1419,6 +1417,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 				}
 			);
 		}
+		//	end of callback _db.takeConnectionFromPool
 	);
 }
 
