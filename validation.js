@@ -417,6 +417,8 @@ function validate( objJoint, callbacks )
 				],
 				function( err )
 				{
+					console.log( "********validate->main::callback( err ): ", err );
+
 					_profiler_ex.end( 'validation-validateMessages' );
 
 					if ( err )
