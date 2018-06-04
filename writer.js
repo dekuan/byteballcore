@@ -782,20 +782,23 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					objUnit.messages,
 					function( message, i, cb2 )
 					{
+						var denomination;
+						var payload;
+
 						if ( message.payload_location !== 'inline' )
 						{
 							return cb2();
 						}
 
 						//	...
-						var payload = message.payload;
+						payload = message.payload;
 						if ( message.app !== 'payment' )
 						{
 							return cb2();
 						}
 
 						//	...
-						var denomination = payload.denomination || 1;
+						denomination = payload.denomination || 1;
 
 						//	...
 						_async.forEachOfSeries
@@ -878,6 +881,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 												address
 											]
 										);
+
 										switch ( type )
 										{
 										case "transfer":
