@@ -1306,6 +1306,12 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 													//	PPP
 													profilerex.end( 'writer-saveJoint-ROLLBACK-COMMIT' );
 
+													//
+													//	we have processed a unit
+													//	successful or failed
+													//
+													profilerex.increase();
+
 													//	...
 													if ( err )
 													{

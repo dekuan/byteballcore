@@ -104,7 +104,7 @@ function CValidateWitnesses( conn_, objUnit_, objValidationState_, callback_ )
 
 				if ( ! _chash.isChashValid( curr_witness ) )
 				{
-					return cb( "witness address " + curr_witness + " is invalid" );
+					return _callback( "witness address " + curr_witness + " is invalid" );
 				}
 				if ( i === 0 )
 				{

@@ -122,13 +122,16 @@ function CValidateParents( conn_, objJoint_, objValidationState_, callback_ )
 			],
 			function( rows )
 			{
+				var objParentUnitProps;
+
 				if ( rows.length === 0 )
 				{
 					m_arrMissingParentUnits.push( parent_unit );
 					return cb();
 				}
 
-				var objParentUnitProps	= rows[0];
+				//	...
+				objParentUnitProps	= rows[0];
 
 				//	already checked in _validateHashTree that the parent ball is known, that's why we throw
 				if ( objJoint_.ball && objParentUnitProps.ball === null )

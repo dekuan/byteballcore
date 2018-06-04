@@ -37,6 +37,11 @@ function hasFieldsExcept( obj, arrFields )
 
 	for ( field in obj )
 	{
+		if ( ! obj.hasOwnProperty( field ) )
+		{
+			continue;
+		}
+
 		if ( -1 === arrFields.indexOf( field ) )
 		{
 			return true;

@@ -1,16 +1,17 @@
 /*jslint node: true */
 "use strict";
 
-var _			= require( 'lodash' );
-var fs          	= require( 'fs' );
-var log			= require( './log.js' );
-var desktopApp		= require( 'byteballcore/desktop_app.js' );
+var _				= require( 'lodash' );
+var fs          		= require( 'fs' );
+var log				= require( './log.js' );
+var desktopApp			= require( 'byteballcore/desktop_app.js' );
 
-var m_sAppDataDir	= desktopApp.getAppDataDir();
+var m_sAppDataDir		= desktopApp.getAppDataDir();
 
-var m_nProfilerExStart	= Date.now();
-var m_oData		= {};
-var m_oDefaultItem	= {
+var m_nProcessedUnitCount	= 0;
+var m_nProfilerExStart		= Date.now();
+var m_oData			= {};
+var m_oDefaultItem		= {
 	count		: 0,
 	time_first	: 0,
 	time_last	: 0,
@@ -75,6 +76,12 @@ function end( sTag )
 
 }
 
+function increase()
+{
+	m_nProcessedUnitCount ++;
+}
+
+
 function print()
 {
 //	https://nodejs.org/api/fs.html#fs_fs_createwritestream_path_options
@@ -134,7 +141,8 @@ function getSummary()
 	var arrDataList;
 	var nTotalTimeUsed;
 	var nTotalExecutedCount;
-	var nAverageQps;
+	var nAverageNormalQps;
+	var nAverageUnitProcessQps;
 
 	//	...
 	arrDataList		= Object.values( m_oData );
@@ -164,21 +172,24 @@ function getSummary()
 	//	...
 	if ( nTotalTimeUsed > 0 )
 	{
-		nAverageQps	= ( ( nTotalExecutedCount * 1000 ) / nTotalTimeUsed ).toFixed( 2 );
+		nAverageNormalQps	= ( ( nTotalExecutedCount * 1000 ) / nTotalTimeUsed ).toFixed( 2 );
+		nAverageUnitProcessQps	= ( ( m_nProcessedUnitCount * 1000 ) / nTotalTimeUsed ).toFixed( 2 );
 	}
 	else
 	{
-		nAverageQps	= -1;
+		nAverageNormalQps	= -1;
+		nAverageUnitProcessQps	= -1;
 	}
 
 	//	...
 	return {
-		"time_start"		: m_nProfilerExStart,
-		"time_end"		: Date.now(),
-		"time_elapsed"		: Date.now() - m_nProfilerExStart,
-		"time_used_total"	: nTotalTimeUsed,
-		"count_executed"	: nTotalExecutedCount,
-		"average_qps"		: nAverageQps
+		"time_start"			: m_nProfilerExStart,
+		"time_end"			: Date.now(),
+		"time_elapsed"			: Date.now() - m_nProfilerExStart,
+		"time_used_total"		: nTotalTimeUsed,
+		"count_executed"		: nTotalExecutedCount,
+		"average_normal_qps"		: nAverageNormalQps,
+		"average_unit_process_qps"	: nAverageUnitProcessQps
 	};
 }
 
@@ -224,4 +235,5 @@ setInterval
 
 exports.begin		= begin;	//	function(){};
 exports.end		= end;		//	function(){};
+exports.increase	= increase;	//	function(){};
 exports.print		= print;

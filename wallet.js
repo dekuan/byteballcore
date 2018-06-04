@@ -666,7 +666,7 @@ function handleMessageFromHub( ws, json, device_pubkey, bIndirectCorrespondent, 
 			var arrChains = body.chains;
 			if (!ValidationUtils.isNonemptyArray(arrChains))
 				return callbacks.ifError("no chains found");
-			//profiler.increment();
+			//profilerex.increase();
 			
 			if (conf.bLight)
 				network.requestUnfinishedPastUnitsOfPrivateChains(arrChains); // it'll work in the background
