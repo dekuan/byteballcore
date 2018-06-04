@@ -302,7 +302,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						arrQueries,
 						"INSERT " + conn.getIgnore() + " INTO definitions \n\
 						( definition_chash, definition, has_references ) \n\
-						VALUES (?,?,?)",
+						VALUES ( ?, ?, ? )",
 						[
 							definition_chash,
 							JSON.stringify( definition ),
@@ -320,7 +320,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						conn.addQuery
 						(
 							arrQueries,
-							"INSERT " + conn.getIgnore() + " INTO addresses (address) VALUES(?)",
+							"INSERT " + conn.getIgnore() + " INTO addresses ( address ) VALUES( ? )",
 							[
 								author.address
 							]
@@ -332,7 +332,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					conn.addQuery
 					(
 						arrQueries,
-						"INSERT " + conn.getIgnore() + " INTO addresses (address) VALUES(?)",
+						"INSERT " + conn.getIgnore() + " INTO addresses ( address ) VALUES( ? )",
 						[
 							author.address
 						]
@@ -342,7 +342,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 				conn.addQuery
 				(
 					arrQueries,
-					"INSERT INTO unit_authors ( unit, address, definition_chash ) VALUES( ?,?,? )",
+					"INSERT INTO unit_authors ( unit, address, definition_chash ) VALUES( ?, ?, ? )",
 					[
 						objUnit.unit,
 						author.address,
@@ -374,7 +374,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						conn.addQuery
 						(
 							arrQueries,
-							"INSERT INTO authentifiers (unit, address, path, authentifier) VALUES(?,?,?,?)",
+							"INSERT INTO authentifiers ( unit, address, path, authentifier ) VALUES( ?, ?, ?, ? )",
 							[
 								objUnit.unit,
 								author.address,
@@ -385,8 +385,6 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 					}
 				}
 			}
-
-
 
 			if ( ! objUnit.content_hash )
 			{
@@ -415,7 +413,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 						arrQueries,
 						"INSERT INTO messages \n\
 						( unit, message_index, app, payload_hash, payload_location, payload, payload_uri, payload_uri_hash ) \n\
-						VALUES(?,?,?,?,?,?,?,?)",
+						VALUES( ?, ?, ?, ?, ?, ?, ?, ? )",
 						[
 							objUnit.unit,
 							i,
@@ -439,7 +437,9 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 							conn.addQuery
 							(
 								arrQueries,
-								"INSERT INTO address_definition_changes (unit, message_index, address, definition_chash) VALUES(?,?,?,?)", 
+								"INSERT INTO address_definition_changes \
+								( unit, message_index, address, definition_chash ) \
+								VALUES( ?, ?, ?, ? )",
 								[
 									objUnit.unit,
 									i,
