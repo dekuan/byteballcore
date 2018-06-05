@@ -121,8 +121,7 @@ function saveJoint( objJoint, objValidationState, preCommitCallback, onDone )
 			{
 				fields += ", main_chain_index, creation_date";
 				values += ",?," + conn.getFromUnixTime( "?" );
-				params.push
-				(
+				params.push(
 					objUnit.main_chain_index,
 					objUnit.timestamp
 				);

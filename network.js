@@ -628,6 +628,7 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 					//
 					//	* try to send request to get peers
 					//
+					log.consoleLog( "****** peer was not found in m_arrOutboundPeers, * try to send request to get peers" );
 					requestPeers( ws );
 				}
 			}
@@ -3007,7 +3008,9 @@ function broadcastJoint( objJoint )
 		function( client )
 		{
 			if ( client.bSubscribed )
+			{
 				sendJoint( client, objJoint );
+			}
 		}
 	);
 
@@ -5858,15 +5861,15 @@ function startRelay()
 	//
 	if ( conf.bWantNewPeers )
 	{
+		log.consoleLog( "network::startRelay, conf.bWantNewPeers = true" );
+
 		//
 		//	add outbound connections
-		//
-		addOutboundPeers();
-
 		//
 		//	retry lost and failed connections
 		//	every 1 minute
 		//
+		addOutboundPeers();
 		setInterval
 		(
 			addOutboundPeers,

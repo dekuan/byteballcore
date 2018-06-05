@@ -1,27 +1,27 @@
 /*jslint node: true */
 "use strict";
 
-var _				= require( 'lodash' );
-var crypto			= require( 'crypto' );
-var async			= require( 'async' );
-var log				= require( './log.js' );
-var db				= require( './db.js' );
-var constants			= require( './constants.js' );
-var objectHash			= require( './object_hash.js' );
-var objectLength		= require( './object_length.js' );
-var ecdsaSig			= require( './signature.js' );
-var mutex			= require( './mutex.js' );
-var storage			= require( './storage.js' );
-var myWitnesses			= require( './my_witnesses.js' );
-var parentComposer		= require( './parent_composer.js' );
-var paid_witnessing		= require( './paid_witnessing.js' );
-var headers_commission		= require( './headers_commission.js' );
-var mc_outputs			= require( './mc_outputs.js' );
-var validation			= require( './validation.js' );
-var writer			= require( './writer.js' );
-var composer_const					= require( './composer_const.js' );
-var composer_pick_divisible_coins_for_amount		= require( './composer_pick_divisible_coins_for_amount.js' );
-var conf			= require( './conf.js' );
+var _						= require( 'lodash' );
+var _crypto					= require( 'crypto' );
+var _async					= require( 'async' );
+var _log					= require( './log.js' );
+var _db						= require( './db.js' );
+var _constants					= require( './constants.js' );
+var _object_hash				= require( './object_hash.js' );
+var _object_length				= require( './object_length.js' );
+var _ecdsa_sig					= require( './signature.js' );
+var _mutex					= require( './mutex.js' );
+var _storage					= require( './storage.js' );
+var _my_witnesses				= require( './my_witnesses.js' );
+var _parent_composer				= require( './parent_composer.js' );
+var _paid_witnessing				= require( './paid_witnessing.js' );
+var _headers_commission				= require( './headers_commission.js' );
+var _mc_outputs					= require( './mc_outputs.js' );
+var _conf					= require( './conf.js' );
+var _validation					= require( './validation.js' );
+var _writer					= require( './writer.js' );
+var _composer_const				= require( './composer_const.js' );
+var _composer_pick_divisible_coins_for_amount	= require( './composer_pick_divisible_coins_for_amount.js' );
 
 
 var m_bGenesis		= false;
@@ -65,7 +65,7 @@ function sortOutputs( a, b )
 // 	var required_amount		= amount;
 //
 // 	//	...
-// 	log.consoleLog( "pick coins " + asset + " amount " + amount );
+// 	_log.consoleLog( "pick coins " + asset + " amount " + amount );
 //
 // 	//	adds element to arrInputsWithProofs
 // 	function addInput( input )
@@ -78,7 +78,7 @@ function sortOutputs( a, b )
 // 		if ( objAsset && objAsset.is_private )
 // 		{
 // 			//	for type=payment only
-// 			var spend_proof		= objectHash.getBase64Hash
+// 			var spend_proof		= _object_hash.getBase64Hash
 // 			(
 // 				{
 // 					asset		: asset,
@@ -135,7 +135,7 @@ function sortOutputs( a, b )
 // 			ORDER BY amount LIMIT 1",
 // 			[
 // 				arrSpendableAddresses,
-// 				amount + is_base * composer_const.TRANSFER_INPUT_SIZE,
+// 				amount + is_base * _composer_const.TRANSFER_INPUT_SIZE,
 // 				last_ball_mci
 // 			],
 // 			function( rows )
@@ -171,11 +171,11 @@ function sortOutputs( a, b )
 // 			[
 // 				arrSpendableAddresses,
 // 				last_ball_mci,
-// 				constants.MAX_INPUTS_PER_PAYMENT_MESSAGE - 2
+// 				_constants.MAX_INPUTS_PER_PAYMENT_MESSAGE - 2
 // 			],
 // 			function( rows )
 // 			{
-// 				async.eachSeries
+// 				_async.eachSeries
 // 				(
 // 					rows,
 // 					function( row, cb )
@@ -183,8 +183,8 @@ function sortOutputs( a, b )
 // 						var input	= row;
 //
 // 						//	...
-// 						objectHash.cleanNulls( input );
-// 						required_amount	+= is_base * composer_const.TRANSFER_INPUT_SIZE;
+// 						_object_hash.cleanNulls( input );
+// 						required_amount	+= is_base * _composer_const.TRANSFER_INPUT_SIZE;
 // 						addInput( input );
 //
 // 						//	if we allow equality, we might get 0 amount for change which is invalid
@@ -220,8 +220,8 @@ function sortOutputs( a, b )
 // 		addMcInputs
 // 		(
 // 			"headers_commission",
-// 			composer_const.HEADERS_COMMISSION_INPUT_SIZE,
-// 			headers_commission.getMaxSpendableMciForLastBallMci( last_ball_mci ),
+// 			_composer_const.HEADERS_COMMISSION_INPUT_SIZE,
+// 			_headers_commission.getMaxSpendableMciForLastBallMci( last_ball_mci ),
 // 			addWitnessingInputs
 // 		);
 // 	}
@@ -231,23 +231,23 @@ function sortOutputs( a, b )
 // 		addMcInputs
 // 		(
 // 			"witnessing",
-// 			composer_const.WITNESSING_INPUT_SIZE,
-// 			paid_witnessing.getMaxSpendableMciForLastBallMci( last_ball_mci ),
+// 			_composer_const.WITNESSING_INPUT_SIZE,
+// 			_paid_witnessing.getMaxSpendableMciForLastBallMci( last_ball_mci ),
 // 			issueAsset
 // 		);
 // 	}
 //
 // 	function addMcInputs( type, input_size, max_mci, onStillNotEnough )
 // 	{
-// 		async.eachSeries
+// 		_async.eachSeries
 // 		(
 // 			arrAddresses,
 // 			function( address, cb )
 // 			{
-// 				var target_amount = required_amount + input_size + ( bMultiAuthored ? composer_const.ADDRESS_SIZE : 0 ) - total_amount;
+// 				var target_amount = required_amount + input_size + ( bMultiAuthored ? _composer_const.ADDRESS_SIZE : 0 ) - total_amount;
 //
 // 				//	...
-// 				mc_outputs.findMcIndexIntervalToTargetAmount
+// 				_mc_outputs.findMcIndexIntervalToTargetAmount
 // 				(
 // 					conn,
 // 					type,
@@ -275,7 +275,7 @@ function sortOutputs( a, b )
 // 							if ( bMultiAuthored )
 // 							{
 // 								// address length
-// 								full_input_size	+= composer_const.ADDRESS_SIZE;
+// 								full_input_size	+= _composer_const.ADDRESS_SIZE;
 //
 // 								//	...
 // 								input.address = address;
@@ -295,7 +295,7 @@ function sortOutputs( a, b )
 // 			{
 // 				if ( ! err )
 // 				{
-// 					log.consoleLog( arrAddresses + " " + type + ": got only " + total_amount + " out of required " + required_amount );
+// 					_log.consoleLog( arrAddresses + " " + type + ": got only " + total_amount + " out of required " + required_amount );
 // 				}
 //
 // 				//	...
@@ -322,7 +322,7 @@ function sortOutputs( a, b )
 // 		}
 //
 // 		//	...
-// 		log.consoleLog( "will try to issue asset " + asset );
+// 		_log.consoleLog( "will try to issue asset " + asset );
 //
 // 		//	for issue, we use full list of addresses rather than spendable addresses
 // 		if ( objAsset.issued_by_definer_only &&
@@ -355,7 +355,7 @@ function sortOutputs( a, b )
 // 				};
 // 			if ( objAsset && objAsset.is_private )
 // 			{
-// 				var spend_proof = objectHash.getBase64Hash
+// 				var spend_proof = _object_hash.getBase64Hash
 // 				(
 // 					{
 // 						asset		: asset,
@@ -475,7 +475,7 @@ function createTextMessage( text )
 	return {
 		app			: "text",
 		payload_location	: "inline",
-		payload_hash		: objectHash.getBase64Hash( text ),
+		payload_hash		: _object_hash.getBase64Hash( text ),
 		payload			: text
 	};
 }
@@ -535,7 +535,7 @@ function composeContentJoint( from_address, app, payload, signer, callbacks )
 		{
 			app			: app,
 			payload_location	: "inline",
-			payload_hash		: objectHash.getBase64Hash( payload ),
+			payload_hash		: _object_hash.getBase64Hash( payload ),
 			payload			: payload
 		};
 	composeJoint
@@ -703,7 +703,7 @@ function composeJoint( params )
 
 	if ( ! arrWitnesses )
 	{
-		myWitnesses.readMyWitnesses
+		_my_witnesses.readMyWitnesses
 		(
 			function( _arrWitnesses )
 			{
@@ -714,7 +714,7 @@ function composeJoint( params )
 		return;
 	}
 
-	/*if (conf.bLight && !params.lightProps){
+	/*if (_conf.bLight && !params.lightProps){
 		var network = require('./network.js');
 		network.requestFromLightVendor(
 			'light/get_parents_and_last_ball_and_witness_list_unit', 
@@ -739,7 +739,7 @@ function composeJoint( params )
 
 		var trySubset = function( count )
 		{
-			if ( count > constants.MAX_AUTHORS_PER_UNIT )
+			if ( count > _constants.MAX_AUTHORS_PER_UNIT )
 			{
 				return oCallbackFunctions.ifNotEnoughFunds( "Too many authors.  Consider splitting the payment into two units." );
 			}
@@ -785,7 +785,7 @@ function composeJoint( params )
 	var signer			= params.signer;
 	var callbacks			= params.callbacks;
 
-//	if (conf.bLight && !lightProps)
+//	if (_conf.bLight && !lightProps)
 //		throw Error("no parent props for light");
 	
 	
@@ -817,7 +817,7 @@ function composeJoint( params )
 		{
 			app			: "payment",
 			payload_location	: "inline",
-			payload_hash		: composer_const.HASH_PLACEHOLDER,
+			payload_hash		: _composer_const.HASH_PLACEHOLDER,
 			payload			:
 				{
 					//
@@ -842,8 +842,8 @@ function composeJoint( params )
 	var bMultiAuthored	= ( arrFromAddresses.length > 1 );
 	var objUnit		=
 		{
-			version		: constants.version,
-			alt		: constants.alt,
+			version		: _constants.version,
+			alt		: _constants.alt,
 			//timestamp: Date.now(),
 			messages	: arrMessages,
 			authors		: []
@@ -903,13 +903,13 @@ function composeJoint( params )
 	};
 
 	//	...
-	async.series
+	_async.series
 	(
 		[
 			function( cb )
 			{
 				//	lock
-				mutex.lock
+				_mutex.lock
 				(
 					arrFromAddresses.map
 					(
@@ -928,7 +928,7 @@ function composeJoint( params )
 			function( cb )
 			{
 				//	lightProps
-				if ( ! conf.bLight )
+				if ( ! _conf.bLight )
 					return cb();
 
 				//	...
@@ -969,7 +969,7 @@ function composeJoint( params )
 			function( cb )
 			{
 				//	start transaction
-				db.takeConnectionFromPool
+				_db.takeConnectionFromPool
 				(
 					function( new_conn )
 					{
@@ -1028,7 +1028,7 @@ function composeJoint( params )
 					);
 				}
 
-				if ( conf.bLight )
+				if ( _conf.bLight )
 				{
 					objUnit.parent_units	= lightProps.parent_units;
 					objUnit.last_ball	= lightProps.last_stable_mc_ball;
@@ -1039,7 +1039,7 @@ function composeJoint( params )
 					return checkForUnstablePredecessors();
 				}
 
-				parentComposer.pickParentUnitsAndLastBall
+				_parent_composer.pickParentUnitsAndLastBall
 				(
 					conn,
 					arrWitnesses,
@@ -1064,7 +1064,7 @@ function composeJoint( params )
 			function( cb )
 			{
 				//	authors
-				async.eachSeries
+				_async.eachSeries
 				(
 					arrFromAddresses,
 					function( from_address, cb2 )
@@ -1161,7 +1161,7 @@ function composeJoint( params )
 												var row	= rows[ 0 ];
 												row.definition
 													? cb2()
-													: setDefinition();	//	if definition not found in the db, add it into the json
+													: setDefinition();	//	if definition not found in the _db, add it into the json
 											}
 										);
 									}
@@ -1180,7 +1180,7 @@ function composeJoint( params )
 					objUnit.witnesses = arrWitnesses;
 					return cb();
 				}
-				if ( conf.bLight )
+				if ( _conf.bLight )
 				{
 					if ( lightProps.witness_list_unit )
 						objUnit.witness_list_unit = lightProps.witness_list_unit;
@@ -1192,7 +1192,7 @@ function composeJoint( params )
 				}
 
 				//	witness addresses must not have references
-				storage.determineIfWitnessAddressDefinitionsHaveReferences
+				_storage.determineIfWitnessAddressDefinitionsHaveReferences
 				(
 					conn,
 					arrWitnesses,
@@ -1203,7 +1203,7 @@ function composeJoint( params )
 							return cb( "some witnesses have references in their addresses" );
 						}
 
-						storage.findWitnessListUnit
+						_storage.findWitnessListUnit
 						(
 							conn,
 							arrWitnesses,
@@ -1236,7 +1236,7 @@ function composeJoint( params )
 				}
 
 				//	...
-				log.consoleLog( "will retrieve messages" );
+				_log.consoleLog( "will retrieve messages" );
 
 				fnRetrieveMessages
 				(
@@ -1246,7 +1246,7 @@ function composeJoint( params )
 					arrPayingAddresses,
 					function( err, arrMoreMessages, assocMorePrivatePayloads )
 					{
-						log.consoleLog( "fnRetrieveMessages callback: err code = " + ( err ? err.error_code : "" ) );
+						_log.consoleLog( "fnRetrieveMessages callback: err code = " + ( err ? err.error_code : "" ) );
 						if ( err )
 						{
 							return cb( ( typeof err === "string" ) ? ( "unable to add additional messages: " + err ) : err );
@@ -1272,8 +1272,8 @@ function composeJoint( params )
 				//	********
 				//	********
 				//	input coins
-				objUnit.headers_commission	= objectLength.getHeadersSize( objUnit );
-				var naked_payload_commission	= objectLength.getTotalPayloadSize( objUnit );	//	without input coins
+				objUnit.headers_commission	= _object_length.getHeadersSize( objUnit );
+				var naked_payload_commission	= _object_length.getTotalPayloadSize( objUnit );	//	without input coins
 
 				if ( m_bGenesis )
 				{
@@ -1281,7 +1281,7 @@ function composeJoint( params )
 						{
 							type		: "issue",
 							serial_number	: 1,
-							amount		: constants.TOTAL_WHITEBYTES
+							amount		: _constants.TOTAL_WHITEBYTES
 						};
 					if ( objUnit.authors.length > 1 )
 					{
@@ -1290,8 +1290,8 @@ function composeJoint( params )
 
 					//	...
 					objPaymentMessage.payload.inputs	= [ issueInput ];
-					objUnit.payload_commission		= objectLength.getTotalPayloadSize( objUnit );
-					total_input				= constants.TOTAL_WHITEBYTES;
+					objUnit.payload_commission		= _object_length.getTotalPayloadSize( objUnit );
+					total_input				= _constants.TOTAL_WHITEBYTES;
 
 					//	...
 					return cb();
@@ -1308,7 +1308,7 @@ function composeJoint( params )
 					//	...
 					total_input				= params.input_amount;
 					objPaymentMessage.payload.inputs	= params.inputs;
-					objUnit.payload_commission		= objectLength.getTotalPayloadSize( objUnit );
+					objUnit.payload_commission		= _object_length.getTotalPayloadSize( objUnit );
 
 					//	...
 					return cb();
@@ -1344,8 +1344,8 @@ function composeJoint( params )
 						//	...
 						total_input = _total_input;
 						objPaymentMessage.payload.inputs = arrInputsWithProofs.map(function(objInputWithProof){ return objInputWithProof.input; });
-						objUnit.payload_commission = objectLength.getTotalPayloadSize(objUnit);
-						log.consoleLog( "inputs increased payload by", objUnit.payload_commission - naked_payload_commission );
+						objUnit.payload_commission = _object_length.getTotalPayloadSize(objUnit);
+						_log.consoleLog( "inputs increased payload by", objUnit.payload_commission - naked_payload_commission );
 
 						//	...
 						cb();
@@ -1392,12 +1392,12 @@ function composeJoint( params )
 					//	...
 					objPaymentMessage.payload.outputs[ 0 ].amount	= change;
 					objPaymentMessage.payload.outputs.sort( sortOutputs );
-					objPaymentMessage.payload_hash			= objectHash.getBase64Hash( objPaymentMessage.payload );
+					objPaymentMessage.payload_hash			= _object_hash.getBase64Hash( objPaymentMessage.payload );
 
-					var text_to_sign	= objectHash.getUnitHashToSign( objUnit );
+					var text_to_sign	= _object_hash.getUnitHashToSign( objUnit );
 
 					//	...
-					async.each
+					_async.each
 					(
 						objUnit.authors,
 						function( author, cb2 )
@@ -1405,7 +1405,7 @@ function composeJoint( params )
 							var address	= author.address;
 
 							//	different keys sign in parallel (if multisig)
-							async.each
+							_async.each
 							(
 								assocSigningPaths[ address ],
 								function( path, cb3 )
@@ -1452,7 +1452,7 @@ function composeJoint( params )
 												}
 
 												//	...
-												author.authentifiers[ path ]	= ecdsaSig.sign( text_to_sign, privKey );
+												author.authentifiers[ path ]	= _ecdsa_sig.sign( text_to_sign, privKey );
 
 												//	...
 												cb3();
@@ -1474,14 +1474,14 @@ function composeJoint( params )
 							}
 
 							//	...
-							objUnit.unit	= objectHash.getUnitHash( objUnit );
+							objUnit.unit	= _object_hash.getUnitHash( objUnit );
 							if ( m_bGenesis )
 							{
-								objJoint.ball	= objectHash.getBallHash( objUnit.unit );
+								objJoint.ball	= _object_hash.getBallHash( objUnit.unit );
 							}
 
 							//	...
-							log.consoleLog
+							_log.consoleLog
 							(
 								require( 'util' ).inspect
 								(
@@ -1533,7 +1533,7 @@ function signMessage( from_address, message, signer, handleResult )
 	//	...
 	signer.readSigningPaths
 	(
-		db,
+		_db,
 		from_address,
 		function( assocLengthsBySigningPaths )
 		{
@@ -1553,7 +1553,7 @@ function signMessage( from_address, message, signer, handleResult )
 			//	...
 			signer.readDefinition
 			(
-				db,
+				_db,
 				from_address,
 				function( err, arrDefinition )
 				{
@@ -1564,10 +1564,10 @@ function signMessage( from_address, message, signer, handleResult )
 
 					//	...
 					objAuthor.definition	= arrDefinition;
-					var text_to_sign	= objectHash.getUnitHashToSign( objUnit );
+					var text_to_sign	= _object_hash.getUnitHashToSign( objUnit );
 
 					//	...
-					async.each
+					_async.each
 					(
 						objUnit.authors,
 						function( author, cb2 )
@@ -1575,7 +1575,7 @@ function signMessage( from_address, message, signer, handleResult )
 							var address = author.address;
 
 							//	different keys sign in parallel (if multisig)
-							async.each
+							_async.each
 							(
 								assocSigningPaths[ address ],
 								function( path, cb3 )
@@ -1624,7 +1624,7 @@ function signMessage( from_address, message, signer, handleResult )
 												}
 
 												//	...
-												author.authentifiers[ path ]	= ecdsaSig.sign( text_to_sign, privKey );
+												author.authentifiers[ path ]	= _ecdsa_sig.sign( text_to_sign, privKey );
 
 												//	...
 												cb3();
@@ -1646,7 +1646,7 @@ function signMessage( from_address, message, signer, handleResult )
 							}
 
 							//	...
-							log.consoleLog
+							_log.consoleLog
 							(
 								require( 'util' ).inspect
 								(
@@ -1693,7 +1693,7 @@ function filterMostFundedAddresses( rows, estimated_amount )
 	{
 		arrFundedAddresses.push( rows[ i ].address );
 		accumulated_amount	+= rows[ i ].total;
-		if ( accumulated_amount > estimated_amount + composer_const.MAX_FEE )
+		if ( accumulated_amount > estimated_amount + _composer_const.MAX_FEE )
 		{
 			break;
 		}
@@ -1720,7 +1720,7 @@ function readSortedFundedAddresses( asset, arrAvailableAddresses, estimated_amou
 		: "SUM(amount) DESC";
 
 	//	...
-	db.query
+	_db.query
 	(
 		"SELECT address, SUM(amount) AS total \n\
 		FROM outputs \n\
@@ -1752,7 +1752,7 @@ function readSortedFundedAddresses( asset, arrAvailableAddresses, estimated_amou
 			
 			// add other addresses to pay for commissions (in case arrFundedAddresses don't have enough bytes to pay commissions)
 			var arrOtherAddresses = _.difference(arrAvailableAddresses, arrFundedAddresses);
-			readSortedFundedAddresses(null, arrOtherAddresses, composer_const.TYPICAL_FEE, function(arrFundedOtherAddresses){
+			readSortedFundedAddresses(null, arrOtherAddresses, _composer_const.TYPICAL_FEE, function(arrFundedOtherAddresses){
 				if (arrFundedOtherAddresses.length === 0)
 					return handleFundedAddresses(arrFundedAddresses);
 				handleFundedAddresses(arrFundedAddresses.concat(arrFundedOtherAddresses));
@@ -1773,7 +1773,7 @@ function composeMinimalJoint( params )
 		: params.outputs.reduce( function( acc, output )
 			{
 				return acc+output.amount;
-			}, 0 ) + composer_const.TYPICAL_FEE;
+			}, 0 ) + _composer_const.TYPICAL_FEE;
 
 	//	...
 	readSortedFundedAddresses
@@ -1819,7 +1819,7 @@ function getSavingCallbacks( callbacks )
 			var unit	= objUnit.unit;
 
 			//	...
-			validation.validate
+			_validation.validate
 			(
 				objJoint,
 				{
@@ -1847,7 +1847,7 @@ function getSavingCallbacks( callbacks )
 					},
 					ifOk			: function( objValidationState, validation_unlock )
 					{
-						log.consoleLog( "base asset OK " + objValidationState.sequence );
+						_log.consoleLog( "base asset OK " + objValidationState.sequence );
 
 						if ( objValidationState.sequence !== 'good' )
 						{
@@ -1863,7 +1863,7 @@ function getSavingCallbacks( callbacks )
 							function onLightError( err )
 							{
 								//	light only
-								log.consoleLog( "failed to post base payment " + unit );
+								_log.consoleLog( "failed to post base payment " + unit );
 
 								//	...
 								var eventBus	= require('./event_bus.js');
@@ -1885,7 +1885,10 @@ function getSavingCallbacks( callbacks )
 							},
 							function save()
 							{
-								writer.saveJoint
+								//
+								//	***
+								//
+								_writer.saveJoint
 								(
 									objJoint,
 									objValidationState,
@@ -1911,7 +1914,7 @@ function getSavingCallbacks( callbacks )
 										}
 
 										//	...
-										log.consoleLog( "saved unit " + unit );
+										_log.consoleLog( "saved unit " + unit );
 										callbacks.ifOk( objJoint, assocPrivatePayloads );
 									}
 								);
@@ -1927,7 +1930,7 @@ function getSavingCallbacks( callbacks )
 
 function postJointToLightVendorIfNecessaryAndSave( objJoint, onLightError, save )
 {
-	if ( conf.bLight )
+	if ( _conf.bLight )
 	{
 		//	light clients cannot save before receiving OK from light vendor
 		var network	= require( './network.js' );
@@ -1985,7 +1988,7 @@ function getMessageIndexByPayloadHash( objUnit, payload_hash )
 
 function generateBlinding()
 {
-	return crypto.randomBytes( 12 ).toString( "base64" );
+	return _crypto.randomBytes( 12 ).toString( "base64" );
 }
 
 
@@ -2028,4 +2031,4 @@ exports.composeAndSavePaymentJoint			= composeAndSavePaymentJoint;
 
 exports.generateBlinding				= generateBlinding;
 exports.getMessageIndexByPayloadHash			= getMessageIndexByPayloadHash;
-exports.pickDivisibleCoinsForAmount			= composer_pick_divisible_coins_for_amount.pickDivisibleCoinsForAmount;
+exports.pickDivisibleCoinsForAmount			= _composer_pick_divisible_coins_for_amount.pickDivisibleCoinsForAmount;

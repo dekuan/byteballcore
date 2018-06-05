@@ -1,28 +1,30 @@
 /*jslint node: true */
 "use strict";
 
-var _			= require('lodash');
-var log			= require( './log.js' );
-var async		= require('async');
-var sqlite_migrations	= require('./sqlite_migrations');
-var EventEmitter	= require('events').EventEmitter;
+var _				= require('lodash');
+var _log			= require( './log.js' );
+var _async			= require('async');
+var _profiler_sql		= require('./profiler_sql.js');
+var _sqlite_migrations		= require('./sqlite_migrations');
 
-var bCordova		= ( typeof window === 'object' && window.cordova );
-var sqlite3;
-var path;
+var EventEmitter		= require('events').EventEmitter;
+
+var m_bCordova			= ( typeof window === 'object' && window.cordova );
+var m_oSQLite3;
+var m_path;
 var cordovaSqlite;
 
 
-if ( bCordova )
+if ( m_bCordova )
 {
 	// will error before deviceready
 	//cordovaSqlite = window.cordova.require('cordova-sqlite-plugin.SQLite');
 }
 else
 {
-	sqlite3	= require( 'sqlite3' );//.verbose();
-	path	= require( './desktop_app.js' + '' ).getAppDataDir() + '/';
-	log.consoleLog( "path=" + path );
+	m_oSQLite3	= require( 'sqlite3' );//.verbose();
+	m_path	= require( './desktop_app.js' + '' ).getAppDataDir() + '/';
+	_log.consoleLog( "path=" + m_path );
 }
 
 
@@ -39,7 +41,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 
 	function openDb( cb )
 	{
-		if ( bCordova )
+		if ( m_bCordova )
 		{
 			var db	= new cordovaSqlite(db_name);
 			db.open( cb );
@@ -47,13 +49,13 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 		}
 		else
 		{
-			return new sqlite3.Database( path + db_name, bReadOnly ? sqlite3.OPEN_READONLY : sqlite3.OPEN_READWRITE, cb );
+			return new m_oSQLite3.Database( m_path + db_name, bReadOnly ? m_oSQLite3.OPEN_READONLY : m_oSQLite3.OPEN_READWRITE, cb );
 		}
 	}
 
 	function connect( handleConnection )
 	{
-		log.consoleLog("opening new db connection");
+		_log.consoleLog("opening new db connection");
 		var db = openDb
 		(
 			function( err )
@@ -64,8 +66,8 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 				}
 
 				//	...
-				log.consoleLog("opened db");
-				//	if (!bCordova)
+				_log.consoleLog("opened db");
+				//	if (!m_bCordova)
 				//		db.serialize();
 
 				//	...
@@ -94,7 +96,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 													"PRAGMA temp_store=MEMORY",
 													function()
 													{
-														sqlite_migrations.migrateDb
+														_sqlite_migrations.migrateDb
 														(
 															connection,
 															function()
@@ -132,7 +134,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 
 			release	: function()
 			{
-				//	log.consoleLog("released connection");
+				//	_log.consoleLog("released connection");
 				this.bInUse	= false;
 				if ( m_arrQueue.length === 0 )
 				{
@@ -147,14 +149,27 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 
 			query : function()
 			{
+				var last_arg;
+				var bHasCallback;
+				var sql;
+				var bSelect;
+				var count_arguments_without_callback;
+				var new_args;
+				var self;
+				var i;
+				var start_ts;
+
+				var sKeyString;
+
 				if ( ! this.bInUse )
 				{
 					throw Error( "this connection was returned to the pool" );
 				}
 
 				//	...
-				var last_arg		= arguments[arguments.length - 1];
-				var bHasCallback	= (typeof last_arg === 'function');
+				last_arg	= arguments[arguments.length - 1];
+				bHasCallback	= (typeof last_arg === 'function');
+
 				if ( ! bHasCallback )
 				{
 					// no callback
@@ -162,53 +177,89 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 				}
 
 				//	...
-				var sql = arguments[0];
-				//log.consoleLog("======= query: "+sql);
-				var bSelect = !! sql.match( /^SELECT/i );
-				var count_arguments_without_callback = bHasCallback ? (arguments.length-1) : arguments.length;
-				var new_args = [];
-				var self = this;
+				sql		= arguments[ 0 ];
+				//_log.consoleLog("======= query: "+sql);
+				bSelect		= !! sql.match( /^SELECT/i );
+				count_arguments_without_callback	= bHasCallback ? ( arguments.length - 1 ) : arguments.length;
+				new_args	= [];
+				self		= this;
 
-				for (var i=0; i<count_arguments_without_callback; i++) // except the final callback
-					new_args.push(arguments[i]);
+				for ( i = 0; i < count_arguments_without_callback; i ++ )	//	except the final callback
+				{
+					new_args.push( arguments[ i ] );
+				}
+				if ( count_arguments_without_callback === 1 )	//	no params
+				{
+					new_args.push( [] );
+				}
 
-				if (count_arguments_without_callback === 1) // no params
-					new_args.push([]);
-
+				//	...
 				expandArrayPlaceholders( new_args );
 
-				// add callback with error handling
+
+				//	...
+				sKeyString = new_args.filter
+				(
+					function( a, i )
+					{
+						return ( i < new_args.length );
+					}
+				).join( ", " );
+				_profiler_sql.begin( sKeyString );
+
+
+				//	add callback with error handling
 				new_args.push
 				(
 					function( err, result )
 					{
-						//	log.consoleLog("query done: "+sql);
+						_profiler_sql.end( sKeyString );
+
+						//	...
+						var consumed_time;
+
+						//	_log.consoleLog("query done: "+sql);
 						if ( err )
 						{
-							console.error("\nfailed query:", new_args);
-							throw Error(err+"\n"+sql+"\n"+new_args[1].map(function(param){ if (param === null) return 'null'; if (param === undefined) return 'undefined'; return param;}).join(', '));
+							console.error( "\nfailed query:", new_args );
+							throw Error
+							(
+								err + "\n" + sql + "\n" + new_args[ 1 ].map
+								(
+									function( param )
+									{
+										if ( param === null )
+											return 'null';
+
+										if ( param === undefined )
+											return 'undefined';
+
+										return param;
+									}
+								).join(', ')
+							);
 						}
 
 						//
 						//	note that sqlite3 sets nonzero this.changes even when rows were matched but nothing actually changed (new values are same as old)
 						//	this.changes appears to be correct for INSERTs despite the documentation states the opposite
 						//
-						if ( ! bSelect && ! bCordova )
+						if ( ! bSelect && ! m_bCordova )
 						{
 							result = { affectedRows : this.changes, insertId : this.lastID };
 						}
-						if ( bSelect && bCordova )
+						if ( bSelect && m_bCordova )
 						{
 							// note that on android, result.affectedRows is 1 even when inserted many rows
 							result = result.rows || [];
 						}
 
-						//log.consoleLog("changes="+this.changes+", affected="+result.affectedRows);
+						//_log.consoleLog("changes="+this.changes+", affected="+result.affectedRows);
 
-						var consumed_time	= Date.now() - start_ts;
+						consumed_time	= Date.now() - start_ts;
 						if ( consumed_time > 25 )
 						{
-							log.consoleLog
+							_log.consoleLog
 							(
 								"long query took " + consumed_time + "ms:\n"
 								+ new_args.filter
@@ -227,9 +278,10 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 				);
 
 				//	...
-				var start_ts = Date.now();
-				if ( bCordova )
+				start_ts	= Date.now();
+				if ( m_bCordova )
 				{
+					//	for Cordova only
 					this.db.query.apply( this.db, new_args );
 				}
 				else
@@ -257,7 +309,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 	}
 
 	//
-	//	accumulate array of functions for async.series()
+	//	accumulate array of functions for _async.series()
 	//	it applies both to individual connection and to pool
 	//
 	function addQuery( arr )
@@ -277,7 +329,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 		(
 			function( callback )
 			{
-				//	add callback for async.series() member tasks
+				//	add callback for _async.series() member tasks
 				if ( typeof query_args[ query_args.length - 1 ] !== 'function' )
 				{
 					//	add callback
@@ -313,13 +365,13 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 	{
 		if ( ! m_bReady )
 		{
-			log.consoleLog( "takeConnectionFromPool will wait for ready" );
+			_log.consoleLog( "takeConnectionFromPool will wait for ready" );
 			m_cEventEmitter.once
 			(
 				'ready',
 				function()
 				{
-					log.consoleLog( "db is now ready" );
+					_log.consoleLog( "db is now ready" );
 					takeConnectionFromPool( handleConnection );
 				}
 			);
@@ -333,7 +385,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 		{
 			if ( ! m_arrConnections[ i ].bInUse )
 			{
-				//	log.consoleLog("reusing previously opened connection");
+				//	_log.consoleLog("reusing previously opened connection");
 				m_arrConnections[ i ].bInUse	= true;
 				return handleConnection( m_arrConnections[ i ] );
 			}
@@ -349,7 +401,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 
 		//
 		//	third, queue it
-		//	log.consoleLog("queuing");
+		//	_log.consoleLog("queuing");
 		//
 		m_arrQueue.push( handleConnection );
 	}
@@ -357,14 +409,19 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 
 	function onDbReady()
 	{
-		if ( bCordova && ! cordovaSqlite )
+		if ( m_bCordova && ! cordovaSqlite )
 		{
 			cordovaSqlite = window.cordova.require( 'cordova-sqlite-plugin.SQLite' );
 		}
 
 		//	...
 		m_bReady = true;
-		m_cEventEmitter.emit('ready');
+
+		//
+		//	will be processed in
+		//		function takeConnectionFromPool( handleConnection )
+		//
+		m_cEventEmitter.emit( 'ready' );
 	}
 
 	function getCountUsedConnections()
@@ -389,7 +446,7 @@ function CSQLitePool( db_name, MAX_CONNECTIONS, bReadOnly )
 	 */
 	function query()
 	{
-		//	log.consoleLog(arguments[0]);
+		//	_log.consoleLog(arguments[0]);
 		var args	= arguments;
 
 		//
@@ -617,75 +674,179 @@ function getDatabaseDirName(){
 	}
 }
 
-function getDatabaseDirPath(){
+function getDatabaseDirPath()
+{
 	return getParentDirPath() + '/' + getDatabaseDirName();
 }
 
 
-function createDatabaseIfNecessary(db_name, onDbReady){
-	
-	log.consoleLog('createDatabaseIfNecessary '+db_name);
+function createDatabaseIfNecessary( db_name, onDbReady )
+{
+	_log.consoleLog( 'createDatabaseIfNecessary ' + db_name );
 	var initial_db_filename = 'initial.' + db_name;
 
-	// on mobile platforms, copy initial sqlite file from app root to data folder where we can open it for writing
-	if (bCordova){
-		log.consoleLog("will wait for deviceready");
-		document.addEventListener("deviceready", function onDeviceReady(){
-			log.consoleLog("deviceready handler");
-			log.consoleLog("data dir: "+window.cordova.file.dataDirectory);
-			log.consoleLog("app dir: "+window.cordova.file.applicationDirectory);
-			window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function onFileSystemSuccess(fs){
-				window.resolveLocalFileSystemURL(getDatabaseDirPath() + '/' + db_name, function(fileEntry){
-					log.consoleLog("database file already exists");
-					onDbReady();
-				}, function onSqliteNotInited(err) { // file not found
-					log.consoleLog("will copy initial database file");
-					window.resolveLocalFileSystemURL(window.cordova.file.applicationDirectory + "/www/" + initial_db_filename, function(fileEntry) {
-						log.consoleLog("got initial db fileentry");
-						// get parent dir
-						window.resolveLocalFileSystemURL(getParentDirPath(), function(parentDirEntry) {
-							log.consoleLog("resolved parent dir");
-							parentDirEntry.getDirectory(getDatabaseDirName(), {create: true}, function(dbDirEntry){
-								log.consoleLog("resolved db dir");
-								fileEntry.copyTo(dbDirEntry, db_name, function(){
-									log.consoleLog("copied initial cordova database");
-									onDbReady();
-								}, function(err){
-									throw Error("failed to copyTo: "+JSON.stringify(err));
-								});
-							}, function(err){
-								throw Error("failed to getDirectory databases: "+JSON.stringify(err));
-							});
-						}, function(err){
-							throw Error("failed to resolveLocalFileSystemURL of parent dir: "+JSON.stringify(err));
-						});
-					}, function(err){
-						throw Error("failed to getFile: "+JSON.stringify(err));
-					});
-				});
-			}, function onFailure(err){
-				throw Error("failed to requestFileSystem: "+err);
-			});
-		}, false);
+	//
+	//	on mobile platforms,
+	//	copy initial sqlite file from app root to data folder where we can open it for writing
+	//
+	if ( m_bCordova )
+	{
+		_log.consoleLog( "will wait for deviceready" );
+		document.addEventListener
+		(
+			"deviceready",
+			function onDeviceReady()
+			{
+				_log.consoleLog( "deviceready handler" );
+				_log.consoleLog( "data dir: " + window.cordova.file.dataDirectory );
+				_log.consoleLog( "app dir: " + window.cordova.file.applicationDirectory );
+
+				window.requestFileSystem
+				(
+					LocalFileSystem.PERSISTENT,
+					0,
+					function onFileSystemSuccess( fs )
+					{
+						window.resolveLocalFileSystemURL
+						(
+							getDatabaseDirPath() + '/' + db_name,
+							function( fileEntry )
+							{
+								_log.consoleLog( "database file already exists" );
+								onDbReady();
+							},
+							function onSqliteNotInited( err )
+							{
+								//	file not found
+								_log.consoleLog( "will copy initial database file" );
+								window.resolveLocalFileSystemURL
+								(
+									window.cordova.file.applicationDirectory + "/www/" + initial_db_filename,
+									function( fileEntry )
+									{
+										_log.consoleLog( "got initial db fileentry" );
+
+										//	get parent dir
+										window.resolveLocalFileSystemURL
+										(
+											getParentDirPath(),
+											function( parentDirEntry )
+											{
+												_log.consoleLog( "resolved parent dir" );
+												parentDirEntry.getDirectory
+												(
+													getDatabaseDirName(),
+													{
+														create	: true
+													},
+													function( dbDirEntry )
+													{
+														_log.consoleLog( "resolved db dir" );
+														fileEntry.copyTo
+														(
+															dbDirEntry,
+															db_name,
+															function()
+															{
+																_log.consoleLog( "copied initial cordova database" );
+																onDbReady();
+															},
+															function( err )
+															{
+																throw Error( "failed to copyTo: " + JSON.stringify( err ) );
+															}
+														);
+													},
+													function( err )
+													{
+														throw Error( "failed to getDirectory databases: " + JSON.stringify(err) );
+													}
+												);
+											},
+											function( err )
+											{
+												throw Error( "failed to resolveLocalFileSystemURL of parent dir: " + JSON.stringify( err ) );
+											}
+										);
+									},
+									function( err )
+									{
+										throw Error( "failed to getFile: " + JSON.stringify( err ) );
+									}
+								);
+							}
+						);
+					},
+					function onFailure( err )
+					{
+						throw Error("failed to requestFileSystem: "+err);
+					}
+				);
+			},
+			false
+		);
 	}
-	else{ // copy initial db to app folder
-		var fs = require('fs'+'');
-		fs.stat(path + db_name, function(err, stats){
-			log.consoleLog("stat "+err);
-			if (!err) // already exists
-				return onDbReady();
-			log.consoleLog("will copy initial db");
-			var mode = parseInt('700', 8);
-			var parent_dir = require('path'+'').dirname(path);
-			fs.mkdir(parent_dir, mode, function(err){
-				log.consoleLog('mkdir '+parent_dir+': '+err);
-				fs.mkdir(path, mode, function(err){
-					log.consoleLog('mkdir '+path+': '+err);
-					fs.createReadStream(__dirname + '/' + initial_db_filename).pipe(fs.createWriteStream(path + db_name)).on('finish', onDbReady);
-				});
-			});
-		});
+	else
+	{
+		//
+		//	copy initial db to app folder
+		//
+		//	Using fs.stat() to check for the existence of a file
+		//
+		var fs	= require( 'fs' + '' );
+		fs.stat
+		(
+			m_path + db_name,
+			function( err, stats )
+			{
+				_log.consoleLog( "stat " + err );
+
+				if ( ! err )
+				{
+					//	already exists
+					return onDbReady();
+				}
+
+				//	...
+				_log.consoleLog( "will copy initial db" );
+
+				var mode	= parseInt( '700', 8 );
+				var parent_dir	= require( 'path' + '' ).dirname( m_path );
+
+				fs.mkdir
+				(
+					parent_dir,
+					mode,
+					function( err )
+					{
+						_log.consoleLog( 'mkdir ' + parent_dir + ': ' + err );
+						fs.mkdir
+						(
+							m_path,
+							mode,
+							function( err )
+							{
+								_log.consoleLog('mkdir '+m_path+': '+err);
+								fs.createReadStream
+								(
+									__dirname + '/' + initial_db_filename
+								).pipe
+								(
+									fs.createWriteStream( m_path + db_name ) )
+								.on
+								(
+									'finish',
+									onDbReady
+								);
+							}
+						);
+					}
+				);
+			}
+		);
 	}
+
+
 }
 
 

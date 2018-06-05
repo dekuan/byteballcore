@@ -26,6 +26,9 @@ if ( conf.storage === 'mysql' )
 }
 else if ( conf.storage === 'sqlite' )
 {
+	//
+	//	will call .createDatabaseIfNecessary to create database by initial.byteball.sqlite
+	//
 	var sqlitePool	= require( './sqlite_pool.js' );
 	module.exports	= sqlitePool
 	(
