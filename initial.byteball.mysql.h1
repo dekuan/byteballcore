@@ -1,0 +1,1111 @@
+-- MySQL dump 10.13  Distrib 5.7.21, for Linux (x86_64)
+--
+-- Host: 10.144.113.14    Database: ttt_test
+-- ------------------------------------------------------
+-- Server version	5.7.21-0ubuntu0.16.04.1
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Table structure for table `address_definition_changes`
+--
+
+DROP TABLE IF EXISTS `address_definition_changes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `address_definition_changes` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `definition_chash` varchar(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`message_index`),
+  UNIQUE KEY `byAddressUnit` (`address`,`unit`),
+  CONSTRAINT `addressDefinitionChangesByAddress` FOREIGN KEY (`address`) REFERENCES `addresses` (`address`),
+  CONSTRAINT `address_definition_changes_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `addresses`
+--
+
+DROP TABLE IF EXISTS `addresses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `addresses` (
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `archived_joints`
+--
+
+DROP TABLE IF EXISTS `archived_joints`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `archived_joints` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `reason` enum('uncovered','voided') COLLATE utf8_unicode_ci NOT NULL,
+  `json` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `asset_attestors`
+--
+
+DROP TABLE IF EXISTS `asset_attestors`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `asset_attestors` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `asset` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `attestor_address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`message_index`),
+  UNIQUE KEY `byAssetAttestorUnit` (`asset`,`attestor_address`,`unit`),
+  CONSTRAINT `assetAttestorsByAsset` FOREIGN KEY (`asset`) REFERENCES `assets` (`unit`),
+  CONSTRAINT `asset_attestors_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `asset_denominations`
+--
+
+DROP TABLE IF EXISTS `asset_denominations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `asset_denominations` (
+  `asset` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `denomination` int(11) NOT NULL,
+  `count_coins` bigint(20) DEFAULT NULL,
+  `max_issued_serial_number` bigint(20) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`asset`,`denomination`),
+  CONSTRAINT `asset_denominations_ibfk_1` FOREIGN KEY (`asset`) REFERENCES `assets` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `assets`
+--
+
+DROP TABLE IF EXISTS `assets`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `assets` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `cap` bigint(20) DEFAULT NULL,
+  `is_private` tinyint(4) NOT NULL,
+  `is_transferrable` tinyint(4) NOT NULL,
+  `auto_destroy` tinyint(4) NOT NULL,
+  `fixed_denominations` tinyint(4) NOT NULL,
+  `issued_by_definer_only` tinyint(4) NOT NULL,
+  `cosigned_by_definer` tinyint(4) NOT NULL,
+  `spender_attested` tinyint(4) NOT NULL,
+  `issue_condition` text COLLATE utf8_unicode_ci,
+  `transfer_condition` text COLLATE utf8_unicode_ci,
+  PRIMARY KEY (`unit`),
+  CONSTRAINT `assets_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `attestations`
+--
+
+DROP TABLE IF EXISTS `attestations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `attestations` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `attestor_address` varchar(32) COLLATE utf8_unicode_ci NOT NULL,
+  `address` varchar(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`message_index`),
+  KEY `byAddress` (`address`),
+  KEY `attestationsByAttestorAddress` (`attestor_address`),
+  CONSTRAINT `attestationsByAttestorAddress` FOREIGN KEY (`attestor_address`) REFERENCES `addresses` (`address`),
+  CONSTRAINT `attestations_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `authentifiers`
+--
+
+DROP TABLE IF EXISTS `authentifiers`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `authentifiers` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `path` varchar(40) COLLATE utf8_unicode_ci NOT NULL,
+  `authentifier` varchar(4096) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`address`,`path`),
+  KEY `authentifiersByAddress` (`address`),
+  CONSTRAINT `authentifiersByAddress` FOREIGN KEY (`address`) REFERENCES `addresses` (`address`),
+  CONSTRAINT `authentifiers_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `balls`
+--
+
+DROP TABLE IF EXISTS `balls`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `balls` (
+  `ball` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `count_paid_witnesses` tinyint(4) DEFAULT NULL,
+  PRIMARY KEY (`ball`),
+  UNIQUE KEY `unit` (`unit`),
+  KEY `byCountPaidWitnesses` (`count_paid_witnesses`),
+  CONSTRAINT `balls_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `bots`
+--
+
+DROP TABLE IF EXISTS `bots`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `bots` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `rank` int(11) NOT NULL DEFAULT '0',
+  `name` varchar(100) NOT NULL,
+  `pairing_code` varchar(200) NOT NULL,
+  `description` longtext NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `catchup_chain_balls`
+--
+
+DROP TABLE IF EXISTS `catchup_chain_balls`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `catchup_chain_balls` (
+  `member_index` int(11) NOT NULL AUTO_INCREMENT,
+  `ball` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`member_index`),
+  UNIQUE KEY `ball` (`ball`)
+) ENGINE=InnoDB AUTO_INCREMENT=176 DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `chat_messages`
+--
+
+DROP TABLE IF EXISTS `chat_messages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `chat_messages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `correspondent_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `message` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_incoming` tinyint(4) NOT NULL,
+  `type` char(15) COLLATE utf8_unicode_ci NOT NULL DEFAULT 'text',
+  PRIMARY KEY (`id`),
+  KEY `chatMessagesIndexByDeviceAddress` (`correspondent_address`,`id`),
+  CONSTRAINT `chat_messages_ibfk_1` FOREIGN KEY (`correspondent_address`) REFERENCES `correspondent_devices` (`device_address`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `correspondent_devices`
+--
+
+DROP TABLE IF EXISTS `correspondent_devices`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `correspondent_devices` (
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `name` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `pubkey` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `hub` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `is_confirmed` tinyint(4) NOT NULL DEFAULT '0',
+  `is_indirect` tinyint(4) NOT NULL DEFAULT '0',
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `my_record_pref` int(11) DEFAULT '1',
+  `peer_record_pref` int(11) DEFAULT '1',
+  PRIMARY KEY (`device_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `data_feeds`
+--
+
+DROP TABLE IF EXISTS `data_feeds`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `data_feeds` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `feed_name` varchar(64) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `value` varchar(64) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `int_value` bigint(20) DEFAULT NULL,
+  PRIMARY KEY (`unit`,`feed_name`),
+  KEY `byNameStringValue` (`feed_name`,`value`),
+  KEY `byNameIntValue` (`feed_name`,`int_value`),
+  CONSTRAINT `data_feeds_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `definitions`
+--
+
+DROP TABLE IF EXISTS `definitions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `definitions` (
+  `definition_chash` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `definition` text COLLATE utf8_unicode_ci NOT NULL,
+  `has_references` tinyint(4) NOT NULL,
+  PRIMARY KEY (`definition_chash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `dependencies`
+--
+
+DROP TABLE IF EXISTS `dependencies`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `dependencies` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `depends_on_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `depends_on_unit` (`depends_on_unit`,`unit`),
+  KEY `byUnit` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `device_messages`
+--
+
+DROP TABLE IF EXISTS `device_messages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `device_messages` (
+  `message_hash` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `message` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`message_hash`),
+  KEY `byAddress` (`device_address`),
+  CONSTRAINT `device_messages_ibfk_1` FOREIGN KEY (`device_address`) REFERENCES `devices` (`device_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `devices`
+--
+
+DROP TABLE IF EXISTS `devices`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `devices` (
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `pubkey` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `temp_pubkey_package` text COLLATE utf8_unicode_ci,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`device_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `earned_headers_commission_recipients`
+--
+
+DROP TABLE IF EXISTS `earned_headers_commission_recipients`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `earned_headers_commission_recipients` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `address` varchar(32) COLLATE utf8_unicode_ci NOT NULL,
+  `earned_headers_commission_share` int(11) NOT NULL,
+  PRIMARY KEY (`unit`,`address`),
+  KEY `byAddress` (`address`),
+  CONSTRAINT `earned_headers_commission_recipients_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `extended_pubkeys`
+--
+
+DROP TABLE IF EXISTS `extended_pubkeys`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `extended_pubkeys` (
+  `wallet` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `extended_pubkey` char(112) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `approval_date` timestamp NULL DEFAULT NULL,
+  `member_ready_date` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`wallet`,`device_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `hash_tree_balls`
+--
+
+DROP TABLE IF EXISTS `hash_tree_balls`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `hash_tree_balls` (
+  `ball_index` int(11) NOT NULL AUTO_INCREMENT,
+  `ball` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`ball_index`),
+  UNIQUE KEY `ball` (`ball`),
+  UNIQUE KEY `unit` (`unit`)
+) ENGINE=InnoDB AUTO_INCREMENT=11324 DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `headers_commission_contributions`
+--
+
+DROP TABLE IF EXISTS `headers_commission_contributions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `headers_commission_contributions` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `amount` bigint(20) NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`unit`,`address`),
+  KEY `byAddress` (`address`),
+  CONSTRAINT `headers_commission_contributions_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `headers_commission_outputs`
+--
+
+DROP TABLE IF EXISTS `headers_commission_outputs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `headers_commission_outputs` (
+  `main_chain_index` int(11) NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `amount` bigint(20) NOT NULL,
+  `is_spent` tinyint(4) NOT NULL DEFAULT '0',
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`main_chain_index`,`address`),
+  UNIQUE KEY `address` (`address`,`main_chain_index`),
+  UNIQUE KEY `address_2` (`address`,`is_spent`,`main_chain_index`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `inputs`
+--
+
+DROP TABLE IF EXISTS `inputs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `inputs` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `input_index` tinyint(4) NOT NULL,
+  `asset` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `denomination` int(11) NOT NULL DEFAULT '1',
+  `is_unique` tinyint(4) DEFAULT '1',
+  `type` enum('transfer','headers_commission','witnessing','issue') COLLATE utf8_unicode_ci NOT NULL,
+  `src_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `src_message_index` tinyint(4) DEFAULT NULL,
+  `src_output_index` tinyint(4) DEFAULT NULL,
+  `from_main_chain_index` int(11) DEFAULT NULL,
+  `to_main_chain_index` int(11) DEFAULT NULL,
+  `serial_number` bigint(20) DEFAULT NULL,
+  `amount` bigint(20) DEFAULT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`message_index`,`input_index`),
+  UNIQUE KEY `bySrcOutput` (`src_unit`,`src_message_index`,`src_output_index`,`is_unique`),
+  UNIQUE KEY `byIndexAddress` (`type`,`from_main_chain_index`,`address`,`is_unique`),
+  UNIQUE KEY `byAssetDenominationSerialAddress` (`asset`,`denomination`,`serial_number`,`address`,`is_unique`),
+  KEY `byAssetType` (`asset`,`type`),
+  KEY `byAddressTypeToMci` (`address`,`type`,`to_main_chain_index`),
+  CONSTRAINT `inputsByAddress` FOREIGN KEY (`address`) REFERENCES `addresses` (`address`),
+  CONSTRAINT `inputsByAsset` FOREIGN KEY (`asset`) REFERENCES `assets` (`unit`),
+  CONSTRAINT `inputsBySrcUnit` FOREIGN KEY (`src_unit`) REFERENCES `units` (`unit`),
+  CONSTRAINT `inputs_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `joints`
+--
+
+DROP TABLE IF EXISTS `joints`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `joints` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `json` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `known_bad_joints`
+--
+
+DROP TABLE IF EXISTS `known_bad_joints`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `known_bad_joints` (
+  `joint` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `json` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `error` text COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `joint` (`joint`),
+  UNIQUE KEY `unit` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `messages`
+--
+
+DROP TABLE IF EXISTS `messages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `messages` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `app` varchar(30) COLLATE utf8_unicode_ci NOT NULL,
+  `payload_location` enum('inline','uri','none') COLLATE utf8_unicode_ci NOT NULL,
+  `payload_hash` varchar(44) COLLATE utf8_unicode_ci NOT NULL,
+  `payload` text COLLATE utf8_unicode_ci,
+  `payload_uri_hash` varchar(44) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `payload_uri` varchar(500) COLLATE utf8_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`unit`,`message_index`),
+  CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `my_addresses`
+--
+
+DROP TABLE IF EXISTS `my_addresses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `my_addresses` (
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `wallet` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `is_change` tinyint(4) NOT NULL,
+  `address_index` int(11) NOT NULL,
+  `definition` text COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`address`),
+  UNIQUE KEY `byWalletPath` (`wallet`,`is_change`,`address_index`),
+  CONSTRAINT `my_addresses_ibfk_1` FOREIGN KEY (`wallet`) REFERENCES `wallets` (`wallet`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `my_witnesses`
+--
+
+DROP TABLE IF EXISTS `my_witnesses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `my_witnesses` (
+  `address` varchar(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `outbox`
+--
+
+DROP TABLE IF EXISTS `outbox`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `outbox` (
+  `message_hash` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `to` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `message` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_error` text COLLATE utf8_unicode_ci,
+  PRIMARY KEY (`message_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `outputs`
+--
+
+DROP TABLE IF EXISTS `outputs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `outputs` (
+  `output_id` int(11) NOT NULL AUTO_INCREMENT,
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `output_index` tinyint(4) NOT NULL,
+  `asset` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `denomination` int(11) NOT NULL DEFAULT '1',
+  `address` varchar(32) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `amount` bigint(20) NOT NULL,
+  `blinding` char(16) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `output_hash` char(44) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `is_serial` tinyint(4) DEFAULT NULL,
+  `is_spent` tinyint(4) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`output_id`),
+  UNIQUE KEY `unit` (`unit`,`message_index`,`output_index`),
+  KEY `byAddressSpent` (`address`,`is_spent`),
+  KEY `bySerial` (`is_serial`),
+  KEY `outputsByAsset` (`asset`),
+  CONSTRAINT `outputsByAsset` FOREIGN KEY (`asset`) REFERENCES `assets` (`unit`),
+  CONSTRAINT `outputs_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB AUTO_INCREMENT=31113 DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pairing_secrets`
+--
+
+DROP TABLE IF EXISTS `pairing_secrets`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `pairing_secrets` (
+  `pairing_secret` varchar(40) COLLATE utf8_unicode_ci NOT NULL,
+  `is_permanent` tinyint(4) NOT NULL DEFAULT '0',
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expiry_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pairing_secret`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `parenthoods`
+--
+
+DROP TABLE IF EXISTS `parenthoods`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `parenthoods` (
+  `child_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `parent_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`parent_unit`,`child_unit`),
+  KEY `parenthoodsByChild` (`child_unit`),
+  CONSTRAINT `parenthoodsByChild` FOREIGN KEY (`child_unit`) REFERENCES `units` (`unit`),
+  CONSTRAINT `parenthoodsByParent` FOREIGN KEY (`parent_unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `peer_events`
+--
+
+DROP TABLE IF EXISTS `peer_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `peer_events` (
+  `peer_host` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `event_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `event` enum('new_good','invalid','nonserial','known_good','known_bad') COLLATE utf8_unicode_ci NOT NULL,
+  KEY `byPeerHost` (`peer_host`),
+  CONSTRAINT `peer_events_ibfk_1` FOREIGN KEY (`peer_host`) REFERENCES `peer_hosts` (`peer_host`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `peer_host_urls`
+--
+
+DROP TABLE IF EXISTS `peer_host_urls`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `peer_host_urls` (
+  `peer_host` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `url` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `is_active` tinyint(4) DEFAULT '1',
+  `revocation_date` timestamp NULL DEFAULT NULL,
+  UNIQUE KEY `byHostActive` (`peer_host`,`is_active`),
+  CONSTRAINT `peer_host_urls_ibfk_1` FOREIGN KEY (`peer_host`) REFERENCES `peer_hosts` (`peer_host`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `peer_hosts`
+--
+
+DROP TABLE IF EXISTS `peer_hosts`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `peer_hosts` (
+  `peer_host` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `count_new_good_joints` int(11) NOT NULL DEFAULT '0',
+  `count_invalid_joints` int(11) NOT NULL DEFAULT '0',
+  `count_nonserial_joints` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`peer_host`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `peers`
+--
+
+DROP TABLE IF EXISTS `peers`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `peers` (
+  `peer` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `peer_host` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `learnt_from_peer_host` varchar(100) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `is_self` tinyint(4) NOT NULL DEFAULT '0',
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`peer`),
+  KEY `byLearntFromPeerHost` (`learnt_from_peer_host`),
+  KEY `byPeerHost` (`peer_host`),
+  CONSTRAINT `peers_ibfk_1` FOREIGN KEY (`learnt_from_peer_host`) REFERENCES `peer_hosts` (`peer_host`),
+  CONSTRAINT `peers_ibfk_2` FOREIGN KEY (`peer_host`) REFERENCES `peer_hosts` (`peer_host`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pending_shared_address_signing_paths`
+--
+
+DROP TABLE IF EXISTS `pending_shared_address_signing_paths`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `pending_shared_address_signing_paths` (
+  `definition_template_chash` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `signing_path` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `device_addresses_by_relative_signing_paths` text COLLATE utf8_unicode_ci,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `approval_date` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`definition_template_chash`,`signing_path`),
+  CONSTRAINT `pending_shared_address_signing_paths_ibfk_1` FOREIGN KEY (`definition_template_chash`) REFERENCES `pending_shared_addresses` (`definition_template_chash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pending_shared_addresses`
+--
+
+DROP TABLE IF EXISTS `pending_shared_addresses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `pending_shared_addresses` (
+  `definition_template_chash` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `definition_template` text COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`definition_template_chash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `poll_choices`
+--
+
+DROP TABLE IF EXISTS `poll_choices`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `poll_choices` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `choice_index` tinyint(4) NOT NULL,
+  `choice` varchar(32) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`unit`,`choice_index`),
+  UNIQUE KEY `unit` (`unit`,`choice`),
+  CONSTRAINT `poll_choices_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `polls` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `polls`
+--
+
+DROP TABLE IF EXISTS `polls`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `polls` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `question` varchar(4096) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`),
+  CONSTRAINT `polls_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `push_registrations`
+--
+
+DROP TABLE IF EXISTS `push_registrations`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `push_registrations` (
+  `registrationId` varchar(200) DEFAULT NULL,
+  `device_address` char(33) NOT NULL,
+  PRIMARY KEY (`device_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `shared_address_signing_paths`
+--
+
+DROP TABLE IF EXISTS `shared_address_signing_paths`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `shared_address_signing_paths` (
+  `shared_address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `signing_path` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `member_signing_path` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `bySharedAddressSigningPath` (`shared_address`,`signing_path`),
+  CONSTRAINT `shared_address_signing_paths_ibfk_1` FOREIGN KEY (`shared_address`) REFERENCES `shared_addresses` (`shared_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `shared_addresses`
+--
+
+DROP TABLE IF EXISTS `shared_addresses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `shared_addresses` (
+  `shared_address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `definition` text COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`shared_address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `skiplist_units`
+--
+
+DROP TABLE IF EXISTS `skiplist_units`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `skiplist_units` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `skiplist_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`unit`,`skiplist_unit`),
+  KEY `bySkiplistUnit` (`skiplist_unit`),
+  CONSTRAINT `skiplist_units_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`),
+  CONSTRAINT `skiplist_units_ibfk_2` FOREIGN KEY (`skiplist_unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `spend_proofs`
+--
+
+DROP TABLE IF EXISTS `spend_proofs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `spend_proofs` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `spend_proof_index` tinyint(4) NOT NULL,
+  `spend_proof` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`message_index`,`spend_proof_index`),
+  UNIQUE KEY `bySpendProof` (`spend_proof`,`unit`),
+  KEY `spendProofsByAddress` (`address`),
+  CONSTRAINT `spendProofsByAddress` FOREIGN KEY (`address`) REFERENCES `addresses` (`address`),
+  CONSTRAINT `spend_proofs_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `unhandled_joints`
+--
+
+DROP TABLE IF EXISTS `unhandled_joints`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `unhandled_joints` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `peer` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `json` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `unhandled_private_payments`
+--
+
+DROP TABLE IF EXISTS `unhandled_private_payments`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `unhandled_private_payments` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `output_index` tinyint(4) NOT NULL,
+  `json` longtext COLLATE utf8_unicode_ci NOT NULL,
+  `peer` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `linked` tinyint(4) NOT NULL DEFAULT '0',
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`unit`,`message_index`,`output_index`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `unit_authors`
+--
+
+DROP TABLE IF EXISTS `unit_authors`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `unit_authors` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `definition_chash` char(32) COLLATE utf8_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (`unit`,`address`),
+  KEY `unitAuthorsIndexByAddressDefinitionChash` (`address`,`definition_chash`),
+  KEY `byDefinition` (`definition_chash`),
+  CONSTRAINT `unitAuthorsByAddress` FOREIGN KEY (`address`) REFERENCES `addresses` (`address`),
+  CONSTRAINT `unit_authors_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`),
+  CONSTRAINT `unit_authors_ibfk_2` FOREIGN KEY (`definition_chash`) REFERENCES `definitions` (`definition_chash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `unit_witnesses`
+--
+
+DROP TABLE IF EXISTS `unit_witnesses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `unit_witnesses` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `address` varchar(32) COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`unit`,`address`),
+  KEY `byAddress` (`address`),
+  CONSTRAINT `unit_witnesses_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `units`
+--
+
+DROP TABLE IF EXISTS `units`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `units` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `version` varchar(10) COLLATE utf8_unicode_ci NOT NULL DEFAULT '1.0',
+  `alt` varchar(3) COLLATE utf8_unicode_ci NOT NULL DEFAULT '1',
+  `witness_list_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `last_ball_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  `content_hash` char(44) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `headers_commission` int(11) NOT NULL,
+  `payload_commission` int(11) NOT NULL,
+  `is_free` tinyint(4) NOT NULL DEFAULT '1',
+  `is_on_main_chain` tinyint(4) NOT NULL DEFAULT '0',
+  `main_chain_index` int(11) DEFAULT NULL,
+  `latest_included_mc_index` int(11) DEFAULT NULL,
+  `level` int(11) DEFAULT NULL,
+  `witnessed_level` int(11) DEFAULT NULL,
+  `is_stable` tinyint(4) NOT NULL DEFAULT '0',
+  `sequence` enum('good','temp-bad','final-bad') COLLATE utf8_unicode_ci NOT NULL DEFAULT 'good',
+  `best_parent_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin DEFAULT NULL,
+  PRIMARY KEY (`unit`),
+  KEY `byMainChain` (`is_on_main_chain`),
+  KEY `byMcIndex` (`main_chain_index`),
+  KEY `byLimci` (`latest_included_mc_index`),
+  KEY `byLevel` (`level`),
+  KEY `byFree` (`is_free`),
+  KEY `byStableMci` (`is_stable`,`main_chain_index`),
+  KEY `byDate` (`creation_date`),
+  KEY `unitsByLastBallUnit` (`last_ball_unit`),
+  KEY `byBestParentUnit` (`best_parent_unit`),
+  KEY `unitsByWitnessListUnit` (`witness_list_unit`),
+  KEY `bySequence` (`sequence`),
+  CONSTRAINT `unitsByLastBallUnit` FOREIGN KEY (`last_ball_unit`) REFERENCES `units` (`unit`),
+  CONSTRAINT `unitsByWitnessListUnit` FOREIGN KEY (`witness_list_unit`) REFERENCES `units` (`unit`),
+  CONSTRAINT `units_ibfk_1` FOREIGN KEY (`best_parent_unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `votes`
+--
+
+DROP TABLE IF EXISTS `votes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `votes` (
+  `unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `message_index` tinyint(4) NOT NULL,
+  `poll_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `choice` varchar(32) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  PRIMARY KEY (`unit`,`message_index`),
+  UNIQUE KEY `unit` (`unit`,`choice`),
+  KEY `votesByChoice` (`poll_unit`,`choice`),
+  CONSTRAINT `votesByChoice` FOREIGN KEY (`poll_unit`, `choice`) REFERENCES `poll_choices` (`unit`, `choice`),
+  CONSTRAINT `votes_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `wallet_signing_paths`
+--
+
+DROP TABLE IF EXISTS `wallet_signing_paths`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `wallet_signing_paths` (
+  `wallet` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `signing_path` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `device_address` char(33) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `byWalletSigningPath` (`wallet`,`signing_path`),
+  CONSTRAINT `wallet_signing_paths_ibfk_1` FOREIGN KEY (`wallet`) REFERENCES `wallets` (`wallet`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `wallets`
+--
+
+DROP TABLE IF EXISTS `wallets`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `wallets` (
+  `wallet` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `account` int(11) NOT NULL,
+  `definition_template` text COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `full_approval_date` timestamp NULL DEFAULT NULL,
+  `ready_date` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`wallet`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `watched_light_addresses`
+--
+
+DROP TABLE IF EXISTS `watched_light_addresses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `watched_light_addresses` (
+  `peer` varchar(100) COLLATE utf8_unicode_ci NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`peer`,`address`),
+  KEY `byAddress` (`address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `watched_light_units`
+--
+
+DROP TABLE IF EXISTS `watched_light_units`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `watched_light_units` (
+  `peer` varchar(100) NOT NULL,
+  `unit` char(44) NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`peer`,`unit`),
+  KEY `wlabyUnit` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `witness_list_hashes`
+--
+
+DROP TABLE IF EXISTS `witness_list_hashes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `witness_list_hashes` (
+  `witness_list_unit` char(44) CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,
+  `witness_list_hash` char(44) COLLATE utf8_unicode_ci NOT NULL,
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`witness_list_unit`),
+  UNIQUE KEY `witness_list_hash` (`witness_list_hash`),
+  CONSTRAINT `witness_list_hashes_ibfk_1` FOREIGN KEY (`witness_list_unit`) REFERENCES `units` (`unit`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `witnessing_outputs`
+--
+
+DROP TABLE IF EXISTS `witnessing_outputs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `witnessing_outputs` (
+  `main_chain_index` int(11) NOT NULL,
+  `address` char(32) COLLATE utf8_unicode_ci NOT NULL,
+  `amount` bigint(20) NOT NULL,
+  `is_spent` tinyint(4) NOT NULL DEFAULT '0',
+  `creation_date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`main_chain_index`,`address`),
+  UNIQUE KEY `address` (`address`,`main_chain_index`),
+  UNIQUE KEY `address_2` (`address`,`is_spent`,`main_chain_index`),
+  CONSTRAINT `witnessing_outputs_ibfk_1` FOREIGN KEY (`address`) REFERENCES `addresses` (`address`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2018-06-05 22:08:30

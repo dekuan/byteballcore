@@ -84,16 +84,23 @@ function increase()
 
 function print()
 {
-//	https://nodejs.org/api/fs.html#fs_fs_createwritestream_path_options
-	var m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-sql.txt', { flags: 'w' } );
+	try
+	{
+		//	https://nodejs.org/api/fs.html#fs_fs_createwritestream_path_options
+		var m_oWriteStream	= fs.createWriteStream( m_sAppDataDir + '/profiler-sql.txt', { flags: 'w' } );
 
-	//	...
-	m_oWriteStream.write( "\n############################################################\r\n" );
-	m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
-	m_oWriteStream.write( JSON.stringify( getSortedDataObject( m_oData ), null, 4 ) );
-	m_oWriteStream.write( JSON.stringify( getSummary(), null, 4 ) );
+		//	...
+		m_oWriteStream.write( "\n############################################################\r\n" );
+		m_oWriteStream.write( Date().toString() + "\r\n\r\n" );
+		m_oWriteStream.write( JSON.stringify( getSortedDataObject( m_oData ), null, 4 ) );
+		m_oWriteStream.write( JSON.stringify( getSummary(), null, 4 ) );
 
-	m_oWriteStream.end();
+		m_oWriteStream.end();
+	}
+	catch ( e )
+	{
+
+	}
 }
 
 

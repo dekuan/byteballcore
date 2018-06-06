@@ -133,6 +133,7 @@ if ( exports.storage === 'mysql' )
 	exports.database.host			= exports.database.host || 'localhost';
 	exports.database.name			= exports.database.name || 'byteball';
 	exports.database.user			= exports.database.user || 'byteball';
+	exports.database.password		= exports.database.password || 'byteball';
 }
 else if ( exports.storage === 'sqlite' )
 {

@@ -1096,6 +1096,10 @@ function findOutboundPeerOrConnect( url, onOpen )
 	}
 
 	log.consoleLog( "will connect to " + url );
+
+	//
+	//	...
+	//
 	connectToPeer( url, onOpen );
 }
 
@@ -1444,6 +1448,7 @@ function subscribe( ws )
 
 					if ( response.error )
 					{
+						log.consoleLog( "network::subscribe, occurred a error: ", response.error );
 						return;
 					}
 
