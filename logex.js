@@ -228,7 +228,21 @@ function _flush()
 	}
 }
 
+function _handleProcessExit()
+{
+	clearInterval( m_nInterval );
+	m_nInterval	= null;
 
+	//
+	//	call flush
+	//
+	_flush();
+	_flush();
+
+	//	...
+	console.log( "logex :: received sigint" );
+	process.exit();
+}
 
 
 
@@ -243,26 +257,12 @@ m_nInterval = setInterval
 
 
 /**
- *	on SIGINT
+ *	handle while process exiting
  */
 process.on
 (
 	'SIGINT',
-	function()
-	{
-		clearInterval( m_nInterval );
-		m_nInterval	= null;
-
-		//
-		//	call flush
-		//
-		_flush();
-		_flush();
-
-		//	...
-		console.log( "logex :: received sigint" );
-		process.exit();
-	}
+	_handleProcessExit
 );
 
 
