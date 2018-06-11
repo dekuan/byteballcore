@@ -227,6 +227,9 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 
 		//	after STALLED_TIMEOUT, reroute the request to another peer
 		//	it'll work correctly even if the current peer is already disconnected when the timeout fires
+		//
+		//	THIS function will be called when the request is timeout
+		//
 		reroute = ! bReroutable ? null : function()
 		{
 			log.consoleLog( 'will try to reroute a ' + command + ' request stalled at ' + ws.peer );
@@ -269,35 +272,56 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 					sendRequest( next_ws, command, params, bReroutable, rh );
 				});
 
+				//	...
 				if ( ! m_oAssocReroutedConnectionsByTag[ tag ] )
 				{
 					m_oAssocReroutedConnectionsByTag[ tag ] = [ ws ];
 				}
-
-				//	...
 				m_oAssocReroutedConnectionsByTag[ tag ].push( next_ws );
 			});
 		};
 
 		//
-		//	...
+		//	for request
 		//
-		reroute_timer	= ! bReroutable ? null : setTimeout( reroute, STALLED_TIMEOUT );
-		cancel_timer	= bReroutable ? null : setTimeout
-		(
-			function()
-			{
-				ws.assocPendingRequests[ tag ].responseHandlers.forEach
-				(
-					function( rh )
-					{
-						rh( ws, request, { error: "[internal] response timeout" } );
-					}
-				);
-				delete ws.assocPendingRequests[ tag ];
-			},
-			RESPONSE_TIMEOUT
-		);
+		reroute_timer	= bReroutable
+			? setTimeout
+			(
+				//	callback handler while the request is TIMEOUT
+				function ()
+				{
+					log.consoleLog( '# network::sendRequest request ' + command + ', send to ' + ws.peer + ' was overtime.' );
+					reroute.apply( this, arguments );
+				},
+				STALLED_TIMEOUT
+			)
+			: null;
+
+		//
+		//	for response
+		//
+		cancel_timer	= bReroutable
+			? null
+			: setTimeout
+			(
+				function()
+				{
+					log.consoleLog( '# network::sendRequest request ' + command + ', response from ' + ws.peer + ' was overtime.' );
+
+					//
+					//	delete all overtime requests/connections in pending requests list
+					//
+					ws.assocPendingRequests[ tag ].responseHandlers.forEach
+					(
+						function( rh )
+						{
+							rh( ws, request, { error: "[internal] response timeout" } );
+						}
+					);
+					delete ws.assocPendingRequests[ tag ];
+				},
+				RESPONSE_TIMEOUT
+			);
 
 		//
 		//	build pending request list
@@ -310,6 +334,10 @@ function sendRequest( ws, command, params, bReroutable, responseHandler )
 			reroute_timer		: reroute_timer,
 			cancel_timer		: cancel_timer
 		};
+
+		//
+		//	...
+		//
 		sendMessage( ws, 'request', content );
 	}
 }
@@ -1452,7 +1480,11 @@ function subscribe( ws )
 						return;
 					}
 
-					//	...
+					//
+					//	emit event connected_to_source to tell all listeners that:
+					//	we have connected to source successfully
+					//	and, now start to do what you should do.
+					//
 					ws.bSource	= true;
 					eventBus.emit
 					(

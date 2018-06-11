@@ -74,13 +74,18 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				LIMIT 5",
 				function( rows )
 				{
+					var arrParents;
+					var i;
+					var n;
+
 					if ( rows.length === 0 )
 					{
 						throw Error( "no free units?" );
 					}
 					if ( rows.length > 1 )
 					{
-						var arrParents	= rows.map
+						//	...
+						arrParents = rows.map
 						(
 							function( row )
 							{
@@ -88,9 +93,10 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							}
 						);
 						arrAllParents	= arrParents;
-						for ( var i = 0; i < m_arrRetreatingUnits.length; i ++ )
+						for ( i = 0; i < m_arrRetreatingUnits.length; i ++ )
 						{
-							var n = arrParents.indexOf( m_arrRetreatingUnits[ i ] );
+							//	...
+							n = arrParents.indexOf( m_arrRetreatingUnits[ i ] );
 							if ( n >= 0 )
 							{
 								return handleLastUnitProps( rows[ n ] );
