@@ -222,7 +222,7 @@ function _flush()
 			//
 			m_cWriteStream.write
 			(
-				oItem.tm.toLocaleString() + " : " + _util.format( oItem.args )
+				oItem.tm.toString() + ": " + _util.format( oItem.args ) + "\n"
 			);
 		}
 	}

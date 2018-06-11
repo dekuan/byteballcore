@@ -9,6 +9,7 @@ var crypto		= require( 'crypto' );
 var _			= require( 'lodash' );
 var async		= require( 'async' );
 var log			= require( './log.js' );
+var _logex		= require( './logex.js' );
 var db			= require( './db.js' );
 var constants		= require( './constants.js' );
 var storage		= require( './storage.js' );
@@ -5624,7 +5625,10 @@ function onWebsocketMessage( message )
 	}
 
 	//	...
-	log.consoleLog( 'RECEIVED ' + ( message.length > 1000 ? message.substr( 0, 1000 ) + '... (' + message.length + ' chars)' : message ) + ' from ' + ws.peer );
+	//log.consoleLog( 'RECEIVED ' + ( message.length > 1000 ? message.substr( 0, 1000 ) + '... (' + message.length + ' chars)' : message ) + ' from ' + ws.peer );
+	_logex.push( 'RECEIVED ' + ( message.length > 1000 ? message.substr( 0, 1000 ) + '... (' + message.length + ' chars)' : message ) + ' from ' + ws.peer );
+
+	//	...
 	ws.last_ts	= Date.now();
 	
 	try
