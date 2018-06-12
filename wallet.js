@@ -50,7 +50,7 @@ function handleJustsaying( ws, subject, body )
 			var respondWithError = function( error )
 			{
 				network.sendError( ws, error );
-				network.sendJustsaying( ws, 'hub/delete', message_hash );
+				network.sendJustSaying( ws, 'hub/delete', message_hash );
 			};
 			if ( ! message_hash || ! objDeviceMessage || ! objDeviceMessage.signature || ! objDeviceMessage.pubkey || ! objDeviceMessage.to
 					|| ! objDeviceMessage.encrypted_package || ! objDeviceMessage.encrypted_package.dh
@@ -112,7 +112,7 @@ function handleJustsaying( ws, subject, body )
 								},
 								ifOk : function()
 								{
-									network.sendJustsaying( ws, 'hub/delete', message_hash );
+									network.sendJustSaying( ws, 'hub/delete', message_hash );
 									unlock();
 								}
 							}

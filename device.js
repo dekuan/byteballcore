@@ -281,7 +281,7 @@ function sendLoginCommand( ws, challenge )
 		objectHash.getDeviceMessageHashToSign( objLogin ),
 		objMyPermanentDeviceKey.priv
 	);
-	network.sendJustsaying( ws, 'hub/login', objLogin );
+	network.sendJustSaying( ws, 'hub/login', objLogin );
 	ws.bLoggedIn	= true;
 	sendTempPubkey( ws, objMyTempDeviceKey.pub_b64 );
 

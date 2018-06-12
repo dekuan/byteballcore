@@ -5,7 +5,7 @@ var _				= require( 'lodash' );
 var _async			= require( 'async' );
 var _log			= require( './log.js' );
 var _db				= require( './db.js' );
-var _constants			= require( "./constants.js" );
+var _constants			= require( './constants.js' );
 var _storage			= require( './storage.js' );
 var _graph			= require( './graph.js' );
 var _object_hash		= require( './object_hash.js' );
@@ -15,6 +15,7 @@ var _mutex			= require( './mutex.js' );
 var _event_bus			= require( './event_bus.js' );
 var _profilerex			= require( './profilerex.js' );
 var _breadcrumbs		= require( './breadcrumbs.js' );
+
 
 
 
@@ -31,6 +32,8 @@ var m_arrRetreatingUnits =
 	'Hyi2XVdZ/5D3H/MhwDL/jRWHp3F/dQTmwemyUHW+Urg=',
 	'xm0kFeKh6uqSXx6UUmc2ucgsNCU5h/e6wxSMWirhOTo='
 ];
+
+
 
 
 /**
@@ -123,6 +126,11 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 	}
 
 
+	/**
+	 *	start here
+	 *	@param	unit
+	 *	@private
+	 */
 	function _goUpFromUnit( unit )
 	{
 		if ( _storage.isGenesisUnit( unit ) )
@@ -222,15 +230,25 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		);
 	}
 
+	/**
+	 *	for genesis unit
+	 *	@param	last_main_chain_index
+	 *	@param	last_main_chain_unit
+	 *	@private
+	 */
 	function _checkNotRebuildingStableMainChainAndGoDown( last_main_chain_index, last_main_chain_unit )
 	{
 		_log.consoleLog( "_checkNotRebuildingStableMainChainAndGoDown " + from_unit );
 		_profilerex.begin( 'mc-checkNotRebuilding' );
 
-		//	...
+		//
+		//	todo
+		//	too much data transmission
+		//	Added LIMIT 1
+		//
 		conn.query
 		(
-			"SELECT unit FROM units WHERE is_on_main_chain=1 AND main_chain_index>? AND is_stable=1", 
+			"SELECT unit FROM units WHERE is_on_main_chain = 1 AND main_chain_index > ? AND is_stable = 1",
 			[
 				last_main_chain_index
 			],
@@ -239,6 +257,10 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				_profilerex.end( 'mc-checkNotRebuilding' );
 				if ( rows.length > 0 )
 				{
+					//
+					//	todo
+					//	why do we throw error?
+					//
 					throw Error
 					(
 						"removing stable units " +
@@ -248,11 +270,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							{
 								return row.unit;
 							}
-						).join( ', ' )
-						+ " from MC after adding "
-						+ last_added_unit
-						+ " with all parents "
-						+ arrAllParents.join( ', ' )
+						).join( ', ' ) + " from MC after adding " + last_added_unit + " with all parents " + arrAllParents.join( ', ' )
 					);
 				}
 
@@ -275,7 +293,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		conn.query
 		(
 			//"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE is_on_main_chain=1 AND main_chain_index>?", 
-			"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE main_chain_index>?", 
+			"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE main_chain_index > ?",
 			[
 				last_main_chain_index
 			],
@@ -800,7 +818,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			function( rows )
 			{
 				if ( rows.length === 0 )
+				{
 					throw Error( "no units on stable MC?" );
+				}
 
 				//	...
 				handleLastStableMcUnit( rows[ 0 ].unit );
@@ -1036,7 +1056,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				function( rows )
 				{
 					if ( rows.length === 0 )
+					{
 						return cb();
+					}
 
 					//	_log.consoleLog("unit", arrStartUnits, "best children:", rows.map(function(row){ return row.unit; }), "free units:", rows.reduce(function(sum, row){ return sum+row.is_free; }, 0));
 					_async.eachSeries

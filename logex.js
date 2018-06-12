@@ -17,6 +17,7 @@ var m_nInterval		= null;
 
 
 
+
 /**
  *	class CDoubleArrayCache
  *	@class
