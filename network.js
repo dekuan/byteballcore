@@ -31,13 +31,9 @@ var _profilerex			= require( './profilerex.js' );
 
 var _mail			= process.browser ? null : require( './mail.js' + '' );
 
+var _network_consts		= require( './network_consts.js' );
 
-var FORWARDING_TIMEOUT			= 10 * 1000;	//	don't forward if the joint was received more than FORWARDING_TIMEOUT ms ago
-var STALLED_TIMEOUT			= 5000;		//	a request is treated as stalled if no response received within STALLED_TIMEOUT ms
-var RESPONSE_TIMEOUT			= 300 * 1000;	//	after this timeout, the request is abandoned
-var HEARTBEAT_TIMEOUT			= _conf.HEARTBEAT_TIMEOUT || 10 * 1000;
-var HEARTBEAT_RESPONSE_TIMEOUT		= 60 * 1000;
-var PAUSE_TIMEOUT			= 2 * HEARTBEAT_TIMEOUT;
+
 
 var m_oWss;
 var m_arrOutboundPeers				= [];
@@ -232,7 +228,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 	content.tag	= tag;
 
 	//
-	//	after STALLED_TIMEOUT, reroute the request to another peer
+	//	after _network_consts.STALLED_TIMEOUT, reroute the request to another peer
 	//	it'll work correctly even if the current peer is already disconnected when the timeout fires
 	//
 	//	THIS function will be called when the request is timeout
@@ -315,7 +311,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 				_log.consoleLog( '# network::sendRequest request ' + command + ', send to ' + ws.peer + ' was overtime.' );
 				pfnReroute.apply( this, arguments );
 			},
-			STALLED_TIMEOUT
+			_network_consts.STALLED_TIMEOUT
 		)
 		: null;
 
@@ -342,7 +338,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 				);
 				delete ws.assocPendingRequests[ tag ];
 			},
-			RESPONSE_TIMEOUT
+			_network_consts.RESPONSE_TIMEOUT
 		);
 
 	//
@@ -431,7 +427,7 @@ function cancelRequestsOnClosedConnection( ws )
 		clearTimeout( pendingRequest.reroute_timer );
 		clearTimeout( pendingRequest.cancel_timer );
 
-		//	reroute immediately, not waiting for STALLED_TIMEOUT
+		//	reroute immediately, not waiting for _network_consts.STALLED_TIMEOUT
 		if ( pendingRequest.reroute )
 		{
 			if ( ! pendingRequest.bRerouted )
@@ -878,7 +874,7 @@ function connectToPeer( url, onOpen )
 	ws.on
 	(
 		'message',
-		onWebsocketMessage
+		onWebSocketMessage
 	);
 
 	//	...
@@ -1368,7 +1364,7 @@ function heartbeat()
 	var bJustResumed;
 
 	//	just resumed after sleeping
-	bJustResumed		= ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > 2 * HEARTBEAT_TIMEOUT );
+	bJustResumed		= ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > 2 * _network_consts.HEARTBEAT_TIMEOUT );
 	m_nLastHearbeatWakeTs	= Date.now();
 
 	//
@@ -1388,7 +1384,7 @@ function heartbeat()
 
 		//	...
 		elapsed_since_last_received	= Date.now() - ws.last_ts;
-		if ( elapsed_since_last_received < HEARTBEAT_TIMEOUT )
+		if ( elapsed_since_last_received < _network_consts.HEARTBEAT_TIMEOUT )
 		{
 			return;
 		}
@@ -1401,7 +1397,7 @@ function heartbeat()
 
 		//	...
 		elapsed_since_last_sent_heartbeat	= Date.now() - ws.last_sent_heartbeat_ts;
-		if ( elapsed_since_last_sent_heartbeat < HEARTBEAT_RESPONSE_TIMEOUT )
+		if ( elapsed_since_last_sent_heartbeat < _network_consts.HEARTBEAT_RESPONSE_TIMEOUT )
 		{
 			return;
 		}
@@ -1760,7 +1756,7 @@ function requestJoints( ws, arrUnits )
 
 				//	since response handlers are called in nextTick(), there is a period when the pending request is already cleared but the response
 				//	handler is not yet called, hence m_oAssocRequestedUnits[unit] not yet cleared
-				if ( diff <= STALLED_TIMEOUT )
+				if ( diff <= _network_consts.STALLED_TIMEOUT )
 				{
 					return _log.consoleLog( "unit " + unit + " already requested " + diff + " ms ago, m_oAssocUnitsInWork=" + m_oAssocUnitsInWork[ unit ] );
 					//	throw new Error("unit "+unit+" already requested "+diff+" ms ago, m_oAssocUnitsInWork="+m_oAssocUnitsInWork[unit]);
@@ -2495,7 +2491,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 				}
 
 				//	forward to other peers
-				if ( ! m_bCatchingUp && ! _conf.bLight && creation_ts > Date.now() - FORWARDING_TIMEOUT )
+				if ( ! m_bCatchingUp && ! _conf.bLight && creation_ts > Date.now() - _network_consts.FORWARDING_TIMEOUT )
 				{
 					forwardJoint( ws, objJoint );
 				}
@@ -4301,7 +4297,7 @@ function handleJustsaying( ws, subject, body )
 
 			if ( body.protocol_version !== _constants.version )
 			{
-				sendError( ws, 'Incompatible versions, mine ' + _constants.version+', yours ' + body.protocol_version );
+				sendError( ws, 'Incompatible versions, mine ' + _constants.version + ', yours ' + body.protocol_version );
 				ws.close( 1000, 'incompatible versions' );
 				return;
 			}
@@ -4314,7 +4310,8 @@ function handleJustsaying( ws, subject, body )
 
 			//	...
 			ws.library_version	= body.library_version;
-			if ( typeof ws.library_version === 'string' && version2int( ws.library_version ) < version2int( _constants.minCoreVersion ) )
+			if ( typeof ws.library_version === 'string' &&
+				version2int( ws.library_version ) < version2int( _constants.minCoreVersion ) )
 			{
 				ws.old_core = true;
 			}
@@ -4332,7 +4329,7 @@ function handleJustsaying( ws, subject, body )
 			if ( ws.bLoggingIn || ws.bLoggedIn )
 			{
 				//	accept from hub only
-				_event_bus.emit('new_version', ws, body);
+				_event_bus.emit( 'new_version', ws, body );
 			}
 			break;
 
@@ -4352,9 +4349,10 @@ function handleJustsaying( ws, subject, body )
 			{
 				return;
 			}
-			if ( _conf.ignoreBugreportRegexp && new RegExp( _conf.ignoreBugreportRegexp ).test( body.message + ' ' + body.exception.toString() ) )
+			if ( _conf.ignoreBugreportRegexp &&
+				new RegExp( _conf.ignoreBugreportRegexp ).test( body.message + ' ' + body.exception.toString() ) )
 			{
-				return _log.consoleLog('ignoring bugreport');
+				return _log.consoleLog( 'ignoring bugreport' );
 			}
 
 			_mail.sendBugEmail( body.message, body.exception );
@@ -4366,15 +4364,19 @@ function handleJustsaying( ws, subject, body )
 			//	...
 			objJoint = body;
 
-			if ( ! objJoint || ! objJoint.unit || ! objJoint.unit.unit )
+			if ( ! objJoint ||
+				! objJoint.unit ||
+				! objJoint.unit.unit )
 			{
 				return sendError( ws, 'no unit' );
 			}
-			if ( objJoint.ball && ! _storage.isGenesisUnit( objJoint.unit.unit ) )
+			if ( objJoint.ball &&
+				! _storage.isGenesisUnit( objJoint.unit.unit ) )
 			{
 				return sendError( ws, 'only requested joint can contain a ball' );
 			}
-			if ( _conf.bLight && ! ws.bLightVendor )
+			if ( _conf.bLight &&
+				! ws.bLightVendor )
 			{
 				return sendError( ws, "I'm a light client and you are not my vendor" );
 			}
@@ -4396,10 +4398,8 @@ function handleJustsaying( ws, subject, body )
 
 					//	light clients accept the joint without proof, it'll be saved as unconfirmed (non-stable)
 					return _conf.bLight
-						?
-						handleLightOnlineJoint( ws, objJoint )
-						:
-						handleOnlineJoint( ws, objJoint );
+						? handleLightOnlineJoint( ws, objJoint )
+						: handleOnlineJoint( ws, objJoint );
 				}
 			);
 
@@ -4496,7 +4496,11 @@ function handleJustsaying( ws, subject, body )
 			ws.claimed_url	= url;
 			_db.query
 			(
-				"SELECT creation_date AS latest_url_change_date, url FROM peer_host_urls WHERE peer_host=? ORDER BY creation_date DESC LIMIT 1",
+				"SELECT creation_date AS latest_url_change_date, url \
+				FROM peer_host_urls \
+				WHERE peer_host=? \
+				ORDER BY creation_date DESC \
+				LIMIT 1",
 				[
 					ws.host
 				],
@@ -4505,8 +4509,9 @@ function handleJustsaying( ws, subject, body )
 					var latest_change;
 
 					//	...
-					latest_change	= rows[0];
-					if ( latest_change && latest_change.url === url )
+					latest_change	= rows[ 0 ];
+					if ( latest_change &&
+						latest_change.url === url )
 					{
 						//	advertises the same url
 						return;
@@ -4561,7 +4566,7 @@ function handleJustsaying( ws, subject, body )
 			}
 
 			//	...
-			reverse_ws = getOutboundPeerWsByUrl(ws.claimed_url);
+			reverse_ws = getOutboundPeerWsByUrl( ws.claimed_url );
 			if ( ! reverse_ws )
 			{
 				//	no reverse outbound connection
@@ -4665,7 +4670,8 @@ function handleJustsaying( ws, subject, body )
 			{
 				return sendError( ws, "wrong challenge" );
 			}
-			if ( ! objLogin.pubkey || ! objLogin.signature )
+			if ( ! objLogin.pubkey ||
+				! objLogin.signature )
 			{
 				return sendError( ws, "no login params" );
 			}
@@ -4777,6 +4783,7 @@ function handleJustsaying( ws, subject, body )
 				return sendError(ws, "please log in first");
 			}
 
+			//	...
 			_db.query
 			(
 				"DELETE FROM device_messages WHERE device_address=? AND message_hash=?",
@@ -4950,7 +4957,7 @@ function handleRequest( ws, tag, command, params )
 			//	Handling 'pause' event would've been more straightforward but with preference KeepRunning=false,
 			// 	the event is delayed till resume
 			//
-			bPaused = ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > PAUSE_TIMEOUT );
+			bPaused = ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > _network_consts.PAUSE_TIMEOUT );
 			if ( bPaused )
 			{
 				//	opt out of receiving heartbeats and move the connection into a sleeping state
@@ -5673,12 +5680,12 @@ function handleRequest( ws, tag, command, params )
 	}
 }
 
-function onWebsocketMessage( message )
+function onWebSocketMessage( message )
 {
 	var ws;
 	var arrMessage;
-	var message_type;
-	var content;
+	var sMessageType;
+	var oContent;
 
 	//	...
 	ws = this;
@@ -5694,7 +5701,7 @@ function onWebsocketMessage( message )
 
 	//	...
 	ws.last_ts	= Date.now();
-	
+
 	try
 	{
 		arrMessage	= JSON.parse( message );
@@ -5705,23 +5712,23 @@ function onWebsocketMessage( message )
 	}
 
 	//	...
-	message_type	= arrMessage[ 0 ];
-	content		= arrMessage[ 1 ];
-	
-	switch ( message_type )
+	sMessageType	= arrMessage[ 0 ];
+	oContent	= arrMessage[ 1 ];
+
+	switch ( sMessageType )
 	{
 		case 'justsaying':
-			return handleJustsaying( ws, content.subject, content.body );
+			return handleJustsaying( ws, oContent.subject, oContent.body );
 
 		case 'request':
-			return handleRequest( ws, content.tag, content.command, content.params );
+			return handleRequest( ws, oContent.tag, oContent.command, oContent.params );
 
 		case 'response':
-			return handleResponse( ws, content.tag, content.response );
+			return handleResponse( ws, oContent.tag, oContent.response );
 
 		default: 
-			_log.consoleLog("unknown type: "+message_type);
-			//	throw Error("unknown type: "+message_type);
+			_log.consoleLog( "unknown type: " + sMessageType );
+			//	throw Error("unknown type: " + sMessageType);
 	}
 }
 
@@ -5737,6 +5744,8 @@ function startAcceptingConnections()
 	_db.query( "DELETE FROM watched_light_addresses" );
 	_db.query( "DELETE FROM watched_light_units" );
 
+	//
+	//	create a new web socket server
 	//
 	//	npm ws
 	//	https://github.com/websockets/ws
@@ -5892,11 +5901,15 @@ function startAcceptingConnections()
 					{
 						if ( bStatsCheckUnderWay )
 						{
-							setTimeout( tryHandleMessage, 100 );
+							setTimeout
+							(
+								tryHandleMessage,
+								100
+							);
 						}
 						else
 						{
-							onWebsocketMessage.call( ws, message );
+							onWebSocketMessage.call( ws, message );
 						}
 					}
 
@@ -5905,6 +5918,9 @@ function startAcceptingConnections()
 				}
 			);
 
+			//
+			//	on close
+			//
 			ws.on
 			(
 				'close',
@@ -5918,6 +5934,10 @@ function startAcceptingConnections()
 					cancelRequestsOnClosedConnection( ws );
 				}
 			);
+
+			//
+			//	on error
+			//
 			ws.on
 			(
 				'error',
