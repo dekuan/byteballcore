@@ -4650,7 +4650,6 @@ function handleJustsaying( ws, subject, body )
 
 		case 'hub/login':
 			// I'm a hub, the peer wants to authenticate
-
 			var objLogin;
 			var finishLogin;
 
@@ -4714,7 +4713,7 @@ function handleJustsaying( ws, subject, body )
 					{
 						_db.query
 						(
-							"INSERT INTO devices (device_address, pubkey) VALUES (?,?)",
+							"INSERT INTO devices ( device_address, pubkey ) VALUES ( ?, ? )",
 							[
 								ws.device_address,
 								objLogin.pubkey
@@ -4736,11 +4735,25 @@ function handleJustsaying( ws, subject, body )
 
 			if ( _conf.pushApiProjectNumber && _conf.pushApiKey )
 			{
-				sendJustSaying( ws, 'hub/push_project_number', { projectNumber : _conf.pushApiProjectNumber } );
+				sendJustSaying
+				(
+					ws,
+					'hub/push_project_number',
+					{
+						projectNumber : _conf.pushApiProjectNumber
+					}
+				);
 			}
 			else
 			{
-				sendJustSaying( ws, 'hub/push_project_number', { projectNumber : 0 } );
+				sendJustSaying
+				(
+					ws,
+					'hub/push_project_number',
+					{
+						projectNumber : 0
+					}
+				);
 			}
 
 			//	...
@@ -4764,7 +4777,6 @@ function handleJustsaying( ws, subject, body )
 
 		case 'hub/delete':
 			//	I'm a hub, the peer wants to remove a message that he's just handled
-
 			var message_hash;
 
 			if ( ! _conf.bServeAsHub )
@@ -4774,19 +4786,19 @@ function handleJustsaying( ws, subject, body )
 
 			//	...
 			message_hash = body;
-			if ( ! message_hash)
+			if ( ! message_hash )
 			{
-				return sendError(ws, "no message hash");
+				return sendError( ws, "no message hash" );
 			}
 			if ( ! ws.device_address )
 			{
-				return sendError(ws, "please log in first");
+				return sendError( ws, "please log in first" );
 			}
 
 			//	...
 			_db.query
 			(
-				"DELETE FROM device_messages WHERE device_address=? AND message_hash=?",
+				"DELETE FROM device_messages WHERE device_address = ? AND message_hash = ?",
 				[
 					ws.device_address,
 					message_hash
@@ -4850,7 +4862,7 @@ function handleJustsaying( ws, subject, body )
 
 			_db.query
 			(
-				"INSERT " + _db.getIgnore() + " INTO watched_light_addresses (peer, address) VALUES (?,?)",
+				"INSERT " + _db.getIgnore() + " INTO watched_light_addresses ( peer, address ) VALUES ( ?, ? )",
 				[
 					ws.peer,
 					address
@@ -4873,10 +4885,13 @@ function handleJustsaying( ws, subject, body )
 						function( rows )
 						{
 							if ( rows.length === 0 )
+							{
 								return;
-
+							}
 							if ( rows.length === 10 || rows.some( function( row ){ return row.is_stable; } ) )
+							{
 								sendJustSaying( ws, 'light/have_updates' );
+							}
 
 							//	...
 							rows.forEach
@@ -4884,8 +4899,11 @@ function handleJustsaying( ws, subject, body )
 								function( row )
 								{
 									if ( row.is_stable )
+									{
 										return;
+									}
 
+									//	...
 									_storage.readJoint
 									(
 										_db,
@@ -4910,7 +4928,8 @@ function handleJustsaying( ws, subject, body )
 			break;
 
 		case 'exchange_rates':
-			if ( ! ws.bLoggingIn && !ws.bLoggedIn )
+			if ( ! ws.bLoggingIn &&
+				! ws.bLoggedIn )
 			{
 				//	accept from hub only
 				return;
@@ -4922,9 +4941,10 @@ function handleJustsaying( ws, subject, body )
 			break;
 
 		case 'upgrade_required':
-			if ( ! ws.bLoggingIn && ! ws.bLoggedIn )
+			if ( ! ws.bLoggingIn &&
+				! ws.bLoggedIn )
 			{
-				// accept from hub only
+				//	accept from hub only
 				return;
 			}
 
@@ -4933,9 +4953,12 @@ function handleJustsaying( ws, subject, body )
 	}
 }
 
+
 function handleRequest( ws, tag, command, params )
 {
+	//
 	//	ignore repeated request while still preparing response to a previous identical request
+	//
 	if ( ws.assocInPreparingResponse[ tag ] )
 	{
 		return _log.consoleLog( "ignoring identical " + command + " request" );
@@ -4957,7 +4980,13 @@ function handleRequest( ws, tag, command, params )
 			//	Handling 'pause' event would've been more straightforward but with preference KeepRunning=false,
 			// 	the event is delayed till resume
 			//
-			bPaused = ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > _network_consts.PAUSE_TIMEOUT );
+			bPaused = (
+				typeof window !== 'undefined' &&
+				window
+				&&
+				window.cordova &&
+				Date.now() - m_nLastHearbeatWakeTs > _network_consts.PAUSE_TIMEOUT
+			);
 			if ( bPaused )
 			{
 				//	opt out of receiving heartbeats and move the connection into a sleeping state
@@ -4990,7 +5019,7 @@ function handleRequest( ws, tag, command, params )
 				{
 					_db.query
 					(
-						"UPDATE peers SET is_self=1 WHERE peer=?",
+						"UPDATE peers SET is_self = 1 WHERE peer = ?",
 						[
 							ws.peer
 						]
@@ -5042,7 +5071,7 @@ function handleRequest( ws, tag, command, params )
 			//		return;
 			if ( ws.old_core )
 			{
-				return sendErrorResponse(ws, tag, "old core, will not serve get_joint");
+				return sendErrorResponse( ws, tag, "old core, will not serve get_joint" );
 			}
 
 			//	...
@@ -5076,7 +5105,9 @@ function handleRequest( ws, tag, command, params )
 				objJoint,
 				function( error )
 				{
-					error ? sendErrorResponse( ws, tag, error ) : sendResponse( ws, tag, 'accepted' );
+					error
+						? sendErrorResponse( ws, tag, error )
+						: sendResponse( ws, tag, 'accepted' );
 				}
 			);
 			break;
@@ -5517,7 +5548,8 @@ function handleRequest( ws, tag, command, params )
 				[ 'get_link_proofs_request' ],
 				function( unlock )
 				{
-					if ( ! ws || ws.readyState !== ws.OPEN )
+					if ( ! ws ||
+						ws.readyState !== ws.OPEN )
 					{
 						//	may be already gone when we receive the lock
 						return process.nextTick( unlock );
@@ -5637,7 +5669,7 @@ function handleRequest( ws, tag, command, params )
 
 			sendResponse( ws, tag, 'ok' );
 			break;
-			
+
 		case 'hub/get_bots':
 			_db.query
 			(
@@ -5649,7 +5681,7 @@ function handleRequest( ws, tag, command, params )
 				}
 			);
 			break;
-			
+
 		case 'hub/get_asset_metadata':
 			var asset;
 
