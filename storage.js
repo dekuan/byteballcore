@@ -1343,9 +1343,15 @@ function isGenesisBall( ball )
 }
 
 
-
+/**
+ *	@ public
+ * 	read unit property
+ */
 function readUnitProps( conn, unit, handleProps )
 {
+	//
+	//	try to read stable units from cache
+	//
 	if ( assocStableUnits[ unit ] )
 	{
 		return handleProps( assocStableUnits[ unit ] );
@@ -1354,7 +1360,9 @@ function readUnitProps( conn, unit, handleProps )
 	//	...
 	conn.query
 	(
-		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free, is_stable, witnessed_level FROM units WHERE unit=?", 
+		"SELECT unit, level, latest_included_mc_index, main_chain_index, is_on_main_chain, is_free, is_stable, witnessed_level \
+		FROM units \
+		WHERE unit = ?",
 		[
 			unit
 		],
@@ -1365,7 +1373,7 @@ function readUnitProps( conn, unit, handleProps )
 				throw Error( "not 1 row" );
 			}
 
-			var props = rows[0];
+			var props = rows[ 0 ];
 			if ( props.is_stable )
 			{
 				assocStableUnits[ unit ]	= props;

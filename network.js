@@ -938,17 +938,17 @@ function addOutboundPeers( multiplier )
 	//
 	_db.query
 	(
-		"SELECT peer \n\
-		FROM peers \n\
-		JOIN peer_hosts USING(peer_host) \n\
-		LEFT JOIN peer_host_urls ON peer=url AND is_active=1 \n\
-		WHERE ( \n\
-			count_invalid_joints / count_new_good_joints < ? \n\
-			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 \n\
-		      ) \n\
-			" + ( ( arrOutboundPeerUrls.length > 0 ) ? " AND peer NOT IN(" + _db.escape( arrOutboundPeerUrls ) + ") \n" : "" ) + "\n\
-			" + ( ( arrInboundHosts.length > 0 ) ? " AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN(" + _db.escape( arrInboundHosts ) + ")) \n" : "" ) + "\n\
-			AND is_self=0 \n\
+		"SELECT peer \
+		FROM peers \
+		JOIN peer_hosts USING(peer_host) \
+		LEFT JOIN peer_host_urls ON peer=url AND is_active=1 \
+		WHERE ( \
+			count_invalid_joints / count_new_good_joints < ? \
+			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 \
+		      ) \
+			" + ( ( arrOutboundPeerUrls.length > 0 ) ? " AND peer NOT IN(" + _db.escape( arrOutboundPeerUrls ) + ") " : "" ) + " \
+			" + ( ( arrInboundHosts.length > 0 ) ? " AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN(" + _db.escape( arrInboundHosts ) + ")) " : "" ) + " \
+			AND is_self=0 \
 		ORDER BY " + order_by + " LIMIT ?",
 		[
 			_conf.MAX_TOLERATED_INVALID_RATIO * multiplier,
@@ -2156,10 +2156,18 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 								);
 							}
 
+							//
+							//	notify all watchers
+							//	....
+							//
 							notifyWatchers( objJoint, ws );
+
+							//
+							//
+							//
 							if ( ! m_bCatchingUp )
 							{
-								_event_bus.emit('new_joint', objJoint);
+								_event_bus.emit( 'new_joint', objJoint );
 							}
 						}
 					);

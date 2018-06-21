@@ -49,6 +49,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 	//
 	//	if unit === null, read free balls
+	//	find a best parent
 	//
 	function _findNextUpMainChainUnit( unit, handleUnit )
 	{
@@ -66,14 +67,27 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 		function _readLastUnitProps( handleLastUnitProps )
 		{
-			//	...
+			//
+			//	is_free = 1
+			// 		identified as tip unit
+			//
+			//	witnessed_level DESC
+			//		the greater witnessed level is considered more “real”
+			//
+			//	level - witnessed_level ASC
+			//		we would select the parent whose own level is the lowest
+			//
+			//	unit ASC
+			//		If the tie persists, we would select the parent with the smallest unit hash (in base64 encoding)
+			//
 			conn.query
 			(
-				"SELECT unit AS best_parent_unit, witnessed_level \n\
-				FROM units WHERE is_free=1 \n\
-				ORDER BY witnessed_level DESC, \n\
-					level-witnessed_level ASC, \n\
-					unit ASC \n\
+				"SELECT unit AS best_parent_unit, witnessed_level \
+				FROM units \
+				WHERE is_free = 1 \
+				ORDER BY witnessed_level DESC, \
+					level - witnessed_level ASC, \
+					unit ASC \
 				LIMIT 5",
 				function( rows )
 				{
@@ -87,15 +101,14 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					}
 					if ( rows.length > 1 )
 					{
-						//	...
-						arrParents = rows.map
-						(
-							function( row )
-							{
+						//
+						//	checking for retreating units
+						//
+						arrParents = rows.map( function( row ) {
 								return row.best_parent_unit;
-							}
-						);
+							});
 						arrAllParents	= arrParents;
+
 						for ( i = 0; i < m_arrRetreatingUnits.length; i ++ )
 						{
 							//	...
@@ -174,10 +187,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							_profilerex.end( 'mc-goUpFromUnit' );
 							_throwError
 							(
-								"different props, db: "
-								+ JSON.stringify( objBestParentUnitProps )
-								+ ", unstable: "
-								+ JSON.stringify( objBestParentUnitProps2 )
+								"different props, db: " + JSON.stringify( objBestParentUnitProps )
+								+ ", unstable: " + JSON.stringify( objBestParentUnitProps2 )
 							);
 						}
 
@@ -185,7 +196,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 						{
 							conn.query
 							(
-								"UPDATE units SET is_on_main_chain=1, main_chain_index=NULL WHERE unit=?",
+								"UPDATE units SET is_on_main_chain = 1, main_chain_index = NULL WHERE unit = ?",
 								[
 									best_parent_unit
 								],
@@ -293,7 +304,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		conn.query
 		(
 			//"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE is_on_main_chain=1 AND main_chain_index>?", 
-			"UPDATE units SET is_on_main_chain=0, main_chain_index=NULL WHERE main_chain_index > ?",
+			"UPDATE units SET is_on_main_chain = 0, main_chain_index = NULL WHERE main_chain_index > ?",
 			[
 				last_main_chain_index
 			],
@@ -342,10 +353,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 						{
 							_throwError
 							(
-								"different new MC units, arr: "
-								+ JSON.stringify( arrNewMcUnits )
-								+ ", db: "
-								+ JSON.stringify( arrDbNewMcUnits )
+								"different new MC units, arr: " + JSON.stringify( arrNewMcUnits )
+								+ ", db: " + JSON.stringify( arrDbNewMcUnits )
 							);
 						}
 
@@ -404,10 +413,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 											{
 												_throwError
 												(
-													"different new start units, arr: "
-													+ JSON.stringify( arrNewStartUnits2 )
-													+ ", db: "
-													+ JSON.stringify( arrNewStartUnits )
+													"different new start units, arr: " + JSON.stringify( arrNewStartUnits2 )
+													+ ", db: " + JSON.stringify( arrNewStartUnits )
 												);
 											}
 											if ( arrNewStartUnits.length === 0 )
@@ -432,13 +439,13 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 									var strUnitList = arrUnits.map(_db.escape).join(', ');
 									conn.query
 									(
-										"UPDATE units SET main_chain_index=? WHERE unit IN(" + strUnitList + ")",
+										"UPDATE units SET main_chain_index = ? WHERE unit IN(" + strUnitList + ")",
 										[ main_chain_index ],
 										function()
 										{
 											conn.query
 											(
-												"UPDATE unit_authors SET _mci=? WHERE unit IN(" + strUnitList + ")",
+												"UPDATE unit_authors SET _mci = ? WHERE unit IN(" + strUnitList + ")",
 												[ main_chain_index ],
 												function()
 												{
@@ -462,7 +469,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								//	...
 								conn.query
 								(
-									"UPDATE unit_authors SET _mci=NULL WHERE unit IN(SELECT unit FROM units WHERE main_chain_index IS NULL)", 
+									"UPDATE unit_authors SET _mci = NULL \
+									WHERE unit IN( SELECT unit FROM units WHERE main_chain_index IS NULL )",
 									function()
 									{
 										//	PPP
@@ -490,7 +498,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 
 			conn.query
 			(
-				"SELECT unit FROM units WHERE latest_included_mc_index IS NULL AND level!=0",
+				"SELECT unit FROM units WHERE latest_included_mc_index IS NULL AND level != 0",
 				function( rows )
 				{
 					if ( rows.length > 0 )
@@ -533,8 +541,8 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 				FROM units AS punits \n\
 				JOIN parenthoods ON punits.unit=parent_unit \n\
 				JOIN units AS chunits ON child_unit=chunits.unit \n\
-				WHERE (chunits.main_chain_index > ? OR chunits.main_chain_index IS NULL) \n\
-					AND (chunits.latest_included_mc_index IS NULL OR chunits.latest_included_mc_index < punits.latest_included_mc_index)",
+				WHERE ( chunits.main_chain_index > ? OR chunits.main_chain_index IS NULL ) \n\
+					AND ( chunits.latest_included_mc_index IS NULL OR chunits.latest_included_mc_index < punits.latest_included_mc_index )",
 				[
 					last_main_chain_index
 				],
@@ -560,7 +568,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 							assocDbLimcisByUnit[ row.unit ] = row.latest_included_mc_index;
 							conn.query
 							(
-								"UPDATE units SET latest_included_mc_index=? WHERE unit=?",
+								"UPDATE units SET latest_included_mc_index = ? WHERE unit = ?",
 								[
 									row.latest_included_mc_index,
 									row.unit
@@ -702,7 +710,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 			{
 				conn.query
 				(
-					"UPDATE units SET latest_included_mc_index=NULL WHERE main_chain_index>? OR main_chain_index IS NULL",
+					"UPDATE units SET latest_included_mc_index = NULL WHERE main_chain_index > ? OR main_chain_index IS NULL",
 					[
 						last_main_chain_index
 					],
@@ -782,7 +790,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 										assocDbLimcisByUnit[ row.unit ]	= row.main_chain_index;
 										conn.query
 										(
-											"UPDATE units SET latest_included_mc_index=? WHERE unit=?",
+											"UPDATE units SET latest_included_mc_index = ? WHERE unit = ?",
 											[
 												row.main_chain_index,
 												row.unit
@@ -850,7 +858,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 					{
 						conn.query
 						(
-							"SELECT unit, is_on_main_chain, main_chain_index, level FROM units WHERE best_parent_unit=?",
+							"SELECT unit, is_on_main_chain, main_chain_index, level FROM units WHERE best_parent_unit = ?",
 							[
 								last_stable_mc_unit
 							],
@@ -924,7 +932,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 								//	...
 								conn.query
 								(
-									"SELECT witnessed_level FROM units WHERE is_free=1 AND is_on_main_chain=1",
+									"SELECT witnessed_level FROM units WHERE is_free = 1 AND is_on_main_chain = 1",
 									function( wl_rows )
 									{
 										if ( wl_rows.length !== 1 )
@@ -938,8 +946,9 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 										conn.query
 										(
 											//	among these 7 witnesses, find min wl
-											"SELECT MIN(witnessed_level) AS min_mc_wl FROM units LEFT JOIN unit_authors USING(unit) \n\
-											WHERE is_on_main_chain=1 AND level>=? AND address IN(?)",	//	_left_ join enforces the best query plan in sqlite
+											"SELECT MIN(witnessed_level) AS min_mc_wl \
+											FROM units LEFT JOIN unit_authors USING(unit) \
+											WHERE is_on_main_chain = 1 AND level >= ? AND address IN( ? )",	//	_left_ join enforces the best query plan in sqlite
 											[
 												mc_end_witnessed_level,
 												arrWitnesses
@@ -1049,7 +1058,7 @@ function updateMainChain( conn, from_unit, last_added_unit, onDone )
 		{
 			conn.query
 			(
-				"SELECT unit, is_free FROM units WHERE best_parent_unit IN(?)",
+				"SELECT unit, is_free FROM units WHERE best_parent_unit IN( ? )",
 				[
 					arrStartUnits
 				],
