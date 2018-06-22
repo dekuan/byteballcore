@@ -1,14 +1,13 @@
 /*jslint node: true */
 "use strict";
 
-var async		= require( 'async' );
-var log			= require( './log.js' );
-var storage		= require( './storage.js' );
-var myWitnesses		= require( './my_witnesses.js' );
-var objectHash		= require( './object_hash.js' );
-var db			= require( './db.js' );
-var constants		= require( './constants.js' );
-var validation		= require( './validation.js' );
+var _async		= require( 'async' );
+var _storage		= require( './storage.js' );
+var _my_witnesses	= require( './my_witnesses.js' );
+var _object_hash	= require( './object_hash.js' );
+var _db			= require( './db.js' );
+var _constants		= require( './constants.js' );
+var _validation		= require( './validation.js' );
 
 
 
@@ -23,14 +22,14 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 	var last_ball_mci	= null;
 
 	//	...
-	async.series
+	_async.series
 	(
 		[
 			function( cb )
 			{
-				storage.determineIfWitnessAddressDefinitionsHaveReferences
+				_storage.determineIfWitnessAddressDefinitionsHaveReferences
 				(
-					db,
+					_db,
 					arrWitnesses,
 					function( bWithReferences )
 					{
@@ -42,54 +41,55 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 			},
 			function( cb )
 			{
+				//
 				//	collect all unstable MC units
+				//
 				var arrFoundWitnesses	= [];
 
 				//	...
-				db.query
+				_db.query
 				(
-					"SELECT unit FROM units WHERE is_on_main_chain=1 AND is_stable=0 ORDER BY main_chain_index DESC",
+					"SELECT unit FROM units \
+					WHERE is_on_main_chain = 1 AND is_stable = 0 \
+					ORDER BY main_chain_index DESC",
 					function( rows )
 					{
-						async.eachSeries
+						_async.eachSeries
 						(
 							rows,
 							function( row, cb2 )
 							{
-								storage.readJointWithBall
-								(
-									db,
-									row.unit,
-									function( objJoint )
+								_storage.readJointWithBall( _db, row.unit, function( objJoint )
+								{
+									//
+									//	the unit might get stabilized while we were reading other units
+									//
+									delete objJoint.ball;
+									arrUnstableMcJoints.push( objJoint );
+
+									for ( var i = 0; i < objJoint.unit.authors.length; i++ )
 									{
-										//	the unit might get stabilized while we were reading other units
-										delete objJoint.ball;
-										arrUnstableMcJoints.push( objJoint );
-
-										for ( var i = 0; i < objJoint.unit.authors.length; i++ )
+										var address	= objJoint.unit.authors[ i ].address;
+										if ( arrWitnesses.indexOf( address ) >= 0 &&
+											arrFoundWitnesses.indexOf( address ) === -1 )
 										{
-											var address	= objJoint.unit.authors[ i ].address;
-											if ( arrWitnesses.indexOf( address ) >= 0 &&
-												arrFoundWitnesses.indexOf( address ) === -1 )
-											{
-												arrFoundWitnesses.push( address );
-											}
+											arrFoundWitnesses.push( address );
 										}
-
-										//
-										//	collect last balls of majority witnessed units
-										//	(genesis lacks last_ball_unit)
-										//
-										if ( objJoint.unit.last_ball_unit &&
-											arrFoundWitnesses.length >= constants.MAJORITY_OF_WITNESSES )
-										{
-											arrLastBallUnits.push( objJoint.unit.last_ball_unit );
-										}
-
-										//	...
-										cb2();
 									}
-								);
+
+									//
+									//	collect last balls of majority witnessed units
+									//	(genesis lacks last_ball_unit)
+									//
+									if ( objJoint.unit.last_ball_unit &&
+										arrFoundWitnesses.length >= _constants.MAJORITY_OF_WITNESSES )
+									{
+										arrLastBallUnits.push( objJoint.unit.last_ball_unit );
+									}
+
+									//	...
+									cb2();
+								} );
 							},
 							cb
 						);
@@ -103,7 +103,7 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 					return cb( "your witness list might be too much off, too few witness authored units" );
 
 				//	...
-				db.query
+				_db.query
 				(
 					"SELECT unit, main_chain_index FROM units WHERE unit IN(?) ORDER BY main_chain_index DESC LIMIT 1",
 					[
@@ -127,7 +127,7 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 					: "1";
 
 				//	...
-				db.query
+				_db.query
 				(
 					/*"SELECT DISTINCT units.unit \n\
 					FROM unit_authors \n\
@@ -139,7 +139,7 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 					ORDER BY `level`",
 					[arrWitnesses],*/
 					"SELECT unit, `level` \n\
-					FROM unit_authors "+db.forceIndex('unitAuthorsIndexByAddressDefinitionChash')+" \n\
+					FROM unit_authors "+_db.forceIndex('unitAuthorsIndexByAddressDefinitionChash')+" \n\
 					CROSS JOIN units USING(unit) \n\
 					WHERE address IN(?) AND definition_chash IS NOT NULL AND "+after_last_stable_mci_cond+" AND is_stable=1 AND sequence='good' \n\
 					UNION \n\
@@ -154,14 +154,14 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 					],
 					function( rows )
 					{
-						async.eachSeries
+						_async.eachSeries
 						(
 							rows,
 							function( row, cb2 )
 							{
-								storage.readJoint
+								_storage.readJoint
 								(
-									db,
+									_db,
 									row.unit,
 									{
 										ifNotFound : function()
@@ -205,7 +205,7 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 
 function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinitionJoints, bFromCurrent, handleResult )
 {
-	myWitnesses.readMyWitnesses
+	_my_witnesses.readMyWitnesses
 	(
 		function( arrWitnesses )
 		{
@@ -224,7 +224,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 				{
 					return handleResult( "unstable mc but has ball" );
 				}
-				if ( ! validation.hasValidHashes( objJoint ) )
+				if ( ! _validation.hasValidHashes( objJoint ) )
 				{
 					return handleResult( "invalid hash" );
 				}
@@ -256,14 +256,14 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 				//	...
 				arrParentUnits = objUnit.parent_units;
 				if ( objUnit.last_ball_unit &&
-					arrFoundWitnesses.length >= constants.MAJORITY_OF_WITNESSES )
+					arrFoundWitnesses.length >= _constants.MAJORITY_OF_WITNESSES )
 				{
 					arrLastBallUnits.push( objUnit.last_ball_unit );
 					assocLastBallByLastBallUnit[ objUnit.last_ball_unit ] = objUnit.last_ball;
 				}
 			}
 
-			if ( arrFoundWitnesses.length < constants.MAJORITY_OF_WITNESSES )
+			if ( arrFoundWitnesses.length < _constants.MAJORITY_OF_WITNESSES )
 			{
 				return handleResult( "not enough witnesses" );
 			}
@@ -283,7 +283,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 				{
 					return handleResult( "witness_change_and_definition_joints: joint without ball" );
 				}
-				if ( ! validation.hasValidHashes( objJoint ) )
+				if ( ! _validation.hasValidHashes( objJoint ) )
 				{
 					return handleResult( "witness_change_and_definition_joints: invalid hash" );
 				}
@@ -314,7 +314,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 				var bFound	= false;
 
 				//	...
-				async.eachSeries
+				_async.eachSeries
 				(
 					objUnit.authors,
 					function( author, cb3 )
@@ -333,7 +333,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 						}
 						if ( author.definition )
 						{
-							if ( objectHash.getChash160( author.definition ) !== definition_chash )
+							if ( _object_hash.getChash160( author.definition ) !== definition_chash )
 							{
 								return cb3( "definition doesn't hash to the expected value" );
 							}
@@ -346,7 +346,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 						function handleAuthor()
 						{
 							//	FIX
-							validation.validateAuthorSignaturesWithoutReferences
+							_validation.validateAuthorSignaturesWithoutReferences
 							(
 								author,
 								objUnit,
@@ -382,9 +382,9 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 						}
 
 						//	...
-						storage.readDefinition
+						_storage.readDefinition
 						(
-							db,
+							_db,
 							definition_chash,
 							{
 								ifFound : function( arrDefinition )
@@ -420,7 +420,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 			var unlock = null;
 
 			//	...
-			async.series
+			_async.series
 			(
 				[
 					function( cb )
@@ -441,20 +441,20 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 						}
 
 						//	...
-						async.eachSeries
+						_async.eachSeries
 						(
 							arrWitnesses,
 							function( address, cb2 )
 							{
-								storage.readDefinitionByAddress
+								_storage.readDefinitionByAddress
 								(
-									db,
+									_db,
 									address,
 									null,
 									{
 										ifFound : function( arrDefinition )
 										{
-											var definition_chash = objectHash.getChash160( arrDefinition );
+											var definition_chash = _object_hash.getChash160( arrDefinition );
 											assocDefinitions[ definition_chash ]	= arrDefinition;
 											assocDefinitionChashes[ address ]	= definition_chash;
 
@@ -477,7 +477,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 					function( cb )
 					{
 						//	handle changes of definitions
-						async.eachSeries
+						_async.eachSeries
 						(
 							arrWitnessChangeAndDefinitionJoints,
 							function( objJoint, cb2 )
@@ -490,7 +490,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 								}
 
 								//	...
-								db.query
+								_db.query
 								(
 									"SELECT 1 FROM units WHERE unit=? AND is_stable=1",
 									[
@@ -515,7 +515,7 @@ function processWitnessProof( arrUnstableMcJoints, arrWitnessChangeAndDefinition
 					function( cb )
 					{
 						//	check signatures of unstable witness joints
-						async.eachSeries
+						_async.eachSeries
 						(
 							arrWitnessJoints.reverse(),	//	they came in reverse chronological order, reverse() reverses in place
 							function( objJoint, cb2 )

@@ -1588,7 +1588,7 @@ function sendJointsSinceMci( ws, mci )
 {
 	_joint_storage.readJointsSinceMci
 	(
-		mci, 
+		mci,
 		function( objJoint )
 		{
 			sendJoint( ws, objJoint );
@@ -2232,6 +2232,7 @@ function handlePostedJoint( ws, objJoint, onDone )
 	unit	= objJoint.unit.unit;
 	delete objJoint.unit.main_chain_index;
 
+	//	...
 	handleJoint
 	(
 		ws,
@@ -2265,6 +2266,9 @@ function handlePostedJoint( ws, objJoint, onDone )
 				//	forward to other peers
 				if ( ! m_bCatchingUp && ! _conf.bLight )
 				{
+					//
+					//	@@@@@ JOINT
+					//
 					forwardJoint( ws, objJoint );
 				}
 
@@ -2363,6 +2367,9 @@ function handleOnlineJoint( ws, objJoint, onDone )
 				//	forward to other peers
 				if ( ! m_bCatchingUp && ! _conf.bLight )
 				{
+					//
+					//	@@@@@ JOINT
+					//
 					forwardJoint( ws, objJoint );
 				}
 
@@ -2497,8 +2504,13 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 				}
 
 				//	forward to other peers
-				if ( ! m_bCatchingUp && ! _conf.bLight && creation_ts > Date.now() - _network_consts.FORWARDING_TIMEOUT )
+				if ( ! m_bCatchingUp &&
+					! _conf.bLight &&
+					creation_ts > Date.now() - _network_consts.FORWARDING_TIMEOUT )
 				{
+					//
+					//	@@@@@ JOINT
+					//
 					forwardJoint( ws, objJoint );
 				}
 
@@ -4967,6 +4979,14 @@ function handleJustsaying( ws, subject, body )
 }
 
 
+/**
+ *	receive a message with type of 'request'
+ *	@param	ws
+ *	@param	tag
+ *	@param	command
+ *	@param	params
+ *	@returns {*}
+ */
 function handleRequest( ws, tag, command, params )
 {
 	//
@@ -5011,11 +5031,14 @@ function handleRequest( ws, tag, command, params )
 			break;
 
 		case 'subscribe':
+			//
+			//	we received a message with command of 'subscribe'
+			//
 			var subscription_id;
 
 			if ( ! _validation_utils.isNonemptyObject( params ) )
 			{
-				return sendErrorResponse(ws, tag, 'no params');
+				return sendErrorResponse( ws, tag, 'no params' );
 			}
 
 			//	...
@@ -5026,7 +5049,12 @@ function handleRequest( ws, tag, command, params )
 				return sendErrorResponse( ws, tag, 'no subscription_id' );
 			}
 
-			if ( m_oWss.arrClients.concat( m_arrOutboundPeers ).some( function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
+			//
+			//	*
+			//	make sure we don't subscribe to ourself.
+			//
+			if ( m_oWss.arrClients.concat( m_arrOutboundPeers ).some(
+				function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
 			{
 				if ( ws.bOutbound )
 				{
@@ -5057,9 +5085,11 @@ function handleRequest( ws, tag, command, params )
 				return ws.close( 1000, "old core" );
 			}
 
+			//
 			//	...
+			//
 			ws.bSubscribed = true;
-			sendResponse( ws, tag, "subscribed" );
+			sendResponse( ws, tag, 'subscribed' );
 			if ( m_bCatchingUp )
 			{
 				return;
@@ -5077,7 +5107,12 @@ function handleRequest( ws, tag, command, params )
 			break;
 			
 		case 'get_joint':
+			//
+			//	received a 'get_joint' message
+			//	we will try to send joint to this peer
+			//
 			//	peer needs a specific joint
+			//
 			var unit;
 
 			//	if ( m_bCatchingUp )
@@ -5107,7 +5142,10 @@ function handleRequest( ws, tag, command, params )
 			break;
 			
 		case 'post_joint':
-			//	only light clients use this command to post joints they created
+			//
+			//	only for light clients
+			//	this command to post joints they created
+			//
 			var objJoint;
 
 			//	...
@@ -5126,6 +5164,9 @@ function handleRequest( ws, tag, command, params )
 			break;
 			
 		case 'catchup':
+			//
+			//	client need data from me
+			//
 			var catchupRequest;
 
 			if ( ! ws.bSubscribed )
@@ -5146,6 +5187,9 @@ function handleRequest( ws, tag, command, params )
 						return process.nextTick( unlock );
 					}
 
+					//
+					//	...
+					//
 					_catchup.prepareCatchupChain
 					(
 						catchupRequest,
@@ -5219,7 +5263,7 @@ function handleRequest( ws, tag, command, params )
 			//	empty array is ok
 			sendResponse( ws, tag, arrPeerUrls );
 			break;
-			
+
 		case 'get_witnesses':
 			_my_witnesses.readMyWitnesses
 			(
@@ -5820,6 +5864,10 @@ function startAcceptingConnections()
 		'connection',
 		function( ws )
 		{
+			//
+			//	ws
+			//	- the connected Web Socket handle of remote client
+			//
 			var sRemoteAddress;
 			var bStatsCheckUnderWay;
 
@@ -5831,7 +5879,8 @@ function startAcceptingConnections()
 				ws.terminate();
 				return;
 			}
-			if ( ws.upgradeReq.headers[ 'x-real-ip' ] && ( sRemoteAddress === '127.0.0.1' || sRemoteAddress.match( /^192\.168\./ ) ) )
+			if ( ws.upgradeReq.headers[ 'x-real-ip' ] &&
+				( sRemoteAddress === '127.0.0.1' || sRemoteAddress.match( /^192\.168\./ ) ) )
 			{
 				//
 				//	TODO
@@ -5870,9 +5919,9 @@ function startAcceptingConnections()
 			//
 			_db.query
 			(
-				"SELECT \n\
-					SUM( CASE WHEN event='invalid' THEN 1 ELSE 0 END ) AS count_invalid, \n\
-					SUM( CASE WHEN event='new_good' THEN 1 ELSE 0 END ) AS count_new_good \n\
+				"SELECT \
+					SUM( CASE WHEN event='invalid' THEN 1 ELSE 0 END ) AS count_invalid, \
+					SUM( CASE WHEN event='new_good' THEN 1 ELSE 0 END ) AS count_new_good \
 					FROM peer_events WHERE peer_host = ? AND event_date > " + _db.addTime( "-1 HOUR" ),
 				[
 					//	remote host/sRemoteAddress connected by this ws

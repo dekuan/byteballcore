@@ -1677,13 +1677,7 @@ function filterMostFundedAddresses( rows, estimated_amount )
 {
 	if ( ! estimated_amount )
 	{
-		return rows.map
-		(
-			function( row )
-			{
-				return row.address;
-			}
-		);
+		return rows.map( function( row ) { return row.address; } );
 	}
 
 	var arrFundedAddresses	= [];
@@ -1722,28 +1716,28 @@ function readSortedFundedAddresses( asset, arrAvailableAddresses, estimated_amou
 	//	...
 	_db.query
 	(
-		"SELECT address, SUM(amount) AS total \n\
-		FROM outputs \n\
-		CROSS JOIN units USING(unit) \n\
-		WHERE address IN(?) AND is_stable=1 AND sequence='good' AND is_spent=0 AND asset" + ( asset ? "=?" : " IS NULL" ) + " \n\
-			AND NOT EXISTS ( \n\
-				SELECT * FROM unit_authors JOIN units USING(unit) \n\
-				WHERE is_stable=0 AND unit_authors.address=outputs.address AND definition_chash IS NOT NULL \n\
-			) \n\
-		GROUP BY address ORDER BY " + order_by,
-		asset ?
-			[
+		"SELECT address, SUM(amount) AS total \
+		FROM outputs \
+		CROSS JOIN units USING(unit) \
+		WHERE address IN( ? ) AND is_stable = 1 AND sequence = 'good' AND is_spent = 0 AND asset" + ( asset ? "=?" : " IS NULL" ) + " \
+			AND NOT EXISTS ( \
+				SELECT * FROM unit_authors JOIN units USING( unit ) \
+				WHERE is_stable = 0 AND unit_authors.address = outputs.address AND definition_chash IS NOT NULL \
+			) \
+		GROUP BY address \
+		ORDER BY " + order_by,
+		asset ? [
 				arrAvailableAddresses,
 				asset
 			]
-			:
-			[
+			: [
 				arrAvailableAddresses
 			],
 		function( rows )
 		{
 			var arrFundedAddresses	= filterMostFundedAddresses( rows, estimated_amount );
 			handleFundedAddresses( arrFundedAddresses );
+
 			/*
 			if (arrFundedAddresses.length === 0)
 				return handleFundedAddresses([]);
@@ -1800,6 +1794,11 @@ function composeMinimalJoint( params )
 	);
 }
 
+
+/**
+ *	compose a new transaction
+ *	@param params
+ */
 function composeAndSaveMinimalJoint( params )
 {
 	var params_with_save		= _.clone( params );

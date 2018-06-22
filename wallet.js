@@ -2238,16 +2238,26 @@ function sendMultiPayment( opts, handleResult )
 					]);
 				});
 			}
-			else{ // base asset
-				if (bSendAll){
-					params.send_all = bSendAll;
-					params.outputs = [{address: to_address, amount: 0}];
+			else
+			{
+				//
+				//	base asset
+				//
+				if ( bSendAll )
+				{
+					params.send_all	= bSendAll;
+					params.outputs	= [ { address : to_address, amount : 0 } ];
 				}
-				else{
-					params.outputs = to_address ? [{address: to_address, amount: amount}] : (base_outputs || []);
+				else
+				{
+					params.outputs	= to_address ? [ { address : to_address, amount : amount } ] : ( base_outputs || [] );
 					params.outputs.push({address: change_address, amount: 0});
 					addFeesToParams();
 				}
+
+				//
+				//	# compose a new transaction
+				//
 				composer.composeAndSaveMinimalJoint(params);
 			}
 

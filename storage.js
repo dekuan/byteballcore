@@ -29,10 +29,15 @@ var assocStableUnits		= {};
 var min_retrievable_mci		= null;
 
 
-
-
-
-function readJoint(conn, unit, callbacks)
+/**
+ *	read joint
+ *
+ *	@param	conn
+ *	@param	unit
+ *	@param	callbacks
+ *	@returns {undefined}
+ */
+function readJoint( conn, unit, callbacks )
 {
 	if ( ! conf.bSaveJointJson )
 	{
@@ -50,13 +55,16 @@ function readJoint(conn, unit, callbacks)
 		{
 			if ( rows.length === 0 )
 			{
-				return readJointDirectly(conn, unit, callbacks);
+				return readJointDirectly( conn, unit, callbacks );
 			}
 
+			//	...
 			var objJoint	= JSON.parse( rows[ 0 ].json );
 			if ( ! objJoint.ball )
 			{
+				//
 				//	got there because of an old bug
+				//
 				conn.query
 				(
 					"DELETE FROM joints WHERE unit=?",
@@ -91,12 +99,15 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 		return;
 	}
 
+	//
 	//	profiler.start();
+	//
 	conn.query
 	(
-		"SELECT units.unit, version, alt, witness_list_unit, last_ball_unit, balls.ball AS last_ball, is_stable, \n\
-			content_hash, headers_commission, payload_commission, main_chain_index, " + conn.getUnixTimestamp( "units.creation_date") + " AS timestamp \n\
-		FROM units LEFT JOIN balls ON last_ball_unit=balls.unit WHERE units.unit=?",
+		"SELECT units.unit, version, alt, witness_list_unit, last_ball_unit, balls.ball AS last_ball, is_stable, \
+			content_hash, headers_commission, payload_commission, main_chain_index, " + conn.getUnixTimestamp( "units.creation_date") + " AS timestamp \
+		FROM units LEFT JOIN balls ON last_ball_unit=balls.unit \
+		WHERE units.unit = ?",
 		[
 			unit
 		],
@@ -108,6 +119,7 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 				return callbacks.ifNotFound();
 			}
 
+			//	...
 			var objUnit		= unit_rows[0];
 			var objJoint		= { unit : objUnit };
 			var main_chain_index	= objUnit.main_chain_index;
@@ -118,11 +130,14 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 			var bStable		= objUnit.is_stable;
 			delete objUnit.is_stable;
 
+			//	...
 			objectHash.cleanNulls( objUnit );
 			var bVoided		= ( objUnit.content_hash && main_chain_index < min_retrievable_mci );
 			var bRetrievable	= ( main_chain_index >= min_retrievable_mci || main_chain_index === null );
 
-			if ( ! conf.bLight && ! objUnit.last_ball && ! isGenesisUnit( unit ) )
+			if ( ! conf.bLight &&
+				! objUnit.last_ball &&
+				! isGenesisUnit( unit ) )
 			{
 				throw Error( "no last ball in unit " + JSON.stringify( objUnit ) );
 			}
@@ -135,8 +150,8 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 			//
 			if ( bVoided )
 			{
-				//delete objUnit.last_ball;
-				//delete objUnit.last_ball_unit;
+				//	delete objUnit.last_ball;
+				//	delete objUnit.last_ball_unit;
 				delete objUnit.headers_commission;
 				delete objUnit.payload_commission;
 			}
@@ -154,9 +169,8 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 						//	parents
 						conn.query
 						(
-							"SELECT parent_unit \n\
-							FROM parenthoods \n\
-							WHERE child_unit=? \n\
+							"SELECT parent_unit FROM parenthoods \
+							WHERE child_unit = ? \
 							ORDER BY parent_unit",
 							[
 								unit
@@ -168,13 +182,10 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 									return callback();
 								}
 
-								objUnit.parent_units	= rows.map
-								(
-									function( row )
+								objUnit.parent_units = rows.map( function( row )
 									{
 										return row.parent_unit;
-									}
-								);
+									} );
 
 								//
 								//	call for executing next
@@ -186,7 +197,8 @@ function readJointDirectly( conn, unit, callbacks, bRetrying )
 					function( callback )
 					{
 						//	ball
-						if ( bRetrievable && ! isGenesisUnit( unit ) )
+						if ( bRetrievable &&
+							! isGenesisUnit( unit ) )
 						{
 							return callback();
 						}
@@ -1116,10 +1128,10 @@ function determineIfWitnessAddressDefinitionsHaveReferences( conn, arrWitnesses,
 {
 	conn.query
 	(
-		"SELECT 1 FROM address_definition_changes JOIN definitions USING(definition_chash) \n\
-		WHERE address IN(?) AND has_references=1 \n\
-		UNION \n\
-		SELECT 1 FROM definitions WHERE definition_chash IN(?) AND has_references=1 \n\
+		"SELECT 1 FROM address_definition_changes JOIN definitions USING(definition_chash) \
+		WHERE address IN( ? ) AND has_references = 1 \
+		UNION \
+		SELECT 1 FROM definitions WHERE definition_chash IN(?) AND has_references = 1 \
 		LIMIT 1",
 		[
 			arrWitnesses,

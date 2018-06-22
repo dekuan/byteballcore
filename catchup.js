@@ -32,19 +32,19 @@ function prepareCatchupChain( catchupRequest, callbacks )
 
 	if ( typeof last_stable_mci !== "number" )
 	{
-		return callbacks.ifError("no last_stable_mci");
+		return callbacks.ifError( "no last_stable_mci" );
 	}
 	if ( typeof last_known_mci !== "number" )
 	{
-		return callbacks.ifError("no last_known_mci");
+		return callbacks.ifError( "no last_known_mci" );
 	}
 	if ( last_stable_mci >= last_known_mci && ( last_known_mci > 0 || last_stable_mci > 0 ) )
 	{
-		return callbacks.ifError("last_stable_mci >= last_known_mci");
+		return callbacks.ifError( "last_stable_mci >= last_known_mci" );
 	}
 	if ( ! Array.isArray( arrWitnesses ) )
 	{
-		return callbacks.ifError("no witnesses");
+		return callbacks.ifError( "no witnesses" );
 	}
 
 	//
@@ -52,7 +52,9 @@ function prepareCatchupChain( catchupRequest, callbacks )
 	//
 	mutex.lock
 	(
-		[ 'prepareCatchupChain' ],
+		[
+			'prepareCatchupChain'
+		],
 		function( unlock )
 		{
 			var start_ts		= Date.now();
@@ -73,20 +75,29 @@ function prepareCatchupChain( catchupRequest, callbacks )
 				[
 					function( cb )
 					{
+						//
+						//	1,
+						//	make sure that the unit is is_stable and is_on_main_chain
+						//
+
 						//	check if the peer really needs hash trees
 						db.query
 						(
-							"SELECT is_stable FROM units WHERE is_on_main_chain=1 AND main_chain_index=?",
-							[ last_known_mci ],
+							"SELECT is_stable \
+							FROM units \
+							WHERE is_on_main_chain = 1 AND main_chain_index = ?",
+							[
+								last_known_mci
+							],
 							function( rows )
 							{
 								if ( rows.length === 0 )
 								{
-									return cb("already_current");
+									return cb( "already_current" );
 								}
-								if ( rows[0].is_stable === 0 )
+								if ( rows[ 0 ].is_stable === 0 )
 								{
-									return cb("already_current");
+									return cb( "already_current" );
 								}
 
 								//	...
