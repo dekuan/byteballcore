@@ -256,13 +256,10 @@ function validate( objJoint, callbacks )
 	//	...
 	//
 	arrAuthorAddresses = objUnit.authors
-		? objUnit.authors.map
-		(
-			function( author )
+		? objUnit.authors.map( function( author )
 			{
 				return author.address;
-			}
-		)
+			} )
 		: [];
 
 	objValidationState =

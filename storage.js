@@ -1444,15 +1444,19 @@ function readPropsOfUnits( conn, earlier_unit, arrLaterUnits, handleProps )
 }
 
 
-
-
-
-
+/**
+ *	read last stable unit and ball
+ *	@param conn
+ *	@param handleLastStableMcUnitProps
+ */
 function readLastStableMcUnitProps( conn, handleLastStableMcUnitProps )
 {
 	conn.query
 	(
-		"SELECT units.*, ball FROM units LEFT JOIN balls USING(unit) WHERE is_on_main_chain=1 AND is_stable=1 ORDER BY main_chain_index DESC LIMIT 1", 
+		"SELECT units.*, ball \
+		FROM units LEFT JOIN balls USING( unit ) \
+		WHERE is_on_main_chain = 1 AND is_stable = 1 \
+		ORDER BY main_chain_index DESC LIMIT 1",
 		function( rows )
 		{
 			if ( rows.length === 0 )
@@ -1473,18 +1477,20 @@ function readLastStableMcUnitProps( conn, handleLastStableMcUnitProps )
 	);
 }
 
+/**
+ *	read last stable main chain index
+ *	@param	conn
+ *	@param	handleLastStableMcIndex
+ */
 function readLastStableMcIndex( conn, handleLastStableMcIndex )
 {
-	readLastStableMcUnitProps
-	(
-		conn, function( objLastStableMcUnitProps )
-		{
-			handleLastStableMcIndex
-			(
-				objLastStableMcUnitProps ? objLastStableMcUnitProps.main_chain_index : 0
-			);
-		}
-	);
+	readLastStableMcUnitProps( conn, function( objLastStableMcUnitProps )
+	{
+		handleLastStableMcIndex
+		(
+			objLastStableMcUnitProps ? objLastStableMcUnitProps.main_chain_index : 0
+		);
+	});
 }
 
 

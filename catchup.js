@@ -596,7 +596,9 @@ function processHashTree( arrBalls, callbacks )
 
 												conn.query
 												(
-													"SELECT ball FROM hash_tree_balls WHERE ball IN(?) UNION SELECT ball FROM balls WHERE ball IN(?)",
+													"SELECT ball FROM hash_tree_balls WHERE ball IN( ? ) \
+													UNION \
+													SELECT ball FROM balls WHERE ball IN( ? )",
 													[
 														objBall.skiplist_balls,
 														objBall.skiplist_balls
@@ -721,16 +723,25 @@ function processHashTree( arrBalls, callbacks )
 }
 
 
+/**
+ *	purge [hash_tree_balls] by removing balls that already existed in table [balls]
+ *
+ *	@param	conn
+ *	@param	onDone
+ */
 function purgeHandledBallsFromHashTree( conn, onDone )
 {
 	conn.query
 	(
-		"SELECT ball FROM hash_tree_balls CROSS JOIN balls USING(ball)",
+		"SELECT ball FROM hash_tree_balls CROSS JOIN balls USING( ball )",
 		function( rows )
 		{
 			if ( rows.length === 0 )
+			{
 				return onDone();
+			}
 
+			//	...
 			var arrHandledBalls	= rows.map( function( row ) { return row.ball; } );
 			conn.query
 			(

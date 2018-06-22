@@ -186,6 +186,14 @@ function sendErrorResponse( ws, tag, error )
  */
 function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 {
+	//
+	//	params for 'catchup'
+	// 	{
+	// 		witnesses	: arrWitnesses,		//	12 addresses of witnesses
+	// 		last_stable_mci	: last_stable_mci,	//	stable last mci
+	// 		last_known_mci	: last_known_mci	//	known last mci
+	// 	};
+	//
 	var request;
 	var content;
 	var tag;
@@ -300,7 +308,8 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 	: null;
 
 	//
-	//	for request
+	//	timeout
+	//	in sending request
 	//
 	nRerouteTimer	= bReRoutable
 		? setTimeout
@@ -316,7 +325,8 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 		: null;
 
 	//
-	//	for response
+	//	timeout
+	//	in receiving response
 	//
 	nCancelTimer	= bReRoutable
 		? null
@@ -386,6 +396,11 @@ function handleResponse( ws, tag, response )
 		}
 	);
 
+	//
+	//	clear timers for
+	//	- request reroute timer
+	//	- response timer
+	//
 	clearTimeout( pendingRequest.reroute_timer );
 	clearTimeout( pendingRequest.cancel_timer );
 	delete ws.assocPendingRequests[ tag ];
@@ -502,19 +517,14 @@ function tryFindNextPeer( ws, handleNextPeer )
 	var next_peer_index;
 
 	//	...
-	arrOutboundSources = m_arrOutboundPeers.filter
-	(
-		function( outbound_ws )
-		{
-			return outbound_ws.bSource;
-		}
-	);
-	len = arrOutboundSources.length;
+	arrOutboundSources	= m_arrOutboundPeers.filter( function( outbound_ws ) { return outbound_ws.bSource; } );
+	len			= arrOutboundSources.length;
 
-	//	...
 	if ( len > 0 )
 	{
+		//
 		//	-1 if it is already disconnected by now, or if it is inbound peer, or if it is null
+		//
 		peer_index	= arrOutboundSources.indexOf( ws );
 		next_peer_index	= ( peer_index === -1 ) ? getRandomInt( 0, len - 1 ) : ( ( peer_index + 1 ) % len );
 		handleNextPeer( arrOutboundSources[ next_peer_index ] );
@@ -536,36 +546,24 @@ function findRandomInboundPeer( handleInboundPeer )
 	var arrInboundHosts;
 
 	//	...
-	arrInboundSources	= m_oWss.arrClients.filter
-	(
-		function( inbound_ws )
-		{
-			return inbound_ws.bSource;
-		}
-	);
-
+	arrInboundSources	= m_oWss.arrClients.filter( function( inbound_ws ) { return inbound_ws.bSource; } );
 	if ( arrInboundSources.length === 0 )
 	{
-		return handleInboundPeer(null);
+		return handleInboundPeer( null );
 	}
 
 	//	...
-	arrInboundHosts	= arrInboundSources.map
-	(
-		function( ws )
-		{
-			return ws.host;
-		}
-	);
+	arrInboundHosts	= arrInboundSources.map( function( ws ) { return ws.host; } );
 
 	//	filter only those inbound peers that are reversible
 	_db.query
 	(
-		"SELECT peer_host FROM peer_host_urls JOIN peer_hosts USING( peer_host ) \n\
-			WHERE is_active = 1 AND peer_host IN( ? ) \n\
-			AND ( count_invalid_joints / count_new_good_joints < ? \n\
-			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 ) \n\
-			ORDER BY ( count_new_good_joints = 0 ), " + _db.getRandom() + " LIMIT 1",
+		"SELECT peer_host \
+		FROM peer_host_urls JOIN peer_hosts USING( peer_host ) \
+		WHERE is_active = 1 AND peer_host IN( ? ) \
+			AND ( count_invalid_joints / count_new_good_joints < ? \
+			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 ) \
+		ORDER BY ( count_new_good_joints = 0 ), " + _db.getRandom() + " LIMIT 1",
 		[
 			arrInboundHosts,
 			_conf.MAX_TOLERATED_INVALID_RATIO
@@ -3094,6 +3092,10 @@ function waitTillIdle( onIdle )
 }
 
 
+/**
+ *	* NOT FOR LIGHT
+ *	@param	objJoint
+ */
 function broadcastJoint( objJoint )
 {
 	//	the joint was already posted to light vendor before saving
@@ -3102,6 +3104,7 @@ function broadcastJoint( objJoint )
 		return;
 	}
 
+	//	...
 	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach
 	(
 		function( client )
@@ -3159,6 +3162,10 @@ function checkCatchupLeftovers()
 }
 
 
+/**
+ *	request catchup
+ *	@param ws
+ */
 function requestCatchup( ws )
 {
 	_log.consoleLog("will request catchup from "+ws.peer);
@@ -3170,109 +3177,107 @@ function requestCatchup( ws )
 		_db.query( "PRAGMA cache_size=-200000", function(){} );
 	}
 
-	//	...
-	_catchup.purgeHandledBallsFromHashTree
-	(
-		_db,
-		function()
-		{
-			_db.query
-			(
-				"SELECT hash_tree_balls.unit \n\
-				FROM hash_tree_balls LEFT JOIN units USING(unit) \n\
-				WHERE units.unit IS NULL ORDER BY ball_index",
-				function( tree_rows )
+	//
+	//	purge [hash_tree_balls] by removing balls that already existed in table [balls]
+	//
+	_catchup.purgeHandledBallsFromHashTree( _db, function()
+	{
+		//
+		//	units
+		//	query leftover units from [hash_tree_balls]
+		//
+		_db.query
+		(
+			"SELECT hash_tree_balls.unit \n\
+			FROM hash_tree_balls LEFT JOIN units USING(unit) \n\
+			WHERE units.unit IS NULL ORDER BY ball_index",
+			function( tree_rows )
+			{
+				//	leftovers from previous run
+				if ( tree_rows.length > 0 )
 				{
-					//	leftovers from previous run
-					if ( tree_rows.length > 0 )
-					{
-						m_bCatchingUp	= true;
-						_log.consoleLog("will request balls found in hash tree");
-
-						//	...
-						requestNewMissingJoints
-						(
-							ws,
-							tree_rows.map
-							(
-								function( tree_row )
-								{
-									return tree_row.unit;
-								}
-							)
-						);
-
-						//	...
-						waitTillHashTreeFullyProcessedAndRequestNext( ws );
-
-						//	...
-						return;
-					}
+					m_bCatchingUp	= true;
+					_log.consoleLog( "will request balls found in hash tree" );
 
 					//	...
-					_db.query
+					requestNewMissingJoints
 					(
-						"SELECT 1 FROM catchup_chain_balls LIMIT 1",
-						function( chain_rows )
-						{
-							//	leftovers from previous run
-							if ( chain_rows.length > 0 )
-							{
-								m_bCatchingUp = true;
-								requestNextHashTree( ws );
-								return;
-							}
-
-							//
-							//	we are not switching to catching up mode until we receive a catchup chain
-							// 	- don't allow peers to throw us into
-							//	catching up mode by just sending a ball
-
-							//	to avoid duplicate requests, we are raising this flag before actually sending the request
-							//	(will also reset the flag only after the response is fully processed)
-							m_bWaitingForCatchupChain = true;
-					
-							_log.consoleLog( 'will read last stable mci for catchup' );
-							_storage.readLastStableMcIndex
-							(
-								_db,
-								function( last_stable_mci )
-								{
-									_storage.readLastMainChainIndex
-									(
-										function( last_known_mci )
-										{
-											_my_witnesses.readMyWitnesses
-											(
-												function( arrWitnesses )
-												{
-													var params =
-													{
-														witnesses	: arrWitnesses,
-														last_stable_mci	: last_stable_mci,
-														last_known_mci	: last_known_mci
-													};
-													sendRequest
-													(
-														ws,
-														'catchup',
-														params,
-														true,
-														handleCatchupChain
-													);
-												},
-												'wait'
-											);
-										}
-									);
-								}
-							);
-						}
+						ws,
+						tree_rows.map( function( tree_row ) { return tree_row.unit; } )
 					);
+
+					//	...
+					waitTillHashTreeFullyProcessedAndRequestNext( ws );
+
+					//	...
+					return;
 				}
-			);
-		}
-	);
+
+				//	...
+				_db.query
+				(
+					"SELECT 1 FROM catchup_chain_balls LIMIT 1",
+					function( chain_rows )
+					{
+						//
+						//	leftovers from previous run
+						//
+						if ( chain_rows.length > 0 )
+						{
+							m_bCatchingUp = true;
+							requestNextHashTree( ws );
+							return;
+						}
+
+						//
+						//	we are not switching to catching up mode until we receive a catchup chain
+						// 	- don't allow peers to throw us into
+						//	catching up mode by just sending a ball
+						//
+						//	to avoid duplicate requests, we are raising this flag before actually sending the request
+						//	(will also reset the flag only after the response is fully processed)
+						//
+						m_bWaitingForCatchupChain = true;
+
+						_log.consoleLog( 'will read last stable mci for catchup' );
+
+						//
+						//	obtain : stable last main chain index
+						//
+						_storage.readLastStableMcIndex( _db, function( last_stable_mci )
+						{
+							//
+							//	obtain : last main chain index
+							//
+							_storage.readLastMainChainIndex( function( last_known_mci )
+							{
+								//
+								//	obtain 12 witnesses from table [my_witnesses]
+								//
+								_my_witnesses.readMyWitnesses
+								(
+									function( arrWitnesses )
+									{
+										//
+										//	send 'catchup' request
+										//
+										var params =
+										{
+											witnesses	: arrWitnesses,
+											last_stable_mci	: last_stable_mci,
+											last_known_mci	: last_known_mci
+										};
+										sendRequest( ws, 'catchup', params, true, handleCatchupChain );
+									},
+									'wait'
+								);
+							});
+						} );
+					}
+				);
+			}
+		);
+	} );
 }
 
 

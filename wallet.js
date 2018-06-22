@@ -1891,54 +1891,75 @@ function getSigner( opts, arrSigningDeviceAddresses, signWithLocalPrivateKey )
 	}
 }
 
+
+/**
+ *	send one or more payments
+ *	@param opts
+ *	@param handleResult
+ */
 function sendMultiPayment( opts, handleResult )
 {
 	var asset = opts.asset;
 
-	if (asset === 'base')
+	//	...
+	if ( asset === 'base' )
+	{
 		asset = null;
+	}
 
-	var wallet = opts.wallet;
-	var arrPayingAddresses = opts.paying_addresses;
-	var fee_paying_wallet = opts.fee_paying_wallet;
-	var arrSigningAddresses = opts.signing_addresses || [];
-	var to_address = opts.to_address;
-	var amount = opts.amount;
-	var bSendAll = opts.send_all;
-	var change_address = opts.change_address;
-	var arrSigningDeviceAddresses = opts.arrSigningDeviceAddresses;
-	var recipient_device_address = opts.recipient_device_address;
-	var recipient_device_addresses = opts.recipient_device_addresses;
-	var signWithLocalPrivateKey = opts.signWithLocalPrivateKey;
+	//	...
+	var wallet			= opts.wallet;
+	var arrPayingAddresses		= opts.paying_addresses;
+	var fee_paying_wallet		= opts.fee_paying_wallet;
+	var arrSigningAddresses		= opts.signing_addresses || [];
+	var to_address			= opts.to_address;
+	var amount			= opts.amount;
+	var bSendAll			= opts.send_all;
+	var change_address		= opts.change_address;
+	var arrSigningDeviceAddresses	= opts.arrSigningDeviceAddresses;
+	var recipient_device_address	= opts.recipient_device_address;
+	var recipient_device_addresses	= opts.recipient_device_addresses;
+	var signWithLocalPrivateKey	= opts.signWithLocalPrivateKey;
 
-	var base_outputs = opts.base_outputs;
-	var asset_outputs = opts.asset_outputs;
-	var messages = opts.messages;
+	var base_outputs		= opts.base_outputs;
+	var asset_outputs		= opts.asset_outputs;
+	var messages			= opts.messages;
 	
 	if (!wallet && !arrPayingAddresses)
+	{
 		throw Error("neither wallet id nor paying addresses");
+	}
 	if (wallet && arrPayingAddresses)
 		throw Error("both wallet id and paying addresses");
 	if ((to_address || amount) && (base_outputs || asset_outputs))
 		throw Error('to_address and outputs at the same time');
 	if (!asset && asset_outputs)
 		throw Error('base asset and asset outputs');
-	if (amount){
-		if (typeof amount !== 'number')
+	if ( amount )
+	{
+		if ( typeof amount !== 'number' )
 			throw Error('amount must be a number');
-		if (amount < 0)
+		if ( amount < 0 )
 			throw Error('amount must be positive');
 	}
 	
-	if (recipient_device_address === device.getMyDeviceAddress())
+	if ( recipient_device_address === device.getMyDeviceAddress() )
+	{
 		recipient_device_address = null;
-	
+	}
+
+	//	...
 	var estimated_amount = amount;
-	if (!estimated_amount && asset_outputs)
+	if ( ! estimated_amount && asset_outputs )
+	{
 		estimated_amount = asset_outputs.reduce(function(acc, output){ return acc+output.amount; }, 0);
-	if (estimated_amount && !asset)
+	}
+	if ( estimated_amount && ! asset )
+	{
 		estimated_amount += TYPICAL_FEE;
-	
+	}
+
+	//	...
 	readFundedAndSigningAddresses
 	(
 		asset,
@@ -1954,17 +1975,21 @@ function sendMultiPayment( opts, handleResult )
 			if (asset && arrBaseFundedAddresses.length === 0)
 				return handleResult("No bytes to pay fees");
 
-			var signer = getSigner(opts, arrSigningDeviceAddresses, signWithLocalPrivateKey);
+			//	...
+			var signer = getSigner( opts, arrSigningDeviceAddresses, signWithLocalPrivateKey );
 
-			// if we have any output with text addresses / not byteball addresses (e.g. email) - generate new addresses and return them
-			var assocMnemonics = {}; // return all generated wallet mnemonics to caller in callback
-			var assocPaymentsByEmail = {}; // wallet mnemonics to send by emails
-			var assocAddresses = {};
-			var prefix = "textcoin:";
-			function generateNewMnemonicIfNoAddress(output_asset, outputs) {
+			//	if we have any output with text addresses / not byteball addresses (e.g. email) - generate new addresses and return them
+			var assocMnemonics		= {}; // return all generated wallet mnemonics to caller in callback
+			var assocPaymentsByEmail	= {}; // wallet mnemonics to send by emails
+			var assocAddresses		= {};
+			var prefix			= "textcoin:";
+
+			function generateNewMnemonicIfNoAddress( output_asset, outputs )
+			{
 				var generated = 0;
-				outputs.forEach(function(output){
-					if (output.address.indexOf(prefix) !== 0)
+				outputs.forEach( function( output )
+				{
+					if ( output.address.indexOf(prefix) !== 0 )
 						return false;
 
 					var address = output.address.slice(prefix.length);
@@ -1986,15 +2011,20 @@ function sendMultiPayment( opts, handleResult )
 				});
 				return generated;
 			}
-			if (to_address) {
+			if ( to_address )
+			{
 				var to_address_output = {address: to_address, amount: amount};
 				var cnt = generateNewMnemonicIfNoAddress(asset, [to_address_output]);
 				if (cnt) to_address = to_address_output.address;
 			}
-			if (base_outputs) generateNewMnemonicIfNoAddress(null, base_outputs);
-			if (asset_outputs) generateNewMnemonicIfNoAddress(asset, asset_outputs);
+			if ( base_outputs )
+				generateNewMnemonicIfNoAddress( null, base_outputs );
+			if ( asset_outputs )
+				generateNewMnemonicIfNoAddress( asset, asset_outputs );
 
-			var params = {
+			//	...
+			var params =
+			{
 				available_paying_addresses: arrFundedAddresses, // forces 'minimal' for payments from shared addresses too, it doesn't hurt
 				signing_addresses: arrAllSigningAddresses,
 				messages: messages, 
@@ -2006,7 +2036,7 @@ function sendMultiPayment( opts, handleResult )
 					ifError: function(err){
 						handleResult(err);
 					},
-					preCommitCb: function(conn, objJoint, cb){
+					preCommitCb : function(conn, objJoint, cb){
 						var i = 0;
 						if (Object.keys(assocMnemonics).length) {
 							for (var to in assocMnemonics) {
@@ -2020,10 +2050,12 @@ function sendMultiPayment( opts, handleResult )
 						} else 
 							cb();
 					},
-					// for asset payments, 2nd argument is array of chains of private elements
-					// for base asset, 2nd argument is assocPrivatePayloads which is null
-					ifOk: function(objJoint, arrChainsOfRecipientPrivateElements, arrChainsOfCosignerPrivateElements){
-						network.broadcastJoint(objJoint);
+					//	for asset payments, 2nd argument is array of chains of private elements
+					//	for base asset, 2nd argument is assocPrivatePayloads which is null
+					ifOk: function( objJoint, arrChainsOfRecipientPrivateElements, arrChainsOfCosignerPrivateElements )
+					{
+						network.broadcastJoint( objJoint );
+
 						if (!arrChainsOfRecipientPrivateElements){ // send notification about public payment
 							if (recipient_device_address)
 								walletGeneral.sendPaymentNotification(recipient_device_address, objJoint.unit.unit);
@@ -2050,19 +2082,29 @@ function sendMultiPayment( opts, handleResult )
 
 			// textcoin claim fees are paid by the sender
 			var indivisibleAssetFeesByAddress = [];
-			var addFeesToParams = function(objAsset) {
-				// iterate over all generated textcoin addresses
-				for (var orig_address in assocAddresses) {
-					var new_address = assocAddresses[orig_address];
-					var _addAssetFees = function() {
-						var asset_fees = objAsset && objAsset.fixed_denominations ? indivisibleAssetFeesByAddress[new_address] : constants.TEXTCOIN_ASSET_CLAIM_FEE;
-						if (!params.base_outputs) params.base_outputs = [];
+			var addFeesToParams = function( objAsset )
+			{
+				//	iterate over all generated textcoin addresses
+				for ( var orig_address in assocAddresses )
+				{
+					var new_address = assocAddresses[ orig_address ];
+					var _addAssetFees = function()
+					{
+						var asset_fees = objAsset && objAsset.fixed_denominations
+							? indivisibleAssetFeesByAddress[ new_address ]
+							: constants.TEXTCOIN_ASSET_CLAIM_FEE;
+
+						if ( ! params.base_outputs )
+						{
+							params.base_outputs = [];
+						}
+
 						var base_output = _.find(params.base_outputs, function(output) {return output.address == new_address});
 						if (base_output)
 							base_output.amount += asset_fees;
 						else
 							params.base_outputs.push({address: new_address, amount: asset_fees});
-					}
+					};
 
 					// first calculate fees for textcoins in (bytes) outputs 
 					var output = _.find(params.outputs, function(output) {return output.address == new_address});
@@ -2078,34 +2120,44 @@ function sendMultiPayment( opts, handleResult )
 
 					// then check for textcoins in asset_outputs
 					output = _.find(params.asset_outputs, function(output) {return output.address == new_address});
-					if (output) {
+					if ( output )
+					{
 						_addAssetFees();
 					}
 
 					// finally check textcoins in to_address
-					if (new_address == params.to_address) {
-						if (objAsset) {
+					if ( new_address == params.to_address )
+					{
+						if ( objAsset )
+						{
 							delete params.to_address;
 							delete params.amount;
 							params.asset_outputs = [{address: new_address, amount: amount}];
 							_addAssetFees();
-						} else {
+						}
+						else
+						{
 							params.amount += constants.TEXTCOIN_CLAIM_FEE;
 						}
 					}
 				}
-			}
+			};
 
-			if (asset){
-				if (bSendAll)
+			if ( asset )
+			{
+				if ( bSendAll )
 					throw Error('send_all with asset');
+
+				//	...
 				params.asset = asset;
 				params.available_fee_paying_addresses = arrBaseFundedAddresses;
-				if (to_address){
+				if ( to_address )
+				{
 					params.to_address = to_address;
 					params.amount = amount; // in asset units
 				}
-				else{
+				else
+				{
 					params.asset_outputs = asset_outputs;
 					params.base_outputs = base_outputs; // only destinations, without the change
 				}

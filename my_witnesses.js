@@ -22,13 +22,7 @@ function readMyWitnesses( handleWitnesses, actionIfEmpty )
 		"SELECT address FROM my_witnesses ORDER BY address",
 		function( rows )
 		{
-			var arrWitnesses = rows.map
-			(
-				function( row )
-				{
-					return row.address;
-				}
-			);
+			var arrWitnesses = rows.map( function( row ) { return row.address; } );
 
 			//	reset witness list if old witnesses found
 			if ( constants.alt === '2' && arrWitnesses.indexOf( '5K7CSLTRPC5LFLOS3D34GBHG7RFD4TPO' ) >= 0
@@ -65,7 +59,7 @@ function readMyWitnesses( handleWitnesses, actionIfEmpty )
 
 			if ( arrWitnesses.length !== constants.COUNT_WITNESSES )
 			{
-				throw Error( "wrong number of my witnesses: "+arrWitnesses.length );
+				throw Error( "wrong number of my witnesses: " + arrWitnesses.length );
 			}
 
 			//	...
