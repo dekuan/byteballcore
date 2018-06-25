@@ -2,13 +2,12 @@
 "use strict";
 
 var WebSocket			= process.browser ? global.WebSocket : require( 'ws' );
-var socks			= process.browser ? null : require('socks'+'');
+var socks			= process.browser ? null : require( 'socks' + '' );
 var WebSocketServer		= WebSocket.Server;
 
 var _				= require( 'lodash' );
 var _crypto			= require( 'crypto' );
 var _async			= require( 'async' );
-var _log			= require( './log.js' );
 var _logex			= require( './logex.js' );
 var _db				= require( './db.js' );
 var _constants			= require( './constants.js' );
@@ -32,12 +31,14 @@ var _profilerex			= require( './profilerex.js' );
 var _mail			= process.browser ? null : require( './mail.js' + '' );
 
 var _network_consts		= require( './network_consts.js' );
+var _network_message		= require( './network_message.js' );
+var _network_peer		= require( './network_peer.js' );
 
 
 
 var m_oWss;
-var m_arrOutboundPeers				= [];
-var m_oAssocConnectingOutboundWebSockets	= {};
+var m_arrInboundPeers				= [];		//	all clients connected in
+
 var m_oAssocUnitsInWork				= {};
 var m_oAssocRequestedUnits			= {};
 var m_bCatchingUp				= false;
@@ -48,7 +49,6 @@ var m_oAssocReroutedConnectionsByTag		= {};
 var m_arrWatchedAddresses			= [];		//	does not include my addresses, therefore always empty
 var m_nLastHearbeatWakeTs			= Date.now();
 var m_arrPeerEventsBuffer			= [];
-var m_oAssocKnownPeers				= {};
 var m_exchangeRates				= {};
 
 
@@ -74,103 +74,20 @@ function setMyDeviceProps( device_address, objTempPubkey )
 	m_objMyTempPubkeyPackage	= objTempPubkey;
 }
 
-
-
-
-
-
-
-
-//////////////////////////////////////////////////////////////////////
-//	general network functions
-//////////////////////////////////////////////////////////////////////
-
-
-function sendMessage( ws, type, content )
-{
-	var message;
-
-	//	...
-	message	= JSON.stringify( [ type, content ] );
-
-	if ( ws.readyState !== ws.OPEN )
-	{
-		return _log.consoleLog( "readyState=" + ws.readyState + ' on peer ' + ws.peer + ', will not send ' + message );
-	}
-
-	_log.consoleLog( "SENDING " + message + " to " + ws.peer );
-	ws.send( message );
-}
-
-function sendJustSaying( ws, subject, body )
-{
-	sendMessage( ws, 'justsaying', { subject : subject, body : body } );
-}
-
 function sendAllInboundJustSaying( subject, body )
 {
-	m_oWss.arrClients.forEach
+	m_arrInboundPeers.forEach
 	(
 		function( ws )
 		{
-			sendMessage( ws, 'justsaying', { subject: subject, body: body } );
+			_network_message.sendMessage( ws, 'justsaying', { subject: subject, body: body } );
 		}
 	);
 }
 
-function sendError( ws, error )
-{
-	sendJustSaying( ws, 'error', error );
-}
 
-function sendInfo( ws, content )
-{
-	sendJustSaying( ws, 'info', content );
-}
 
-function sendResult( ws, content )
-{
-	sendJustSaying( ws, 'result', content );
-}
 
-function sendErrorResult( ws, unit, error )
-{
-	sendResult( ws, { unit : unit, result : 'error', error : error } );
-}
-
-function sendVersion( ws )
-{
-	var libraryPackageJson;
-
-	//	...
-	libraryPackageJson	= require( './package.json' );
-
-	//	...
-	sendJustSaying
-	(
-		ws,
-		'version',
-		{
-			protocol_version	: _constants.version,
-			alt			: _constants.alt,
-			library			: libraryPackageJson.name,
-			library_version		: libraryPackageJson.version,
-			program			: _conf.program,
-			program_version		: _conf.program_version
-		}
-	);
-}
-
-function sendResponse( ws, tag, response )
-{
-	delete ws.assocInPreparingResponse[ tag ];
-	sendMessage( ws, 'response', { tag: tag, response: response } );
-}
-
-function sendErrorResponse( ws, tag, error )
-{
-	sendResponse( ws, tag, { error : error } );
-}
 
 
 /**
@@ -217,11 +134,11 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 
 	//
 	//	if (ws.assocPendingRequests[tag]) // ignore duplicate requests while still waiting for response from the same peer
-	//	return _log.consoleLog("will not send identical "+command+" request");
+	//	return console.log("will not send identical "+command+" request");
 	//
 	if ( ws.assocPendingRequests[ tag ] )
 	{
-		_log.consoleLog
+		console.log
 		(
 			'already sent a ' + command + ' request to ' + ws.peer + ', will add one more response handler rather than sending a duplicate request to the wire'
 		);
@@ -243,39 +160,39 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 	//
 	pfnReroute = bReRoutable ? function()
 	{
-		_log.consoleLog( 'will try to reroute a ' + command + ' request stalled at ' + ws.peer );
+		console.log( 'will try to reroute a ' + command + ' request stalled at ' + ws.peer );
 
 		if ( ! ws.assocPendingRequests[ tag ] )
 		{
-			return _log.consoleLog( 'will not reroute - the request was already handled by another peer' );
+			return console.log( 'will not reroute - the request was already handled by another peer' );
 		}
 
 		//	...
 		ws.assocPendingRequests[ tag ].bRerouted	= true;
-		findNextPeer
+		_network_peer.findNextPeer
 		(
 			ws,
 			function( next_ws )
 			{
 				//
-				//	the callback may be called much later if findNextPeer has to wait for connection
+				//	the callback may be called much later if _network_peer.findNextPeer has to wait for connection
 				//
 				if ( ! ws.assocPendingRequests[ tag ] )
 				{
-					return _log.consoleLog( 'will not reroute after findNextPeer - the request was already handled by another peer' );
+					return console.log( 'will not reroute after findNextPeer - the request was already handled by another peer' );
 				}
 
 				if ( next_ws === ws ||
 					m_oAssocReroutedConnectionsByTag[ tag ] && m_oAssocReroutedConnectionsByTag[ tag ].indexOf( next_ws ) >= 0 )
 				{
-					_log.consoleLog( 'will not reroute ' + command + ' to the same peer, will rather wait for a new connection' );
+					console.log( 'will not reroute ' + command + ' to the same peer, will rather wait for a new connection' );
 					_event_bus.once
 					(
 						'connected_to_source',
 						function()
 						{
 							//	try again
-							_log.consoleLog( 'got new connection, retrying reroute ' + command );
+							console.log( 'got new connection, retrying reroute ' + command );
 							pfnReroute();
 						}
 					);
@@ -285,7 +202,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 				//
 				//	SEND REQUEST AGAIN FOR EVERY responseHandlers
 				//
-				_log.consoleLog( 'rerouting ' + command + ' from ' + ws.peer + ' to ' + next_ws.peer );
+				console.log( 'rerouting ' + command + ' from ' + ws.peer + ' to ' + next_ws.peer );
 				ws.assocPendingRequests[ tag ].responseHandlers.forEach
 				(
 					function( rh )
@@ -317,7 +234,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 			//	callback handler while the request is TIMEOUT
 			function ()
 			{
-				_log.consoleLog( '# network::sendRequest request ' + command + ', send to ' + ws.peer + ' was overtime.' );
+				console.log( '# network::sendRequest request ' + command + ', send to ' + ws.peer + ' was overtime.' );
 				pfnReroute.apply( this, arguments );
 			},
 			_network_consts.STALLED_TIMEOUT
@@ -334,7 +251,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 		(
 			function()
 			{
-				_log.consoleLog( '# network::sendRequest request ' + command + ', response from ' + ws.peer + ' was overtime.' );
+				console.log( '# network::sendRequest request ' + command + ', response from ' + ws.peer + ' was overtime.' );
 
 				//
 				//	delete all overtime requests/connections in pending requests list
@@ -366,7 +283,7 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 	//
 	//	...
 	//
-	sendMessage( ws, 'request', content );
+	_network_message.sendMessage( ws, 'request', content );
 }
 
 
@@ -381,7 +298,7 @@ function handleResponse( ws, tag, response )
 	if ( ! pendingRequest )
 	{
 		//	throw "no req by tag "+tag;
-		return _log.consoleLog( "no req by tag " + tag );
+		return console.log( "no req by tag " + tag );
 	}
 
 	//	...
@@ -431,7 +348,7 @@ function cancelRequestsOnClosedConnection( ws )
 	var tag;
 	var pendingRequest;
 
-	_log.consoleLog( "websocket closed, will complete all outstanding requests" );
+	console.log( "websocket closed, will complete all outstanding requests" );
 
 	for ( tag in ws.assocPendingRequests )
 	{
@@ -462,9 +379,6 @@ function cancelRequestsOnClosedConnection( ws )
 			ws.assocPendingRequests[ tag ]	= null;
 		}
 	}
-
-	//	...
-	printConnectionStatus();
 }
 
 
@@ -477,132 +391,6 @@ function cancelRequestsOnClosedConnection( ws )
 //	peers
 //////////////////////////////////////////////////////////////////////
 
-function findNextPeer( ws, handleNextPeer )
-{
-	tryFindNextPeer
-	(
-		ws,
-		function( next_ws )
-		{
-			var peer;
-
-			if ( next_ws )
-			{
-				return handleNextPeer( next_ws );
-			}
-
-			//	...
-			peer	= ws ? ws.peer : '[none]';
-			_log.consoleLog( 'findNextPeer after ' + peer + ' found no appropriate peer, will wait for a new connection' );
-
-			//	...
-			_event_bus.once
-			(
-				'connected_to_source',
-				function( new_ws )
-				{
-					_log.consoleLog( 'got new connection, retrying findNextPeer after ' + peer );
-					findNextPeer( ws, handleNextPeer );
-				}
-			);
-		}
-	);
-}
-
-function tryFindNextPeer( ws, handleNextPeer )
-{
-	var arrOutboundSources;
-	var len;
-	var peer_index;
-	var next_peer_index;
-
-	//	...
-	arrOutboundSources	= m_arrOutboundPeers.filter( function( outbound_ws ) { return outbound_ws.bSource; } );
-	len			= arrOutboundSources.length;
-
-	if ( len > 0 )
-	{
-		//
-		//	-1 if it is already disconnected by now, or if it is inbound peer, or if it is null
-		//
-		peer_index	= arrOutboundSources.indexOf( ws );
-		next_peer_index	= ( peer_index === -1 ) ? getRandomInt( 0, len - 1 ) : ( ( peer_index + 1 ) % len );
-		handleNextPeer( arrOutboundSources[ next_peer_index ] );
-	}
-	else
-	{
-		findRandomInboundPeer( handleNextPeer );
-	}
-}
-
-function getRandomInt( min, max )
-{
-	return Math.floor( Math.random() * ( max + 1 - min ) ) + min;
-}
-
-function findRandomInboundPeer( handleInboundPeer )
-{
-	var arrInboundSources;
-	var arrInboundHosts;
-
-	//	...
-	arrInboundSources	= m_oWss.arrClients.filter( function( inbound_ws ) { return inbound_ws.bSource; } );
-	if ( arrInboundSources.length === 0 )
-	{
-		return handleInboundPeer( null );
-	}
-
-	//	...
-	arrInboundHosts	= arrInboundSources.map( function( ws ) { return ws.host; } );
-
-	//	filter only those inbound peers that are reversible
-	_db.query
-	(
-		"SELECT peer_host \
-		FROM peer_host_urls JOIN peer_hosts USING( peer_host ) \
-		WHERE is_active = 1 AND peer_host IN( ? ) \
-			AND ( count_invalid_joints / count_new_good_joints < ? \
-			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 ) \
-		ORDER BY ( count_new_good_joints = 0 ), " + _db.getRandom() + " LIMIT 1",
-		[
-			arrInboundHosts,
-			_conf.MAX_TOLERATED_INVALID_RATIO
-		],
-		function( rows )
-		{
-			var host;
-			var ws;
-
-			//	...
-			_log.consoleLog( rows.length + " inbound peers" );
-
-			if ( rows.length === 0 )
-			{
-				return handleInboundPeer(null);
-			}
-
-			//	...
-			host	= rows[ 0 ].peer_host;
-			_log.consoleLog( "selected inbound peer " + host );
-
-			ws = arrInboundSources.filter
-			(
-				function( ws )
-				{
-					return ( ws.host === host );
-				}
-			)[ 0 ];
-
-			if ( ! ws )
-			{
-				throw Error( "inbound ws not found" );
-			}
-
-			//	...
-			handleInboundPeer( ws );
-		}
-	);
-}
 
 /**
  *	check and add peers
@@ -612,22 +400,16 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 	var arrOutboundPeerUrls;
 
 	//	...
-	arrOutboundPeerUrls = m_arrOutboundPeers.map
-	(
-		function( ws )
-		{
-			return ws.peer;
-		}
-	);
+	arrOutboundPeerUrls = _network_peer.getOutboundPeers().map( function( ws ) { return ws.peer; } );
 
 	//
 	//	select peers good_joints > 0 and ...
 	//
 	_db.query
 	(
-		"SELECT peer FROM peers JOIN peer_hosts USING( peer_host ) \n\
-			WHERE count_new_good_joints > 0 \n\
-			AND count_invalid_joints / count_new_good_joints < ? \n\
+		"SELECT peer FROM peers JOIN peer_hosts USING( peer_host ) \
+		WHERE count_new_good_joints > 0 \
+			AND count_invalid_joints / count_new_good_joints < ? \
 			AND peer IN( ? )",
 		[
 			_conf.MAX_TOLERATED_INVALID_RATIO,
@@ -664,621 +446,20 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
 				}
 			);
 
-			for ( i = 0; i < m_arrOutboundPeers.length; i++ )
+			for ( i = 0; i < _network_peer.getOutboundPeers().length; i++ )
 			{
-				ws = m_arrOutboundPeers[ i ];
+				ws = _network_peer.getOutboundPeers()[ i ];
 				if ( arrGoodPeerUrls.indexOf( ws.peer ) !== -1 )
 				{
 					//
-					//	peer was not found in m_arrOutboundPeers
+					//	peer was not found in _network_peer.getOutboundPeers()
 					//
 					//	* try to send request to get peers
 					//
-					_log.consoleLog( "****** peer was not found in m_arrOutboundPeers, * try to send request to get peers" );
+					console.log( "****** peer was not found in _network_peer.getOutboundPeers(), * try to send request to get peers" );
 					requestPeers( ws );
 				}
 			}
-		}
-	);
-}
-
-function connectToPeer( url, onOpen )
-{
-	var options;
-	var ws;
-
-	//	...
-	addPeer( url );
-
-	//	...
-	options	= {};
-	if ( socks && _conf.socksHost && _conf.socksPort )
-	{
-		options.agent	= new socks.Agent
-		(
-			{
-				proxy		:
-				{
-					ipaddress	: _conf.socksHost,
-					port		: _conf.socksPort,
-					type		: 5
-				}
-			},
-			/^wss/i.test( url )
-		);
-		_log.consoleLog( 'Using proxy: ' + _conf.socksHost + ':' + _conf.socksPort );
-	}
-
-	//	...
-	ws = options.agent ? new WebSocket( url, options ) : new WebSocket( url );
-	m_oAssocConnectingOutboundWebSockets[ url ] = ws;
-
-	setTimeout
-	(
-		function()
-		{
-			if ( m_oAssocConnectingOutboundWebSockets[ url ] )
-			{
-				_log.consoleLog( 'abandoning connection to ' + url + ' due to timeout' );
-				delete m_oAssocConnectingOutboundWebSockets[ url ];
-				m_oAssocConnectingOutboundWebSockets[ url ]	= null;
-
-				//
-				//	after this,
-				//	new connection attempts will be allowed to the wire,
-				// 	but this one can still succeed.
-				//
-				//	See the check for duplicates below.
-				//
-			}
-		},
-		5000
-	);
-
-	//	avoid warning
-	ws.setMaxListeners( 20 );
-	ws.once
-	(
-		'open',
-		function onWsOpen()
-		{
-			var another_ws_to_same_peer;
-
-			//	...
-			_breadcrumbs.add( 'connected to ' + url );
-			delete m_oAssocConnectingOutboundWebSockets[ url ];
-			m_oAssocConnectingOutboundWebSockets[ url ]	= null;
-
-			//	...
-			ws.assocPendingRequests		= {};
-			ws.assocInPreparingResponse	= {};
-
-			if ( ! ws.url )
-			{
-				throw Error( "no url on ws" );
-			}
-
-			//	browser implementatin of Websocket might add "/"
-			if ( ws.url !== url && ws.url !== url + "/" )
-			{
-				throw Error( "url is different: " + ws.url );
-			}
-
-			//	...
-			another_ws_to_same_peer	= getOutboundPeerWsByUrl( url );
-			if ( another_ws_to_same_peer )
-			{
-				//
-				//	duplicate connection.
-				//	May happen if we abondoned a connection attempt after timeout but it still succeeded while we opened another connection
-				//
-				_log.consoleLog( 'already have a connection to ' + url + ', will keep the old one and close the duplicate' );
-				ws.close( 1000, 'duplicate connection' );
-
-				if ( onOpen )
-				{
-					onOpen( null, another_ws_to_same_peer );
-				}
-
-				return;
-			}
-
-			//	...
-			ws.peer		= url;
-			ws.host		= getHostByPeer( ws.peer );
-			ws.bOutbound	= true;
-			ws.last_ts	= Date.now();
-
-			_log.consoleLog( 'connected to ' + url + ", host " + ws.host );
-			m_arrOutboundPeers.push( ws );
-			sendVersion( ws );
-
-			//	I can listen too, this is my url to connect to
-			if ( _conf.myUrl )
-			{
-				sendJustSaying( ws, 'my_url', _conf.myUrl );
-			}
-
-			if ( ! _conf.bLight )
-			{
-				subscribe( ws );
-			}
-
-			if ( onOpen )
-			{
-				onOpen( null, ws );
-			}
-
-			//	...
-			_event_bus.emit( 'connected', ws );
-			_event_bus.emit( 'open-' + url );
-		}
-	);
-
-	ws.on
-	(
-		'close',
-		function onWsClose()
-		{
-			var i;
-
-			//	...
-			i	= m_arrOutboundPeers.indexOf( ws );
-			_log.consoleLog( 'close event, removing ' + i + ': ' + url );
-
-			if ( i !== -1 )
-			{
-				m_arrOutboundPeers.splice( i, 1 );
-			}
-
-			//	...
-			cancelRequestsOnClosedConnection( ws );
-
-			if ( options.agent && options.agent.destroy )
-			{
-				options.agent.destroy();
-			}
-		}
-	);
-
-	ws.on
-	(
-		'error',
-		function onWsError( e )
-		{
-			var err;
-
-			//	...
-			delete m_oAssocConnectingOutboundWebSockets[ url ];
-			m_oAssocConnectingOutboundWebSockets[ url ]	= null;
-			_log.consoleLog( "error from server " + url + ": " + e );
-
-			//	...
-			err	= e.toString();
-			//	! ws.bOutbound means not connected yet. This is to distinguish connection errors from later errors that occur on open connection
-
-			if ( ! ws.bOutbound && onOpen )
-			{
-				onOpen( err );
-			}
-
-			if ( ! ws.bOutbound )
-			{
-				_event_bus.emit( 'open-' + url, err );
-			}
-		}
-	);
-
-	ws.on
-	(
-		'message',
-		onWebSocketMessage
-	);
-
-	//	...
-	_log.consoleLog( 'connectToPeer done' );
-}
-
-
-/**
- *	try to add outbound peers
- */
-function addOutboundPeers( multiplier )
-{
-	var order_by;
-	var arrOutboundPeerUrls;
-	var arrInboundHosts;
-	var max_new_outbound_peers;
-
-	if ( ! multiplier )
-	{
-		multiplier = 1;
-	}
-	if ( multiplier >= 32 )
-	{
-		//	limit recursion
-		return;
-	}
-
-	//
-	//	don't stick to old peers with most accumulated good joints
-	//
-	order_by		= ( multiplier <= 4 ) ? "count_new_good_joints DESC" : _db.getRandom();
-	arrOutboundPeerUrls	= m_arrOutboundPeers.map
-	(
-		function( ws )
-		{
-			return ws.peer;
-		}
-	);
-	arrInboundHosts		= m_oWss.arrClients.map
-	(
-		function( ws )
-		{
-			return ws.host;
-		}
-	);
-
-	//	having too many connections being opened creates odd delays in _db functions
-	max_new_outbound_peers	= Math.min( _conf.MAX_OUTBOUND_CONNECTIONS - arrOutboundPeerUrls.length, 5 );
-	if ( max_new_outbound_peers <= 0 )
-	{
-		return;
-	}
-
-	//
-	//	TODO
-	//	LONG SQL, BUT FAST, CAUSE FEW DATA
-	//
-	//	Questions:
-	//	1, What's the different among [peers], [peer_hosts], [peer_host_urls] ?
-	//	2, INVALID_RATIO = count_invalid_joints / count_new_good_joints, if 0/0 ?
-	//
-	_db.query
-	(
-		"SELECT peer \
-		FROM peers \
-		JOIN peer_hosts USING(peer_host) \
-		LEFT JOIN peer_host_urls ON peer=url AND is_active=1 \
-		WHERE ( \
-			count_invalid_joints / count_new_good_joints < ? \
-			OR count_new_good_joints = 0 AND count_nonserial_joints = 0 AND count_invalid_joints = 0 \
-		      ) \
-			" + ( ( arrOutboundPeerUrls.length > 0 ) ? " AND peer NOT IN(" + _db.escape( arrOutboundPeerUrls ) + ") " : "" ) + " \
-			" + ( ( arrInboundHosts.length > 0 ) ? " AND (peer_host_urls.peer_host IS NULL OR peer_host_urls.peer_host NOT IN(" + _db.escape( arrInboundHosts ) + ")) " : "" ) + " \
-			AND is_self=0 \
-		ORDER BY " + order_by + " LIMIT ?",
-		[
-			_conf.MAX_TOLERATED_INVALID_RATIO * multiplier,
-			max_new_outbound_peers
-		],
-		function( rows )
-		{
-			var i;
-
-			//
-			//	TODO
-			//	find outbound peer or connect ?
-			//
-			for ( i = 0; i < rows.length; i ++ )
-			{
-				m_oAssocKnownPeers[ rows[ i ].peer ] = true;
-				findOutboundPeerOrConnect( rows[ i ].peer );
-			}
-
-			//	if no outbound connections at all, get less strict
-			if ( arrOutboundPeerUrls.length === 0 && rows.length === 0 )
-			{
-				addOutboundPeers( multiplier * 2 );
-			}
-		}
-	);
-}
-
-function getHostByPeer( peer )
-{
-	var matches;
-
-	//	...
-	matches	= peer.match( /^wss?:\/\/(.*)$/i );
-	if ( matches )
-	{
-		peer = matches[ 1 ];
-	}
-
-	matches	= peer.match( /^(.*?)[:\/]/ );
-	return matches ? matches[ 1 ] : peer;
-}
-
-function addPeerHost( host, onDone )
-{
-	_db.query
-	(
-		"INSERT " + _db.getIgnore() + " INTO peer_hosts ( peer_host ) VALUES ( ? )",
-		[
-			host
-		],
-		function()
-		{
-			if ( onDone )
-			{
-				onDone();
-			}
-		}
-	);
-}
-
-function addPeer( peer )
-{
-	var host;
-
-	if ( m_oAssocKnownPeers[ peer ] )
-	{
-		return;
-	}
-
-	//	...
-	m_oAssocKnownPeers[ peer ] = true;
-	host = getHostByPeer( peer );
-
-	//	...
-	addPeerHost
-	(
-		host,
-		function()
-		{
-			_log.consoleLog( "will insert peer " + peer );
-			_db.query
-			(
-				"INSERT " + _db.getIgnore() + " INTO peers ( peer_host, peer ) VALUES ( ?, ? )",
-				[
-					host,
-					peer
-				]
-			);
-		}
-	);
-}
-
-function getOutboundPeerWsByUrl( url )
-{
-	var i;
-
-	//	...
-	_log.consoleLog( "outbound peers: " + m_arrOutboundPeers.map( function( o ){ return o.peer; } ).join( ", " ) );
-
-	for ( i = 0; i < m_arrOutboundPeers.length; i ++ )
-	{
-		if ( m_arrOutboundPeers[ i ].peer === url )
-		{
-			//	...
-			return m_arrOutboundPeers[ i ];
-		}
-	}
-
-	return null;
-}
-
-function getPeerWebSocket( peer )
-{
-	var i;
-
-	for ( i = 0; i < m_arrOutboundPeers.length; i ++ )
-	{
-		if ( m_arrOutboundPeers[ i ].peer === peer )
-		{
-			//	...
-			return m_arrOutboundPeers[ i ];
-		}
-	}
-
-	for ( i = 0; i < m_oWss.arrClients.length; i ++ )
-	{
-		if ( m_oWss.arrClients[ i ].peer === peer )
-		{
-			//	...
-			return m_oWss.arrClients[ i ];
-		}
-	}
-
-	return null;
-}
-
-function findOutboundPeerOrConnect( url, onOpen )
-{
-	var ws;
-
-	if ( ! url )
-	{
-		throw Error( 'no url' );
-	}
-	if ( ! onOpen )
-	{
-		onOpen = function(){};
-	}
-
-	//	...
-	url	= url.toLowerCase();
-	ws	= getOutboundPeerWsByUrl( url );
-	if ( ws )
-	{
-		return onOpen( null, ws );
-	}
-
-	//	check if we are already connecting to the peer
-	ws = m_oAssocConnectingOutboundWebSockets[ url ];
-	if ( ws )
-	{
-		//	add second event handler
-		_breadcrumbs.add( 'already connecting to ' + url );
-		return _event_bus.once
-		(
-			'open-' + url,
-			function secondOnOpen( err )
-			{
-				_log.consoleLog('second open '+url+", err="+err);
-
-				if ( err )
-				{
-					return onOpen( err );
-				}
-
-				if ( ws.readyState === ws.OPEN )
-				{
-					onOpen( null, ws );
-				}
-				else
-				{
-					//
-					//	can happen
-					//	e.g. if the ws was abandoned but later succeeded, we opened another connection in the meantime,
-					//	and had another_ws_to_same_peer on the first connection
-					//
-					_log.consoleLog( 'in second onOpen, websocket already closed' );
-					onOpen( '[internal] websocket already closed' );
-				}
-			}
-		);
-	}
-
-	_log.consoleLog( "will connect to " + url );
-
-	//
-	//	...
-	//
-	connectToPeer( url, onOpen );
-}
-
-function purgePeerEvents()
-{
-	if ( _conf.storage !== 'sqlite' )
-	{
-		return;
-	}
-
-	_log.consoleLog( 'will purge peer events' );
-	_db.query
-	(
-		"DELETE FROM peer_events WHERE event_date <= datetime('now', '-3 day')",
-		function()
-		{
-        		_log.consoleLog("deleted some old peer_events");
-		}
-	);
-}
-
-/**
- *	try to purge dead peers
- */
-function purgeDeadPeers()
-{
-	var arrOutboundPeerUrls;
-
-	if ( _conf.storage !== 'sqlite' )
-	{
-		//	for SQLite only
-		return;
-	}
-
-	//	...
-	_log.consoleLog( 'will purge dead peers' );
-	arrOutboundPeerUrls = m_arrOutboundPeers.map
-	(
-		function( ws )
-		{
-			return ws.peer;
-		}
-	);
-
-	//
-	//	rowid is a 64-bit signed integer
-	//	The rowid column is a key that uniquely identifies the row within its table.
-	//	The table that has rowid column is called rowid table.
-	//
-	_db.query
-	(
-		"SELECT rowid, " + _db.getUnixTimestamp( 'event_date' ) + " AS ts " +
-		"FROM peer_events " +
-		"ORDER BY rowid DESC " +
-		"LIMIT 1",
-		function( lrows )
-		{
-			var last_rowid;
-			var last_event_ts;
-
-			if ( lrows.length === 0 )
-			{
-				return;
-			}
-
-			//	the last rowid and event ts
-			last_rowid	= lrows[ 0 ].rowid;
-			last_event_ts	= lrows[ 0 ].ts;
-
-			//	...
-			_db.query
-			(
-				"SELECT peer, peer_host FROM peers",
-				function( rows )
-				{
-					//	...
-					_async.eachSeries
-					(
-						rows,
-						function( row, cb )
-						{
-							if ( arrOutboundPeerUrls.indexOf( row.peer ) >= 0 )
-							{
-								return cb();
-							}
-
-							_db.query
-							(
-								"SELECT MAX(rowid) AS max_rowid, " +
-								"MAX(" + _db.getUnixTimestamp( 'event_date' ) + ") AS max_event_ts " +
-								"FROM peer_events WHERE peer_host=?",
-								[
-									row.peer_host
-								],
-								function( mrows )
-								{
-									var max_rowid;
-									var max_event_ts;
-									var count_other_events;
-									var days_since_last_event;
-
-									//	...
-									max_rowid		= mrows[ 0 ].max_rowid || 0;
-									max_event_ts		= mrows[ 0 ].max_event_ts || 0;
-									count_other_events	= last_rowid - max_rowid;
-									days_since_last_event	= ( last_event_ts - max_event_ts ) / 24 / 3600;
-
-									if ( count_other_events < 20000 || days_since_last_event < 7 )
-									{
-										return cb();
-									}
-
-									//	...
-									_log.consoleLog( 'peer ' + row.peer + ' is dead, will delete' );
-									_db.query
-									(
-										"DELETE FROM peers WHERE peer=?",
-										[
-											row.peer
-										],
-										function()
-										{
-											delete m_oAssocKnownPeers[ row.peer ];
-											m_oAssocKnownPeers[ row.peer ] = null;
-											cb();
-										}
-									);
-								}
-							);
-						}
-					);
-				}
-			);
 		}
 	);
 }
@@ -1291,7 +472,6 @@ function requestPeers( ws )
 {
 	sendRequest( ws, 'get_peers', null, false, handleNewPeers );
 }
-
 function handleNewPeers( ws, request, arrPeerUrls )
 {
 	var arrQueries;
@@ -1302,11 +482,11 @@ function handleNewPeers( ws, request, arrPeerUrls )
 
 	if ( arrPeerUrls.error )
 	{
-		return _log.consoleLog( 'get_peers failed: ' + arrPeerUrls.error );
+		return console.log( 'get_peers failed: ' + arrPeerUrls.error );
 	}
 	if ( ! Array.isArray( arrPeerUrls ) )
 	{
-		return sendError( ws, "peer urls is not an array" );
+		return _network_message.sendError( ws, "peer urls is not an array" );
 	}
 
 	//	...
@@ -1324,11 +504,11 @@ function handleNewPeers( ws, request, arrPeerUrls )
 		regexp	= ( _conf.WS_PROTOCOL === 'wss://' ) ? /^wss:\/\// : /^wss?:\/\//;
 		if ( ! url.match( regexp ) )
 		{
-			_log.consoleLog( 'ignoring new peer ' + url + ' because of incompatible ws protocol' );
+			console.log( 'ignoring new peer ' + url + ' because of incompatible ws protocol' );
 			continue;
 		}
 
-		host	= getHostByPeer( url );
+		host	= _network_peer.getHostByPeer( url );
 		_db.addQuery
 		(
 			arrQueries,
@@ -1362,14 +542,17 @@ function heartbeat()
 	var bJustResumed;
 
 	//	just resumed after sleeping
-	bJustResumed		= ( typeof window !== 'undefined' && window && window.cordova && Date.now() - m_nLastHearbeatWakeTs > 2 * _network_consts.HEARTBEAT_TIMEOUT );
+	bJustResumed		= ( typeof window !== 'undefined' &&
+					window &&
+					window.cordova &&
+					Date.now() - m_nLastHearbeatWakeTs > 2 * _network_consts.HEARTBEAT_TIMEOUT );
 	m_nLastHearbeatWakeTs	= Date.now();
 
 	//
 	//	The concat() method is used to merge two or more arrays.
 	//	This method does not change the existing arrays, but instead returns a new array.
 	//
-	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach( function( ws )
+	m_arrInboundPeers.concat( _network_peer.getOutboundPeers() ).forEach( function( ws )
 	{
 		var elapsed_since_last_received;
 		var elapsed_since_last_sent_heartbeat;
@@ -1401,7 +584,7 @@ function heartbeat()
 		}
 
 		//	...
-		_log.consoleLog( 'will disconnect peer ' + ws.peer + ' who was silent for ' + elapsed_since_last_received + 'ms' );
+		console.log( 'will disconnect peer ' + ws.peer + ' who was silent for ' + elapsed_since_last_received + 'ms' );
 		ws.close( 1000, "lost connection" );
 	});
 }
@@ -1420,11 +603,13 @@ function handleHeartbeatResponse( ws, request, response )
 	// as soon as the peer sends a heartbeat himself, we'll think he's woken up and resume our heartbeats too
 }
 
+
+
 function requestFromLightVendor( command, params, pfnResponseHandler )
 {
 	if ( ! exports.light_vendor_url )
 	{
-		_log.consoleLog( "light_vendor_url not set yet" );
+		console.log( "light_vendor_url not set yet" );
 		return setTimeout
 		(
 			function()
@@ -1435,7 +620,7 @@ function requestFromLightVendor( command, params, pfnResponseHandler )
 		);
 	}
 
-	findOutboundPeerOrConnect
+	_network_peer.findOutboundPeerOrConnect
 	(
 		exports.light_vendor_url,
 		function( err, ws )
@@ -1458,15 +643,18 @@ function requestFromLightVendor( command, params, pfnResponseHandler )
 	);
 }
 
+
 function printConnectionStatus()
 {
-	_log.consoleLog
+	console.log
 	(
-		m_oWss.arrClients.length + " incoming connections, "
-		+ m_arrOutboundPeers.length + " outgoing connections, "
-		+ Object.keys( m_oAssocConnectingOutboundWebSockets ).length + " outgoing connections being opened"
+		m_arrInboundPeers.length + " incoming connections, "
+		+ _network_peer.getOutboundPeers().length + " outgoing connections, "
+		+ Object.keys( _network_peer.getAssocConnectingOutboundWebSockets() ).length + " outgoing connections being opened"
 	);
 }
+
+
 
 
 /**
@@ -1506,7 +694,7 @@ function subscribe( ws )
 
 					if ( response.error )
 					{
-						_log.consoleLog( "network::subscribe, occurred a error: ", response.error );
+						console.log( "network::subscribe, occurred a error: ", response.error );
 						return;
 					}
 
@@ -1542,14 +730,14 @@ function subscribe( ws )
  */
 function sendJoint( ws, objJoint, tag )
 {
-	_log.consoleLog( 'sending joint identified by unit ' + objJoint.unit.unit + ' to', ws.peer );
+	console.log( 'sending joint identified by unit ' + objJoint.unit.unit + ' to', ws.peer );
 
 	//	...
 	tag
 		?
-		sendResponse( ws, tag, { joint : objJoint } )
+		_network_message.sendResponse( ws, tag, { joint : objJoint } )
 		:
-		sendJustSaying( ws, 'joint', objJoint );
+		_network_message.sendJustSaying( ws, 'joint', objJoint );
 }
 
 /**
@@ -1557,7 +745,7 @@ function sendJoint( ws, objJoint, tag )
  */
 function postJointToLightVendor( objJoint, handleResponse )
 {
-	_log.consoleLog( 'posing joint identified by unit ' + objJoint.unit.unit + ' to light vendor' );
+	console.log( 'posing joint identified by unit ' + objJoint.unit.unit + ' to light vendor' );
 	requestFromLightVendor
 	(
 		'post_joint',
@@ -1579,7 +767,7 @@ function sendFreeJoints( ws )
 		},
 		function()
 		{
-			sendJustSaying( ws, 'free_joints_end', null );
+			_network_message.sendJustSaying( ws, 'free_joints_end', null );
 		}
 	);
 }
@@ -1595,7 +783,7 @@ function sendJointsSinceMci( ws, mci )
 		},
 		function()
 		{
-			sendJustSaying( ws, 'free_joints_end', null );
+			_network_message.sendJustSaying( ws, 'free_joints_end', null );
 		}
 	);
 }
@@ -1604,9 +792,9 @@ function requestFreeJointsFromAllOutboundPeers()
 {
 	var i;
 
-	for ( i = 0; i < m_arrOutboundPeers.length; i ++ )
+	for ( i = 0; i < _network_peer.getOutboundPeers().length; i ++ )
 	{
-		sendJustSaying( m_arrOutboundPeers[ i ], 'refresh', null );
+		_network_message.sendJustSaying( _network_peer.getOutboundPeers()[ i ], 'refresh', null );
 	}
 }
 
@@ -1616,14 +804,14 @@ function requestNewJoints( ws )
 	(
 		function( last_mci )
 		{
-			sendJustSaying( ws, 'refresh', last_mci );
+			_network_message.sendJustSaying( ws, 'refresh', last_mci );
 		}
 	);
 }
 
 function rerequestLostJoints()
 {
-	//	_log.consoleLog("rerequestLostJoints");
+	//	console.log("rerequestLostJoints");
 	if ( m_bCatchingUp )
 	{
 		return;
@@ -1633,8 +821,8 @@ function rerequestLostJoints()
 	(
 		function( arrUnits )
 		{
-			_log.consoleLog( "lost units", arrUnits );
-			tryFindNextPeer
+			console.log( "lost units", arrUnits );
+			_network_peer.tryFindNextPeer
 			(
 				null,
 				function( ws )
@@ -1645,7 +833,7 @@ function rerequestLostJoints()
 					}
 
 					//	...
-					_log.consoleLog( "found next peer " + ws.peer );
+					console.log( "found next peer " + ws.peer );
 					requestJoints
 					(
 						ws,
@@ -1680,7 +868,7 @@ function requestNewMissingJoints( ws, arrUnits )
 			}
 			if ( havePendingJointRequest( unit ) )
 			{
-				_log.consoleLog( "unit " + unit + " was already requested" );
+				console.log( "unit " + unit + " was already requested" );
 				return cb();
 			}
 
@@ -1697,13 +885,13 @@ function requestNewMissingJoints( ws, arrUnits )
 					ifKnown : function()
 					{
 						//	it has just been handled
-						_log.consoleLog( "known" );
+						console.log( "known" );
 						cb();
 					},
 					ifKnownUnverified : function()
 					{
 						//	I was already waiting for it
-						_log.consoleLog( "known unverified" );
+						console.log( "known unverified" );
 						cb();
 					},
 					ifKnownBad : function( error )
@@ -1716,7 +904,7 @@ function requestNewMissingJoints( ws, arrUnits )
 		function()
 		{
 			//
-			//	_log.consoleLog(arrNewUnits.length+" of "+arrUnits.length+" left", m_oAssocUnitsInWork);
+			//	console.log(arrNewUnits.length+" of "+arrUnits.length+" left", m_oAssocUnitsInWork);
 			//	filter again as something could have changed each time we were paused in checkIfNewUnit
 			arrNewUnits	= arrNewUnits.filter
 			(
@@ -1756,7 +944,7 @@ function requestJoints( ws, arrUnits )
 				//	handler is not yet called, hence m_oAssocRequestedUnits[unit] not yet cleared
 				if ( diff <= _network_consts.STALLED_TIMEOUT )
 				{
-					return _log.consoleLog( "unit " + unit + " already requested " + diff + " ms ago, m_oAssocUnitsInWork=" + m_oAssocUnitsInWork[ unit ] );
+					return console.log( "unit " + unit + " already requested " + diff + " ms ago, m_oAssocUnitsInWork=" + m_oAssocUnitsInWork[ unit ] );
 					//	throw new Error("unit "+unit+" already requested "+diff+" ms ago, m_oAssocUnitsInWork="+m_oAssocUnitsInWork[unit]);
 				}
 			}
@@ -1809,7 +997,7 @@ function handleResponseToJointRequest( ws, request, response )
 			//	if it is in unhandled_joints, it'll be deleted in 1 hour
 			if ( ! m_bCatchingUp )
 			{
-				return _log.consoleLog( "unit " + unit + " does not exist" );
+				return console.log( "unit " + unit + " does not exist" );
 			}
 			//	return purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist");
 
@@ -1821,11 +1009,11 @@ function handleResponseToJointRequest( ws, request, response )
 				{
 					if ( rows.length === 0 )
 					{
-						return _log.consoleLog("unit "+unit+" does not exist (catching up)");
+						return console.log("unit "+unit+" does not exist (catching up)");
 						//	return purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist (catching up)");
 					}
 
-					findNextPeer
+					_network_peer.findNextPeer
 					(
 						ws,
 						function( next_ws )
@@ -1852,14 +1040,14 @@ function handleResponseToJointRequest( ws, request, response )
 	objJoint	= response.joint;
 	if ( ! objJoint.unit || ! objJoint.unit.unit )
 	{
-		return sendError(ws, 'no unit');
+		return _network_message.sendError(ws, 'no unit');
 	}
 
 	//	...
 	unit	= objJoint.unit.unit;
 	if ( request.params !== unit )
 	{
-		return sendError( ws, "I didn't request this unit from you: " + unit );
+		return _network_message.sendError( ws, "I didn't request this unit from you: " + unit );
 	}
 
 	if ( _conf.bLight && objJoint.ball && ! objJoint.unit.content_hash )
@@ -1880,7 +1068,7 @@ function havePendingRequest( command )
 	var tag;
 
 	//	...
-	arrPeers = m_oWss.arrClients.concat( m_arrOutboundPeers );
+	arrPeers = m_arrInboundPeers.concat( _network_peer.getOutboundPeers() );
 
 	for ( i = 0; i < arrPeers.length; i++ )
 	{
@@ -1906,7 +1094,7 @@ function havePendingJointRequest( unit )
 	var request;
 
 	//	...
-	arrPeers	= m_oWss.arrClients.concat( m_arrOutboundPeers );
+	arrPeers	= m_arrInboundPeers.concat( _network_peer.getOutboundPeers() );
 
 	for ( i = 0; i < arrPeers.length; i ++ )
 	{
@@ -1973,10 +1161,10 @@ function purgeJointAndDependenciesAndNotifyPeers( objJoint, error, onDone )
 			var ws;
 
 			//	...
-			ws = getPeerWebSocket( peer );
+			ws = _network_peer.getPeerWebSocket( peer );
 			if ( ws )
 			{
-				sendErrorResult( ws, purged_unit, "error on (indirect) parent unit " + objJoint.unit.unit + ": " + error );
+				_network_message.sendErrorResult( ws, purged_unit, "error on (indirect) parent unit " + objJoint.unit.unit + ": " + error );
 			}
 		},
 		onDone
@@ -1997,10 +1185,10 @@ function purgeDependenciesAndNotifyPeers( unit, error, onDone )
 			var ws;
 
 			//	...
-			ws = getPeerWebSocket( peer );
+			ws = _network_peer.getPeerWebSocket( peer );
 			if ( ws )
 			{
-				sendErrorResult( ws, purged_unit, "error on (indirect) parent unit " + unit + ": " + error );
+				_network_message.sendErrorResult( ws, purged_unit, "error on (indirect) parent unit " + unit + ": " + error );
 			}
 		},
 		onDone
@@ -2009,7 +1197,7 @@ function purgeDependenciesAndNotifyPeers( unit, error, onDone )
 
 function forwardJoint( ws, objJoint )
 {
-	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach
+	m_arrInboundPeers.concat( _network_peer.getOutboundPeers() ).forEach
 	(
 		function( client )
 		{
@@ -2044,7 +1232,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 			{
 				ifUnitError : function( error )
 				{
-					_log.consoleLog( objJoint.unit.unit + " validation failed: " + error );
+					console.log( objJoint.unit.unit + " validation failed: " + error );
 					callbacks.ifUnitError( error );
 					//	throw Error(error);
 
@@ -2102,12 +1290,12 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 					//	memory lack ?
 					//
 					throw Error( error );
-					_log.consoleLog( "############################## transient error " + error );
+					console.log( "############################## transient error " + error );
 					delete m_oAssocUnitsInWork[ unit ];
 				},
 				ifNeedHashTree : function()
 				{
-					_log.consoleLog('need hash tree for unit '+unit);
+					console.log('need hash tree for unit '+unit);
 
 					if ( objJoint.unsigned )
 					{
@@ -2328,12 +1516,12 @@ function handleOnlineJoint( ws, objJoint, onDone )
 			ifUnitInWork : onDone,
 			ifUnitError : function( error )
 			{
-				sendErrorResult( ws, unit, error );
+				_network_message.sendErrorResult( ws, unit, error );
 				onDone();
 			},
 			ifJointError : function( error )
 			{
-				sendErrorResult( ws, unit, error );
+				_network_message.sendErrorResult( ws, unit, error );
 				onDone();
 			},
 			ifNeedHashTree : function()
@@ -2352,7 +1540,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 			},
 			ifNeedParentUnits : function( arrMissingUnits )
 			{
-				sendInfo( ws, { unit : unit, info : "unresolved dependencies: " + arrMissingUnits.join( ", " ) } );
+				_network_message.sendInfo( ws, { unit : unit, info : "unresolved dependencies: " + arrMissingUnits.join( ", " ) } );
 				_joint_storage.saveUnhandledJointAndDependencies( objJoint, arrMissingUnits, ws.peer, function()
 				{
 					delete m_oAssocUnitsInWork[unit];
@@ -2362,7 +1550,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 			},
 			ifOk : function()
 			{
-				sendResult( ws, { unit: unit, result: 'accepted' } );
+				_network_message.sendResult( ws, { unit: unit, result: 'accepted' } );
 
 				//	forward to other peers
 				if ( ! m_bCatchingUp && ! _conf.bLight )
@@ -2393,13 +1581,13 @@ function handleOnlineJoint( ws, objJoint, onDone )
 				}
 
 				//	...
-				sendResult( ws, { unit: unit, result: 'known' } );
+				_network_message.sendResult( ws, { unit: unit, result: 'known' } );
 				writeEvent( 'known_good', ws.host );
 				onDone();
 			},
 			ifKnownBad : function()
 			{
-				sendResult( ws, { unit : unit, result : 'known_bad' } );
+				_network_message.sendResult( ws, { unit : unit, result : 'known_bad' } );
 				writeEvent( 'known_bad', ws.host );
 				if ( objJoint.unsigned )
 				{
@@ -2411,7 +1599,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 			},
 			ifKnownUnverified : function()
 			{
-				sendResult( ws, { unit : unit, result : 'known_unverified' } );
+				_network_message.sendResult( ws, { unit : unit, result : 'known_unverified' } );
 				delete m_oAssocUnitsInWork[ unit ];
 				onDone();
 			}
@@ -2422,7 +1610,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 function handleSavedJoint( objJoint, creation_ts, peer )
 {
 	var unit	= objJoint.unit.unit;
-	var ws		= getPeerWebSocket( peer );
+	var ws		= _network_peer.getPeerWebSocket( peer );
 
 	if ( ws && ws.readyState !== ws.OPEN )
 	{
@@ -2441,14 +1629,14 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 			{
 				if ( ws )
 				{
-					sendErrorResult( ws, unit, error );
+					_network_message.sendErrorResult( ws, unit, error );
 				}
 			},
 			ifJointError : function( error )
 			{
 				if ( ws )
 				{
-					sendErrorResult( ws, unit, error );
+					_network_message.sendErrorResult( ws, unit, error );
 				}
 			},
 			ifNeedHashTree : function()
@@ -2481,7 +1669,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 						}
 						else
 						{
-							findNextPeer
+							_network_peer.findNextPeer
 							(
 								null,
 								function( next_ws )
@@ -2500,7 +1688,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 			{
 				if ( ws )
 				{
-					sendResult( ws, { unit : unit, result : 'accepted' } );
+					_network_message.sendResult( ws, { unit : unit, result : 'accepted' } );
 				}
 
 				//	forward to other peers
@@ -2519,7 +1707,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 					unit,
 					function()
 					{
-						delete m_oAssocUnitsInWork[unit];
+						delete m_oAssocUnitsInWork[ unit ];
 
 						//	wake up other saved joints that depend on me
 						findAndHandleJointsThatAreReady( unit );
@@ -2541,7 +1729,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 		{
 			//	that's ok: may be simultaneously selected by readDependentJointsThatAreReady and deleted by purgeJunkUnhandledJoints when we wake up after sleep
 			delete m_oAssocUnitsInWork[unit];
-			_log.consoleLog("new in handleSavedJoint: "+unit);
+			console.log("new in handleSavedJoint: "+unit);
 			//	throw Error("new in handleSavedJoint: "+unit);
 		}
 	});
@@ -2699,7 +1887,7 @@ function notifyWatchers( objJoint, source_ws )
 					var ws;
 
 					//	...
-					ws = getPeerWebSocket( row.peer );
+					ws = _network_peer.getPeerWebSocket( row.peer );
 					if ( ws && ws.readyState === ws.OPEN && ws !== source_ws )
 					{
 						sendJoint( ws, objJoint );
@@ -2731,7 +1919,7 @@ function notifyWatchersAboutStableJoints( mci )
 
 			//	...
 			notifyLocalWatchedAddressesAboutStableJoints( mci );
-			_log.consoleLog( "notifyWatchersAboutStableJoints " + mci );
+			console.log( "notifyWatchersAboutStableJoints " + mci );
 
 			if ( mci <= 1 )
 			{
@@ -2804,10 +1992,10 @@ function notifyLightClientsAboutStableJoints( from_mci, to_mci )
 					var ws;
 
 					//	...
-					ws = getPeerWebSocket( row.peer );
+					ws = _network_peer.getPeerWebSocket( row.peer );
 					if ( ws && ws.readyState === ws.OPEN )
 					{
-						sendJustSaying( ws, 'light/have_updates' );
+						_network_message.sendJustSaying( ws, 'light/have_updates' );
 					}
 				}
 			);
@@ -2847,7 +2035,7 @@ function notifyLocalWatchedAddressesAboutStableJoints( mci )
 				function( row )
 				{
 					_event_bus.emit( 'my_stable-' + row.unit );
-					_log.consoleLog( "notifyLocalWatchedAddressesAboutStableJoints, handleRows, emit event: my_stable-" + row.unit );
+					console.log( "notifyLocalWatchedAddressesAboutStableJoints, handleRows, emit event: my_stable-" + row.unit );
 				}
 			);
 		}
@@ -2902,7 +2090,7 @@ function addLightWatchedAddress( address )
 	}
 
 	//	...
-	findOutboundPeerOrConnect
+	_network_peer.findOutboundPeerOrConnect
 	(
 		exports.light_vendor_url,
 		function( err, ws )
@@ -2913,7 +2101,7 @@ function addLightWatchedAddress( address )
 			}
 
 			//	...
-			sendJustSaying( ws, 'light/new_address_to_watch', address );
+			_network_message.sendJustSaying( ws, 'light/new_address_to_watch', address );
 		}
 	);
 }
@@ -3072,7 +2260,7 @@ function comeOnline()
 
 function isIdle()
 {
-	//	_log.consoleLog(_db._freeConnections.length +"/"+ _db._allConnections.length+" connections are free, "+_mutex.getCountOfQueuedJobs()+" jobs queued, "+_mutex.getCountOfLocks()+" locks held, "+Object.keys(m_oAssocUnitsInWork).length+" units in work");
+	//	console.log(_db._freeConnections.length +"/"+ _db._allConnections.length+" connections are free, "+_mutex.getCountOfQueuedJobs()+" jobs queued, "+_mutex.getCountOfLocks()+" locks held, "+Object.keys(m_oAssocUnitsInWork).length+" units in work");
 	return (
 		_db.getCountUsedConnections() === 0 &&
 		_mutex.getCountOfQueuedJobs() === 0 &&
@@ -3117,7 +2305,7 @@ function broadcastJoint( objJoint )
 	}
 
 	//	...
-	m_oWss.arrClients.concat( m_arrOutboundPeers ).forEach
+	m_arrInboundPeers.concat( _network_peer.getOutboundPeers() ).forEach
 	(
 		function( client )
 		{
@@ -3152,17 +2340,17 @@ function checkCatchupLeftovers()
 		{
 			if ( rows.length === 0 )
 			{
-				return _log.consoleLog( 'no leftovers' );
+				return console.log( 'no leftovers' );
 			}
 
 			//	...
-			_log.consoleLog( 'have catchup leftovers from the previous run' );
-			findNextPeer
+			console.log( 'have catchup leftovers from the previous run' );
+			_network_peer.findNextPeer
 			(
 				null,
 				function( ws )
 				{
-					_log.consoleLog( 'will request leftovers from ' + ws.peer );
+					console.log( 'will request leftovers from ' + ws.peer );
 					if ( ! m_bCatchingUp && ! m_bWaitingForCatchupChain )
 					{
 						requestCatchup( ws );
@@ -3180,7 +2368,7 @@ function checkCatchupLeftovers()
  */
 function requestCatchup( ws )
 {
-	_log.consoleLog("will request catchup from "+ws.peer);
+	console.log("will request catchup from "+ws.peer);
 
 	_event_bus.emit( 'catching_up_started' );
 
@@ -3209,7 +2397,7 @@ function requestCatchup( ws )
 				if ( tree_rows.length > 0 )
 				{
 					m_bCatchingUp	= true;
-					_log.consoleLog( "will request balls found in hash tree" );
+					console.log( "will request balls found in hash tree" );
 
 					//	...
 					requestNewMissingJoints
@@ -3251,7 +2439,7 @@ function requestCatchup( ws )
 						//
 						m_bWaitingForCatchupChain = true;
 
-						_log.consoleLog( 'will read last stable mci for catchup' );
+						console.log( 'will read last stable mci for catchup' );
 
 						//
 						//	obtain : stable last main chain index
@@ -3300,7 +2488,7 @@ function handleCatchupChain( ws, request, response )
 	if ( response.error )
 	{
 		m_bWaitingForCatchupChain = false;
-		_log.consoleLog( 'catchup request got error response: ' + response.error );
+		console.log( 'catchup request got error response: ' + response.error );
 		//	findLostJoints will wake up and trigger another attempt to request catchup
 		return;
 	}
@@ -3315,7 +2503,7 @@ function handleCatchupChain( ws, request, response )
 			ifError	: function( error )
 			{
 				m_bWaitingForCatchupChain = false;
-				sendError( ws, error );
+				_network_message.sendError( ws, error );
 			},
 			ifOk	: function()
 			{
@@ -3384,7 +2572,7 @@ function requestNextHashTree( ws )
 			{
 				if ( ws.assocPendingRequests[ tag ].request.command === 'get_hash_tree' )
 				{
-					_log.consoleLog("already requested hash tree from this peer");
+					console.log("already requested hash tree from this peer");
 					return;
 				}
 			}
@@ -3412,7 +2600,7 @@ function handleHashTree( ws, request, response )
 
 	if ( response.error )
 	{
-		_log.consoleLog( 'get_hash_tree got error response: ' + response.error );
+		console.log( 'get_hash_tree got error response: ' + response.error );
 		waitTillHashTreeFullyProcessedAndRequestNext( ws );
 		//	after 1 sec, it'll request the same hash tree, likely from another peer
 		return;
@@ -3426,7 +2614,7 @@ function handleHashTree( ws, request, response )
 		{
 			ifError : function( error )
 			{
-				sendError( ws, error );
+				_network_message.sendError( ws, error );
 				waitTillHashTreeFullyProcessedAndRequestNext( ws );
 				//	after 1 sec, it'll request the same hash tree, likely from another peer
 			},
@@ -3460,7 +2648,7 @@ function waitTillHashTreeFullyProcessedAndRequestNext( ws )
 			{
 				if ( rows.length === 0 )
 				{
-					findNextPeer
+					_network_peer.findNextPeer
 					(
 						ws,
 						function( next_ws )
@@ -3494,7 +2682,7 @@ function sendPrivatePaymentToWs( ws, arrChains )
 	//	each chain is sent as separate ws message
 	arrChains.forEach( function( arrPrivateElements )
 	{
-		sendJustSaying( ws, 'private_payment', arrPrivateElements );
+		_network_message.sendJustSaying( ws, 'private_payment', arrPrivateElements );
 	});
 }
 
@@ -3506,14 +2694,14 @@ function sendPrivatePayment( peer, arrChains )
 	var ws;
 
 	//	...
-	ws = getPeerWebSocket( peer );
+	ws = _network_peer.getPeerWebSocket( peer );
 	if ( ws )
 	{
 		return sendPrivatePaymentToWs(ws, arrChains);
 	}
 
 	//	...
-	findOutboundPeerOrConnect( peer, function( err, ws )
+	_network_peer.findOutboundPeerOrConnect( peer, function( err, ws )
 	{
 		if ( ! err )
 		{
@@ -3651,8 +2839,11 @@ function handleSavedPrivatePayments( unit )
 
 			//	...
 			sql = unit
-				? "SELECT json, peer, unit, message_index, output_index, linked FROM unhandled_private_payments WHERE unit = " + _db.escape( unit )
-				: "SELECT json, peer, unit, message_index, output_index, linked FROM unhandled_private_payments CROSS JOIN units USING( unit )";
+				? "SELECT json, peer, unit, message_index, output_index, linked \
+				   FROM unhandled_private_payments \
+				   WHERE unit = " + _db.escape( unit )
+				: "SELECT json, peer, unit, message_index, output_index, linked \
+				   FROM unhandled_private_payments CROSS JOIN units USING( unit )";
 			_db.query
 			(
 				sql,
@@ -3679,7 +2870,7 @@ function handleSavedPrivatePayments( unit )
 
 							//	...
 							arrPrivateElements = JSON.parse( row.json );
-							ws = getPeerWebSocket( row.peer );
+							ws = _network_peer.getPeerWebSocket( row.peer );
 
 							if ( ws && ws.readyState !== ws.OPEN )
 							{
@@ -3701,7 +2892,7 @@ function handleSavedPrivatePayments( unit )
 										{
 											if ( ws )
 											{
-												sendResult
+												_network_message.sendResult
 												(
 													ws,
 													{
@@ -3726,17 +2917,17 @@ function handleSavedPrivatePayments( unit )
 												row.output_index,
 												cb
 											);
-											_log.consoleLog( 'emit ' + key );
+											console.log( 'emit ' + key );
 											_event_bus.emit( key, true );
 										},
 										ifError : function( error )
 										{
-											_log.consoleLog( "validation of priv: " + error );
+											console.log( "validation of priv: " + error );
 											//	throw Error(error);
 
 											if ( ws )
 											{
-												sendResult
+												_network_message.sendResult
 												(
 													ws,
 													{
@@ -3888,7 +3079,7 @@ function rerequestLostJointsOfPrivatePayments()
 				}
 			);
 
-			findOutboundPeerOrConnect
+			_network_peer.findOutboundPeerOrConnect
 			(
 				exports.light_vendor_url,
 				function( err, ws )
@@ -3969,7 +3160,7 @@ function requestHistoryFor( arrUnits, arrAddresses, onDone )
 				{
 					if ( response.error )
 					{
-						_log.consoleLog( response.error );
+						console.log( response.error );
 						return onDone( response.error );
 					}
 
@@ -3979,7 +3170,7 @@ function requestHistoryFor( arrUnits, arrAddresses, onDone )
 						{
 							ifError : function( err )
 							{
-								sendError( ws, err );
+								_network_message.sendError( ws, err );
 								onDone( err );
 							},
 							ifOk : function()
@@ -4131,13 +3322,13 @@ function checkThatEachChainElementIncludesThePrevious( arrPrivateElements, handl
 						//	TODO
 						//	memery lack ?
 						//
-						_log.consoleLog( "linkproof validation failed: " + err );
+						console.log( "linkproof validation failed: " + err );
 						throw Error( err );
 						handleResult( false );
 					},
 					ifOk : function()
 					{
-						_log.consoleLog("linkproof validated ok");
+						console.log("linkproof validated ok");
 						handleResult( true );
 					}
 				}
@@ -4221,7 +3412,7 @@ function initWitnessesIfNecessary( ws, onDone )
 			{
 				if ( arrWitnesses.error )
 				{
-					_log.consoleLog( 'get_witnesses returned error: ' + arrWitnesses.error );
+					console.log( 'get_witnesses returned error: ' + arrWitnesses.error );
 					return onDone();
 				}
 
@@ -4257,7 +3448,7 @@ function sendStoredDeviceMessages( ws, device_address )
 			(
 				function( row )
 				{
-					sendJustSaying
+					_network_message.sendJustSaying
 					(
 						ws,
 						'hub/message',
@@ -4270,8 +3461,8 @@ function sendStoredDeviceMessages( ws, device_address )
 			);
 
 			//	...
-			sendInfo( ws, rows.length + " messages sent" );
-			sendJustSaying( ws, 'hub/message_box_status', ( rows.length === 100 ) ? 'has_more' : 'empty' );
+			_network_message.sendInfo( ws, rows.length + " messages sent" );
+			_network_message.sendJustSaying( ws, 'hub/message_box_status', ( rows.length === 100 ) ? 'has_more' : 'empty' );
 		}
 	);
 }
@@ -4322,13 +3513,13 @@ function handleJustsaying( ws, subject, body )
 
 			if ( body.protocol_version !== _constants.version )
 			{
-				sendError( ws, 'Incompatible versions, mine ' + _constants.version + ', yours ' + body.protocol_version );
+				_network_message.sendError( ws, 'Incompatible versions, mine ' + _constants.version + ', yours ' + body.protocol_version );
 				ws.close( 1000, 'incompatible versions' );
 				return;
 			}
 			if ( body.alt !== _constants.alt )
 			{
-				sendError( ws, 'Incompatible alts, mine ' + _constants.alt + ', yours ' + body.alt );
+				_network_message.sendError( ws, 'Incompatible alts, mine ' + _constants.alt + ', yours ' + body.alt );
 				ws.close( 1000, 'incompatible alts' );
 				return;
 			}
@@ -4377,7 +3568,7 @@ function handleJustsaying( ws, subject, body )
 			if ( _conf.ignoreBugreportRegexp &&
 				new RegExp( _conf.ignoreBugreportRegexp ).test( body.message + ' ' + body.exception.toString() ) )
 			{
-				return _log.consoleLog( 'ignoring bugreport' );
+				return console.log( 'ignoring bugreport' );
 			}
 
 			_mail.sendBugEmail( body.message, body.exception );
@@ -4393,17 +3584,17 @@ function handleJustsaying( ws, subject, body )
 				! objJoint.unit ||
 				! objJoint.unit.unit )
 			{
-				return sendError( ws, 'no unit' );
+				return _network_message.sendError( ws, 'no unit' );
 			}
 			if ( objJoint.ball &&
 				! _storage.isGenesisUnit( objJoint.unit.unit ) )
 			{
-				return sendError( ws, 'only requested joint can contain a ball' );
+				return _network_message.sendError( ws, 'only requested joint can contain a ball' );
 			}
 			if ( _conf.bLight &&
 				! ws.bLightVendor )
 			{
-				return sendError( ws, "I'm a light client and you are not my vendor" );
+				return _network_message.sendError( ws, "I'm a light client and you are not my vendor" );
 			}
 
 			//	...
@@ -4418,7 +3609,7 @@ function handleJustsaying( ws, subject, body )
 					//	ignore it as long is it was unsolicited
 					if ( rows.length > 0 )
 					{
-						return sendError( ws, "this unit is already known and archived" );
+						return _network_message.sendError( ws, "this unit is already known and archived" );
 					}
 
 					//	light clients accept the joint without proof, it'll be saved as unconfirmed (non-stable)
@@ -4452,11 +3643,11 @@ function handleJustsaying( ws, subject, body )
 				{
 					ifError : function( error )
 					{
-						sendError( ws, error );
+						_network_message.sendError( ws, error );
 					},
 					ifAccepted : function( unit )
 					{
-						sendResult
+						_network_message.sendResult
 						(
 							ws,
 							{
@@ -4469,7 +3660,7 @@ function handleJustsaying( ws, subject, body )
 					},
 					ifValidationError : function( unit, error )
 					{
-						sendResult
+						_network_message.sendResult
 						(
 							ws,
 							{
@@ -4553,14 +3744,14 @@ function handleJustsaying( ws, subject, body )
 					//	and expecting this same string over existing inbound connection
 					//
 					ws.sent_echo_string	= _crypto.randomBytes( 30 ).toString( "base64" );
-					findOutboundPeerOrConnect
+					_network_peer.findOutboundPeerOrConnect
 					(
 						url,
 						function( err, reverse_ws )
 						{
 							if ( ! err )
 							{
-								sendJustSaying
+								_network_message.sendJustSaying
 								(
 									reverse_ws,
 									'want_echo',
@@ -4591,7 +3782,7 @@ function handleJustsaying( ws, subject, body )
 			}
 
 			//	...
-			reverse_ws = getOutboundPeerWsByUrl( ws.claimed_url );
+			reverse_ws = _network_peer.getOutboundPeerWsByUrl( ws.claimed_url );
 			if ( ! reverse_ws )
 			{
 				//	no reverse outbound connection
@@ -4599,7 +3790,7 @@ function handleJustsaying( ws, subject, body )
 			}
 
 			//	...
-			sendJustSaying( reverse_ws, 'your_echo', echo_string );
+			_network_message.sendJustSaying( reverse_ws, 'your_echo', echo_string );
 			break;
 
 		case 'your_echo':
@@ -4627,7 +3818,7 @@ function handleJustsaying( ws, subject, body )
 			}
 
 			//	...
-			outbound_host	= getHostByPeer( ws.claimed_url );
+			outbound_host	= _network_peer.getHostByPeer( ws.claimed_url );
 			arrQueries	= [];
 
 			_db.addQuery
@@ -4684,7 +3875,7 @@ function handleJustsaying( ws, subject, body )
 			}
 			if ( ! _conf.bServeAsHub )
 			{
-				return sendError( ws, "I'm not a hub" );
+				return _network_message.sendError( ws, "I'm not a hub" );
 			}
 
 			//	...
@@ -4692,24 +3883,24 @@ function handleJustsaying( ws, subject, body )
 
 			if ( objLogin.challenge !== ws.challenge )
 			{
-				return sendError( ws, "wrong challenge" );
+				return _network_message.sendError( ws, "wrong challenge" );
 			}
 			if ( ! objLogin.pubkey ||
 				! objLogin.signature )
 			{
-				return sendError( ws, "no login params" );
+				return _network_message.sendError( ws, "no login params" );
 			}
 			if ( objLogin.pubkey.length !== _constants.PUBKEY_LENGTH )
 			{
-				return sendError( ws, "wrong pubkey length" );
+				return _network_message.sendError( ws, "wrong pubkey length" );
 			}
 			if ( objLogin.signature.length !== _constants.SIG_LENGTH )
 			{
-				return sendError( ws, "wrong signature length" );
+				return _network_message.sendError( ws, "wrong signature length" );
 			}
 			if ( ! _ecdsa_sig.verify( _object_hash.getDeviceMessageHashToSign( objLogin ), objLogin.signature, objLogin.pubkey ) )
 			{
-				return sendError( ws, "wrong signature" );
+				return _network_message.sendError( ws, "wrong signature" );
 			}
 
 			//	...
@@ -4745,7 +3936,7 @@ function handleJustsaying( ws, subject, body )
 							],
 							function()
 							{
-								sendInfo( ws, "address created" );
+								_network_message.sendInfo( ws, "address created" );
 								finishLogin();
 							}
 						);
@@ -4760,7 +3951,7 @@ function handleJustsaying( ws, subject, body )
 
 			if ( _conf.pushApiProjectNumber && _conf.pushApiKey )
 			{
-				sendJustSaying
+				_network_message.sendJustSaying
 				(
 					ws,
 					'hub/push_project_number',
@@ -4771,7 +3962,7 @@ function handleJustsaying( ws, subject, body )
 			}
 			else
 			{
-				sendJustSaying
+				_network_message.sendJustSaying
 				(
 					ws,
 					'hub/push_project_number',
@@ -4789,11 +3980,11 @@ function handleJustsaying( ws, subject, body )
 			//	I'm a hub, the peer wants to download new messages
 			if ( ! _conf.bServeAsHub )
 			{
-				return sendError( ws, "I'm not a hub" );
+				return _network_message.sendError( ws, "I'm not a hub" );
 			}
 			if ( ! ws.device_address )
 			{
-				return sendError( ws, "please log in first" );
+				return _network_message.sendError( ws, "please log in first" );
 			}
 
 			//	...
@@ -4806,18 +3997,18 @@ function handleJustsaying( ws, subject, body )
 
 			if ( ! _conf.bServeAsHub )
 			{
-				return sendError( ws, "I'm not a hub" );
+				return _network_message.sendError( ws, "I'm not a hub" );
 			}
 
 			//	...
 			message_hash = body;
 			if ( ! message_hash )
 			{
-				return sendError( ws, "no message hash" );
+				return _network_message.sendError( ws, "no message hash" );
 			}
 			if ( ! ws.device_address )
 			{
-				return sendError( ws, "please log in first" );
+				return _network_message.sendError( ws, "please log in first" );
 			}
 
 			//	...
@@ -4830,7 +4021,7 @@ function handleJustsaying( ws, subject, body )
 				],
 				function()
 				{
-					sendInfo( ws, "deleted message " + message_hash );
+					_network_message.sendInfo( ws, "deleted message " + message_hash );
 				}
 			);
 			break;
@@ -4854,11 +4045,11 @@ function handleJustsaying( ws, subject, body )
 		case 'light/have_updates':
 			if ( ! _conf.bLight )
 			{
-				return sendError( ws, "I'm not light" );
+				return _network_message.sendError( ws, "I'm not light" );
 			}
 			if ( ! ws.bLightVendor )
 			{
-				return sendError( ws, "You are not my light vendor" );
+				return _network_message.sendError( ws, "You are not my light vendor" );
 			}
 
 			//	...
@@ -4871,18 +4062,18 @@ function handleJustsaying( ws, subject, body )
 
 			if ( _conf.bLight )
 			{
-				return sendError( ws, "I'm light myself, can't serve you" );
+				return _network_message.sendError( ws, "I'm light myself, can't serve you" );
 			}
 			if ( ws.bOutbound )
 			{
-				return sendError( ws, "light clients have to be inbound" );
+				return _network_message.sendError( ws, "light clients have to be inbound" );
 			}
 
 			//	...
 			address = body;
 			if ( ! _validation_utils.isValidAddress( address ) )
 			{
-				return sendError( ws, "address not valid" );
+				return _network_message.sendError( ws, "address not valid" );
 			}
 
 			_db.query
@@ -4894,7 +4085,7 @@ function handleJustsaying( ws, subject, body )
 				],
 				function()
 				{
-					sendInfo( ws, "now watching " + address );
+					_network_message.sendInfo( ws, "now watching " + address );
 
 					//	check if we already have something on this address
 					_db.query
@@ -4915,7 +4106,7 @@ function handleJustsaying( ws, subject, body )
 							}
 							if ( rows.length === 10 || rows.some( function( row ){ return row.is_stable; } ) )
 							{
-								sendJustSaying( ws, 'light/have_updates' );
+								_network_message.sendJustSaying( ws, 'light/have_updates' );
 							}
 
 							//	...
@@ -4994,7 +4185,7 @@ function handleRequest( ws, tag, command, params )
 	//
 	if ( ws.assocInPreparingResponse[ tag ] )
 	{
-		return _log.consoleLog( "ignoring identical " + command + " request" );
+		return console.log( "ignoring identical " + command + " request" );
 	}
 
 	//	...
@@ -5023,11 +4214,11 @@ function handleRequest( ws, tag, command, params )
 			if ( bPaused )
 			{
 				//	opt out of receiving heartbeats and move the connection into a sleeping state
-				return sendResponse( ws, tag, 'sleep' );
+				return _network_message.sendResponse( ws, tag, 'sleep' );
 			}
 
 			//	...
-			sendResponse( ws, tag );
+			_network_message.sendResponse( ws, tag );
 			break;
 
 		case 'subscribe':
@@ -5038,7 +4229,7 @@ function handleRequest( ws, tag, command, params )
 
 			if ( ! _validation_utils.isNonemptyObject( params ) )
 			{
-				return sendErrorResponse( ws, tag, 'no params' );
+				return _network_message.sendErrorResponse( ws, tag, 'no params' );
 			}
 
 			//	...
@@ -5046,14 +4237,14 @@ function handleRequest( ws, tag, command, params )
 
 			if ( typeof subscription_id !== 'string' )
 			{
-				return sendErrorResponse( ws, tag, 'no subscription_id' );
+				return _network_message.sendErrorResponse( ws, tag, 'no subscription_id' );
 			}
 
 			//
 			//	*
 			//	make sure we don't subscribe to ourself.
 			//
-			if ( m_oWss.arrClients.concat( m_arrOutboundPeers ).some(
+			if ( m_arrInboundPeers.concat( _network_peer.getOutboundPeers() ).some(
 				function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
 			{
 				if ( ws.bOutbound )
@@ -5068,7 +4259,7 @@ function handleRequest( ws, tag, command, params )
 				}
 
 				//	...
-				sendErrorResponse( ws, tag, "self-connect" );
+				_network_message.sendErrorResponse( ws, tag, "self-connect" );
 				return ws.close( 1000, "self-connect" );
 			}
 
@@ -5076,12 +4267,12 @@ function handleRequest( ws, tag, command, params )
 			{
 				//	if (ws.peer === exports.light_vendor_url)
 				//		sendFreeJoints(ws);
-				return sendErrorResponse( ws, tag, "I'm light, cannot subscribe you to updates" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm light, cannot subscribe you to updates" );
 			}
 			if ( ws.old_core )
 			{
-				sendJustSaying( ws, 'upgrade_required' );
-				sendErrorResponse( ws, tag, "old core" );
+				_network_message.sendJustSaying( ws, 'upgrade_required' );
+				_network_message.sendErrorResponse( ws, tag, "old core" );
 				return ws.close( 1000, "old core" );
 			}
 
@@ -5089,7 +4280,7 @@ function handleRequest( ws, tag, command, params )
 			//	...
 			//
 			ws.bSubscribed = true;
-			sendResponse( ws, tag, 'subscribed' );
+			_network_message.sendResponse( ws, tag, 'subscribed' );
 			if ( m_bCatchingUp )
 			{
 				return;
@@ -5119,7 +4310,7 @@ function handleRequest( ws, tag, command, params )
 			//		return;
 			if ( ws.old_core )
 			{
-				return sendErrorResponse( ws, tag, "old core, will not serve get_joint" );
+				return _network_message.sendErrorResponse( ws, tag, "old core, will not serve get_joint" );
 			}
 
 			//	...
@@ -5135,7 +4326,7 @@ function handleRequest( ws, tag, command, params )
 					},
 					ifNotFound : function()
 					{
-						sendResponse( ws, tag, { joint_not_found : unit } );
+						_network_message.sendResponse( ws, tag, { joint_not_found : unit } );
 					}
 				}
 			);
@@ -5157,8 +4348,8 @@ function handleRequest( ws, tag, command, params )
 				function( error )
 				{
 					error
-						? sendErrorResponse( ws, tag, error )
-						: sendResponse( ws, tag, 'accepted' );
+						? _network_message.sendErrorResponse( ws, tag, error )
+						: _network_message.sendResponse( ws, tag, 'accepted' );
 				}
 			);
 			break;
@@ -5171,7 +4362,7 @@ function handleRequest( ws, tag, command, params )
 
 			if ( ! ws.bSubscribed )
 			{
-				return sendErrorResponse(ws, tag, "not subscribed, will not serve catchup");
+				return _network_message.sendErrorResponse(ws, tag, "not subscribed, will not serve catchup");
 			}
 
 			//	...
@@ -5196,12 +4387,12 @@ function handleRequest( ws, tag, command, params )
 						{
 							ifError : function( error )
 							{
-								sendErrorResponse( ws, tag, error );
+								_network_message.sendErrorResponse( ws, tag, error );
 								unlock();
 							},
 							ifOk : function( objCatchupChain )
 							{
-								sendResponse( ws, tag, objCatchupChain );
+								_network_message.sendResponse( ws, tag, objCatchupChain );
 								unlock();
 							}
 						}
@@ -5215,7 +4406,7 @@ function handleRequest( ws, tag, command, params )
 
 			if ( ! ws.bSubscribed )
 			{
-				return sendErrorResponse( ws, tag, "not subscribed, will not serve get_hash_tree" );
+				return _network_message.sendErrorResponse( ws, tag, "not subscribed, will not serve get_hash_tree" );
 			}
 
 			//	...
@@ -5237,7 +4428,7 @@ function handleRequest( ws, tag, command, params )
 						{
 							ifError : function( error )
 							{
-								sendErrorResponse( ws, tag, error );
+								_network_message.sendErrorResponse( ws, tag, error );
 								unlock();
 							},
 							ifOk : function( arrBalls )
@@ -5246,7 +4437,7 @@ function handleRequest( ws, tag, command, params )
 								//	we have to wrap arrBalls into an object because the peer
 								//	will check .error property first
 								//
-								sendResponse( ws, tag, { balls: arrBalls } );
+								_network_message.sendResponse( ws, tag, { balls: arrBalls } );
 								unlock();
 							}
 						}
@@ -5259,9 +4450,9 @@ function handleRequest( ws, tag, command, params )
 			var arrPeerUrls;
 
 			//	...
-			arrPeerUrls	= m_arrOutboundPeers.map( function( ws ){ return ws.peer; } );
+			arrPeerUrls	= _network_peer.getOutboundPeers().map( function( ws ){ return ws.peer; } );
 			//	empty array is ok
-			sendResponse( ws, tag, arrPeerUrls );
+			_network_message.sendResponse( ws, tag, arrPeerUrls );
 			break;
 
 		case 'get_witnesses':
@@ -5269,7 +4460,7 @@ function handleRequest( ws, tag, command, params )
 			(
 				function( arrWitnesses )
 				{
-					sendResponse( ws, tag, arrWitnesses );
+					_network_message.sendResponse( ws, tag, arrWitnesses );
 				},
 				'wait'
 			);
@@ -5280,7 +4471,7 @@ function handleRequest( ws, tag, command, params )
 			(
 				function( last_mci )
 				{
-					sendResponse( ws, tag, last_mci );
+					_network_message.sendResponse( ws, tag, last_mci );
 				}
 			);
 			break;
@@ -5299,24 +4490,24 @@ function handleRequest( ws, tag, command, params )
 					|| ! objDeviceMessage.encrypted_package.encrypted_message
 					|| ! objDeviceMessage.encrypted_package.iv || ! objDeviceMessage.encrypted_package.authtag )
 			{
-				return sendErrorResponse(ws, tag, "missing fields");
+				return _network_message.sendErrorResponse(ws, tag, "missing fields");
 			}
 
 			//	...
 			bToMe	= ( m_sMyDeviceAddress && m_sMyDeviceAddress === objDeviceMessage.to );
 			if ( ! _conf.bServeAsHub && ! bToMe )
 			{
-				return sendErrorResponse( ws, tag, "I'm not a hub" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm not a hub" );
 			}
 			if ( ! _ecdsa_sig.verify( _object_hash.getDeviceMessageHashToSign( objDeviceMessage ), objDeviceMessage.signature, objDeviceMessage.pubkey ) )
 			{
-				return sendErrorResponse(ws, tag, "wrong message signature");
+				return _network_message.sendErrorResponse(ws, tag, "wrong message signature");
 			}
 
 			//	if i'm always online and i'm my own hub
 			if ( bToMe )
 			{
-				sendResponse( ws, tag, "accepted" );
+				_network_message.sendResponse( ws, tag, "accepted" );
 				_event_bus.emit
 				(
 					"message_from_hub",
@@ -5340,7 +4531,7 @@ function handleRequest( ws, tag, command, params )
 
 					if ( rows.length === 0 )
 					{
-						return sendErrorResponse( ws, tag, "address " + objDeviceMessage.to + " not registered here" );
+						return _network_message.sendErrorResponse( ws, tag, "address " + objDeviceMessage.to + " not registered here" );
 					}
 
 					//	...
@@ -5357,13 +4548,13 @@ function handleRequest( ws, tag, command, params )
 						function()
 						{
 							//	if the addressee is connected, deliver immediately
-							m_oWss.arrClients.forEach
+							m_arrInboundPeers.forEach
 							(
 								function( client )
 								{
 									if ( client.device_address === objDeviceMessage.to )
 									{
-										sendJustSaying
+										_network_message.sendJustSaying
 										(
 											client,
 											'hub/message',
@@ -5376,7 +4567,7 @@ function handleRequest( ws, tag, command, params )
 								}
 							);
 
-							sendResponse( ws, tag, "accepted" );
+							_network_message.sendResponse( ws, tag, "accepted" );
 							_event_bus.emit( 'peer_sent_new_message', ws, objDeviceMessage );
 						}
 					);
@@ -5396,11 +4587,11 @@ function handleRequest( ws, tag, command, params )
 
 			if ( ! permanent_pubkey )
 			{
-				return sendErrorResponse( ws, tag, "no permanent_pubkey" );
+				return _network_message.sendErrorResponse( ws, tag, "no permanent_pubkey" );
 			}
 			if ( permanent_pubkey.length !== _constants.PUBKEY_LENGTH )
 			{
-				return sendErrorResponse(ws, tag, "wrong permanent_pubkey length");
+				return _network_message.sendErrorResponse(ws, tag, "wrong permanent_pubkey length");
 			}
 
 			//	...
@@ -5410,11 +4601,11 @@ function handleRequest( ws, tag, command, params )
 			{
 				//	to me
 				//	this package signs my permanent key
-				return sendResponse( ws, tag, m_objMyTempPubkeyPackage );
+				return _network_message.sendResponse( ws, tag, m_objMyTempPubkeyPackage );
 			}
 			if ( ! _conf.bServeAsHub )
 			{
-				return sendErrorResponse( ws, tag, "I'm not a hub" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm not a hub" );
 			}
 
 			_db.query
@@ -5429,16 +4620,16 @@ function handleRequest( ws, tag, command, params )
 
 					if ( rows.length === 0 )
 					{
-						return sendErrorResponse( ws, tag, "device with this pubkey is not registered here" );
+						return _network_message.sendErrorResponse( ws, tag, "device with this pubkey is not registered here" );
 					}
 					if ( ! rows[ 0 ].temp_pubkey_package )
 					{
-						return sendErrorResponse( ws, tag, "temp pub key not set yet" );
+						return _network_message.sendErrorResponse( ws, tag, "temp pub key not set yet" );
 					}
 
 					//	...
 					objTempPubkey	= JSON.parse( rows[ 0 ].temp_pubkey_package );
-					sendResponse( ws, tag, objTempPubkey );
+					_network_message.sendResponse( ws, tag, objTempPubkey );
 				}
 			);
 			break;
@@ -5449,29 +4640,29 @@ function handleRequest( ws, tag, command, params )
 			var fnUpdate;
 
 			if ( ! _conf.bServeAsHub )
-				return sendErrorResponse( ws, tag, "I'm not a hub" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm not a hub" );
 
 			if ( ! ws.device_address )
-				return sendErrorResponse( ws, tag, "please log in first" );
+				return _network_message.sendErrorResponse( ws, tag, "please log in first" );
 
 			//	...
 			objTempPubkey = params;
 
 			if ( ! objTempPubkey || ! objTempPubkey.temp_pubkey || ! objTempPubkey.pubkey || ! objTempPubkey.signature )
 			{
-				return sendErrorResponse( ws, tag, "no temp_pubkey params" );
+				return _network_message.sendErrorResponse( ws, tag, "no temp_pubkey params" );
 			}
 			if ( objTempPubkey.temp_pubkey.length !== _constants.PUBKEY_LENGTH )
 			{
-				return sendErrorResponse( ws, tag, "wrong temp_pubkey length" );
+				return _network_message.sendErrorResponse( ws, tag, "wrong temp_pubkey length" );
 			}
 			if ( _object_hash.getDeviceAddress( objTempPubkey.pubkey ) !== ws.device_address )
 			{
-				return sendErrorResponse( ws, tag, "signed by another pubkey" );
+				return _network_message.sendErrorResponse( ws, tag, "signed by another pubkey" );
 			}
 			if ( ! _ecdsa_sig.verify( _object_hash.getDeviceMessageHashToSign( objTempPubkey ), objTempPubkey.signature, objTempPubkey.pubkey ) )
 			{
-				return sendErrorResponse(ws, tag, "wrong signature");
+				return _network_message.sendErrorResponse(ws, tag, "wrong signature");
 			}
 
 			//	...
@@ -5499,7 +4690,7 @@ function handleRequest( ws, tag, command, params )
 			(
 				function()
 				{
-					sendResponse( ws, tag, "updated" );
+					_network_message.sendResponse( ws, tag, "updated" );
 				}
 			);
 			if ( ! ws.bLoginComplete )
@@ -5511,11 +4702,11 @@ function handleRequest( ws, tag, command, params )
 		case 'light/get_history':
 			if ( _conf.bLight )
 			{
-				return sendErrorResponse(ws, tag, "I'm light myself, can't serve you");
+				return _network_message.sendErrorResponse(ws, tag, "I'm light myself, can't serve you");
 			}
 			if ( ws.bOutbound )
 			{
-				return sendErrorResponse(ws, tag, "light clients have to be inbound");
+				return _network_message.sendErrorResponse(ws, tag, "light clients have to be inbound");
 			}
 
 			_mutex.lock
@@ -5535,12 +4726,12 @@ function handleRequest( ws, tag, command, params )
 						{
 							ifError : function( err )
 							{
-								sendErrorResponse( ws, tag, err );
+								_network_message.sendErrorResponse( ws, tag, err );
 								unlock();
 							},
 							ifOk : function( objResponse )
 							{
-								sendResponse( ws, tag, objResponse );
+								_network_message.sendResponse( ws, tag, objResponse );
 
 								if ( params.addresses )
 								{
@@ -5593,11 +4784,11 @@ function handleRequest( ws, tag, command, params )
 		case 'light/get_link_proofs':
 			if ( _conf.bLight )
 			{
-				return sendErrorResponse( ws, tag, "I'm light myself, can't serve you" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm light myself, can't serve you" );
 			}
 			if ( ws.bOutbound )
 			{
-				return sendErrorResponse( ws, tag, "light clients have to be inbound" );
+				return _network_message.sendErrorResponse( ws, tag, "light clients have to be inbound" );
 			}
 
 			_mutex.lock
@@ -5618,12 +4809,12 @@ function handleRequest( ws, tag, command, params )
 						{
 							ifError : function( err )
 							{
-								sendErrorResponse( ws, tag, err );
+								_network_message.sendErrorResponse( ws, tag, err );
 								unlock();
 							},
 							ifOk : function( objResponse )
 							{
-								sendResponse( ws, tag, objResponse );
+								_network_message.sendResponse( ws, tag, objResponse );
 								unlock();
 							}
 						}
@@ -5635,15 +4826,15 @@ function handleRequest( ws, tag, command, params )
 	   case 'light/get_parents_and_last_ball_and_witness_list_unit' :
 			if ( _conf.bLight )
 			{
-				return sendErrorResponse( ws, tag, "I'm light myself, can't serve you" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm light myself, can't serve you" );
 			}
 			if ( ws.bOutbound )
 			{
-				return sendErrorResponse( ws, tag, "light clients have to be inbound" );
+				return _network_message.sendErrorResponse( ws, tag, "light clients have to be inbound" );
 			}
 			if ( ! params )
 			{
-				return sendErrorResponse( ws, tag, "no params in get_parents_and_last_ball_and_witness_list_unit" );
+				return _network_message.sendErrorResponse( ws, tag, "no params in get_parents_and_last_ball_and_witness_list_unit" );
 			}
 
 			//	...
@@ -5653,11 +4844,11 @@ function handleRequest( ws, tag, command, params )
 				{
 					ifError : function( err )
 					{
-						sendErrorResponse( ws, tag, err );
+						_network_message.sendErrorResponse( ws, tag, err );
 					},
 					ifOk : function( objResponse )
 					{
-						sendResponse( ws, tag, objResponse );
+						_network_message.sendResponse( ws, tag, objResponse );
 					}
 				}
 			);
@@ -5669,19 +4860,19 @@ function handleRequest( ws, tag, command, params )
 
 			if ( _conf.bLight )
 			{
-				return sendErrorResponse( ws, tag, "I'm light myself, can't serve you" );
+				return _network_message.sendErrorResponse( ws, tag, "I'm light myself, can't serve you" );
 			}
 			if ( ws.bOutbound )
 			{
-				return sendErrorResponse( ws, tag, "light clients have to be inbound" );
+				return _network_message.sendErrorResponse( ws, tag, "light clients have to be inbound" );
 			}
 			if ( ! params )
 			{
-				return sendErrorResponse( ws, tag, "no params in light/get_attestation" );
+				return _network_message.sendErrorResponse( ws, tag, "no params in light/get_attestation" );
 			}
 			if ( ! params.attestor_address || ! params.field || ! params.value )
 			{
-				return sendErrorResponse( ws, tag, "missing params in light/get_attestation" );
+				return _network_message.sendErrorResponse( ws, tag, "missing params in light/get_attestation" );
 			}
 
 			//	...
@@ -5702,7 +4893,7 @@ function handleRequest( ws, tag, command, params )
 
 					//	...
 					attestation_unit	= ( rows.length > 0 ) ? rows[ 0 ].unit : "";
-					sendResponse( ws, tag, attestation_unit );
+					_network_message.sendResponse( ws, tag, attestation_unit );
 				}
 			);
 			break;
@@ -5714,7 +4905,7 @@ function handleRequest( ws, tag, command, params )
 				_event_bus.emit( "enableNotification", ws.device_address, params );
 			}
 
-			sendResponse( ws, tag, 'ok' );
+			_network_message.sendResponse( ws, tag, 'ok' );
 			break;
 
 		//	I'm a hub, the peer wants to disable push notifications
@@ -5724,7 +4915,7 @@ function handleRequest( ws, tag, command, params )
 				_event_bus.emit( "disableNotification", ws.device_address, params );
 			}
 
-			sendResponse( ws, tag, 'ok' );
+			_network_message.sendResponse( ws, tag, 'ok' );
 			break;
 
 		case 'hub/get_bots':
@@ -5734,7 +4925,7 @@ function handleRequest( ws, tag, command, params )
 				[],
 				function( rows )
 				{
-					sendResponse( ws, tag, rows );
+					_network_message.sendResponse( ws, tag, rows );
 				}
 			);
 			break;
@@ -5746,7 +4937,7 @@ function handleRequest( ws, tag, command, params )
 			asset	= params;
 			if ( ! _validation_utils.isStringOfLength( asset, _constants.HASH_LENGTH ) )
 			{
-				return sendErrorResponse(ws, tag, "bad asset: "+asset);
+				return _network_message.sendErrorResponse(ws, tag, "bad asset: "+asset);
 			}
 
 			_db.query
@@ -5759,10 +4950,10 @@ function handleRequest( ws, tag, command, params )
 				{
 					if ( rows.length === 0 )
 					{
-						return sendErrorResponse( ws, tag, "no metadata" );
+						return _network_message.sendErrorResponse( ws, tag, "no metadata" );
 					}
 
-					sendResponse( ws, tag, rows[ 0 ] );
+					_network_message.sendResponse( ws, tag, rows[ 0 ] );
 				}
 			);
 			break;
@@ -5785,7 +4976,7 @@ function onWebSocketMessage( message )
 	}
 
 	//	...
-	//_log.consoleLog( 'RECEIVED ' + ( message.length > 1000 ? message.substr( 0, 1000 ) + '... (' + message.length + ' chars)' : message ) + ' from ' + ws.peer );
+	//console.log( 'RECEIVED ' + ( message.length > 1000 ? message.substr( 0, 1000 ) + '... (' + message.length + ' chars)' : message ) + ' from ' + ws.peer );
 	_logex.push( 'RECEIVED ' + ( message.length > 1000 ? message.substr( 0, 1000 ) + '... (' + message.length + ' chars)' : message ) + ' from ' + ws.peer );
 
 	//	...
@@ -5797,7 +4988,7 @@ function onWebSocketMessage( message )
 	}
 	catch( e )
 	{
-		return _log.consoleLog( 'failed to json.parse message ' + message );
+		return console.log( 'failed to json.parse message ' + message );
 	}
 
 	//	...
@@ -5816,7 +5007,7 @@ function onWebSocketMessage( message )
 			return handleResponse( ws, oContent.tag, oContent.response );
 
 		default: 
-			_log.consoleLog( "unknown type: " + sMessageType );
+			console.log( "unknown type: " + sMessageType );
 			//	throw Error("unknown type: " + sMessageType);
 	}
 }
@@ -5875,7 +5066,7 @@ function startAcceptingConnections()
 			sRemoteAddress = ws.upgradeReq.connection.remoteAddress;
 			if ( ! sRemoteAddress )
 			{
-				_log.consoleLog( "no ip/sRemoteAddress in accepted connection" );
+				console.log( "no ip/sRemoteAddress in accepted connection" );
 				ws.terminate();
 				return;
 			}
@@ -5899,11 +5090,11 @@ function startAcceptingConnections()
 			ws.bInbound			= true;
 			ws.last_ts			= Date.now();
 
-			_log.consoleLog( 'got connection from ' + ws.peer + ", host " + ws.host );
+			console.log( 'got connection from ' + ws.peer + ", host " + ws.host );
 
-			if ( m_oWss.arrClients.length >= _conf.MAX_INBOUND_CONNECTIONS )
+			if ( m_arrInboundPeers.length >= _conf.MAX_INBOUND_CONNECTIONS )
 			{
-				_log.consoleLog( "inbound connections maxed out, rejecting new client " + sRemoteAddress );
+				console.log( "inbound connections maxed out, rejecting new client " + sRemoteAddress );
 
 				//	1001 doesn't work in cordova
 				ws.close( 1000, "inbound connections maxed out" );
@@ -5942,7 +5133,7 @@ function startAcceptingConnections()
 						//	CONNECTION WAS REJECTED
 						//	this peer have invalid events before
 						//
-						_log.consoleLog( "# rejecting new client " + ws.host + " because of bad stats" );
+						console.log( "# rejecting new client " + ws.host + " because of bad stats" );
 						return ws.terminate();
 					}
 
@@ -5955,7 +5146,7 @@ function startAcceptingConnections()
 					//	*
 					//	so, we response the version of this hub/witness
 					//
-					sendVersion( ws );
+					_network_message.sendVersion( ws );
 
 					//	I'm a hub, send challenge
 					if ( _conf.bServeAsHub )
@@ -5965,7 +5156,7 @@ function startAcceptingConnections()
 						//
 						//	the the new peer, I am a hub and I have ability to exchange data
 						//
-						sendJustSaying( ws, 'hub/challenge', ws.challenge );
+						_network_message.sendJustSaying( ws, 'hub/challenge', ws.challenge );
 					}
 					if ( ! _conf.bLight )
 					{
@@ -6023,7 +5214,7 @@ function startAcceptingConnections()
 					_db.query( "DELETE FROM watched_light_addresses WHERE peer=?", [ ws.peer ] );
 					_db.query( "DELETE FROM watched_light_units WHERE peer=?", [ ws.peer ] );
 					//_db.query( "DELETE FROM light_peer_witnesses WHERE peer=?", [ ws.peer ] );
-					_log.consoleLog( "client " + ws.peer + " disconnected" );
+					console.log( "client " + ws.peer + " disconnected" );
 
 					cancelRequestsOnClosedConnection( ws );
 				}
@@ -6037,7 +5228,7 @@ function startAcceptingConnections()
 				'error',
 				function( e )
 				{
-					_log.consoleLog( "error on client " + ws.peer + ": " + e );
+					console.log( "error on client " + ws.peer + ": " + e );
 
 					//	close
 					ws.close( 1000, "received error" );
@@ -6045,10 +5236,10 @@ function startAcceptingConnections()
 			);
 
 			//	...
-			addPeerHost( ws.host );
+			_network_peer.addPeerHost( ws.host );
 		}
 	);
-	_log.consoleLog( 'WSS running at port ' + _conf.port );
+	console.log( 'WSS running at port ' + _conf.port );
 }
 
 
@@ -6060,7 +5251,8 @@ function startRelay()
 	if ( process.browser || ! _conf.port )
 	{
 		//	no listener on mobile
-		m_oWss = { arrClients : [] };
+		m_oWss			= {};
+		m_arrInboundPeers	= [];
 	}
 	else
 	{
@@ -6081,7 +5273,7 @@ function startRelay()
 	//
 	if ( _conf.bWantNewPeers )
 	{
-		_log.consoleLog( "network::startRelay, _conf.bWantNewPeers = true" );
+		console.log( "network::startRelay, _conf.bWantNewPeers = true" );
 
 		//
 		//	add outbound connections
@@ -6089,10 +5281,10 @@ function startRelay()
 		//	retry lost and failed connections
 		//	every 1 minute
 		//
-		addOutboundPeers();
+		_network_peer.addOutboundPeers();
 		setInterval
 		(
-			addOutboundPeers,
+			_network_peer.addOutboundPeers,
 			60 * 1000
 		);
 
@@ -6111,7 +5303,7 @@ function startRelay()
 		//
 		setInterval
 		(
-			purgeDeadPeers,
+			_network_peer.purgeDeadPeers,
 			30 * 60 * 1000
 		);
 	}
@@ -6123,7 +5315,7 @@ function startRelay()
 	//
 	setInterval
 	(
-		purgePeerEvents,
+		_network_peer.purgePeerEvents,
 		6 * 60 * 60 * 1000
 	);
 
@@ -6174,7 +5366,8 @@ function startRelay()
  */
 function startLightClient()
 {
-	m_oWss	= { arrClients: [] };
+	m_oWss			= {};
+	m_arrInboundPeers	= [];
 
 	//
 	//	re-request lost joints of private payment
@@ -6213,9 +5406,9 @@ function startLightClient()
  */
 function start()
 {
-	_log.consoleLog( "############################################################" );
-	_log.consoleLog( "starting network" );
-	_log.consoleLog( "############################################################" );
+	console.log( "############################################################" );
+	console.log( "starting network" );
+	console.log( "############################################################" );
 
 	//	...
 	_conf.bLight ? startLightClient() : startRelay();
@@ -6234,13 +5427,13 @@ function start()
 	setInterval
 	(
 		heartbeat,
-		3 * 1000 + getRandomInt( 0, 1000 )
+		3 * 1000 + _network_peer.getRandomInt( 0, 1000 )
 	);
 }
 
 function closeAllWsConnections()
 {
-	m_arrOutboundPeers.forEach( function( ws )
+	_network_peer.getOutboundPeers().forEach( function( ws )
 	{
 		ws.close( 1000, 'Re-connect' );
 	});
@@ -6248,7 +5441,7 @@ function closeAllWsConnections()
 
 function isConnected()
 {
-	return ( m_arrOutboundPeers.length + m_oWss.arrClients.length );
+	return ( _network_peer.getOutboundPeers().length + m_arrInboundPeers.length );
 }
 
 function isCatchingUp()
@@ -6269,7 +5462,7 @@ function isCatchingUp()
 if ( process.browser )
 {
 	//	browser
-	_log.consoleLog( "defining .on() on ws" );
+	console.log( "defining .on() on ws" );
 
 	WebSocket.prototype.on = function( event, callback )
 	{
@@ -6316,6 +5509,13 @@ if ( process.browser )
 	WebSocket.prototype.setMaxListeners	= function(){};
 }
 
+
+/**
+ *	initalize
+ */
+_network_peer.setAddressOnWebSocketMessage( onWebSocketMessage );
+_network_peer.setAddressOnWebSocketClosed( cancelRequestsOnClosedConnection );
+_network_peer.setAddressSubscribe( subscribe );
 
 
 
@@ -6365,11 +5565,12 @@ exports.postJointToLightVendor				= postJointToLightVendor;
 exports.broadcastJoint					= broadcastJoint;
 exports.sendPrivatePayment				= sendPrivatePayment;
 
-exports.sendJustSaying					= sendJustSaying;
+exports.sendJustSaying					= _network_message.sendJustSaying;
+exports.sendError					= _network_message.sendError;
 exports.sendAllInboundJustSaying			= sendAllInboundJustSaying;
-exports.sendError					= sendError;
+
 exports.sendRequest					= sendRequest;
-exports.findOutboundPeerOrConnect			= findOutboundPeerOrConnect;
+exports.findOutboundPeerOrConnect			= _network_peer.findOutboundPeerOrConnect;
 exports.handleOnlineJoint				= handleOnlineJoint;
 
 exports.handleOnlinePrivatePayment			= handleOnlinePrivatePayment;
@@ -6378,7 +5579,7 @@ exports.requestProofsOfJointsIfNewOrUnstable		= requestProofsOfJointsIfNewOrUnst
 
 exports.requestFromLightVendor				= requestFromLightVendor;
 
-exports.addPeer						= addPeer;
+exports.addPeer						= _network_peer.addPeer;
 
 exports.initWitnessesIfNecessary			= initWitnessesIfNecessary;
 
