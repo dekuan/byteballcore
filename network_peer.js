@@ -3,6 +3,7 @@
 
 var WebSocket			= process.browser ? global.WebSocket : require( 'ws' );
 var socks			= process.browser ? null : require( 'socks' + '' );
+var WebSocketServer		= WebSocket.Server;
 
 var _async			= require( 'async' );
 var _db				= require( './db.js' );
@@ -13,8 +14,7 @@ var _breadcrumbs		= require( './breadcrumbs.js' );
 var _network_message		= require( './network_message.js' );
 
 
-
-var m_arrInboundPeers				= [];		//	all clients connected in
+var m_oWss;
 var m_arrOutboundPeers				= [];		//	all peers server connected to
 
 var m_oAssocConnectingOutboundWebSockets	= {};
@@ -135,7 +135,7 @@ function findRandomInboundPeer( handleInboundPeer )
 	var arrInboundHosts;
 
 	//	...
-	arrInboundSources	= m_arrInboundPeers.filter( function( inbound_ws ) { return inbound_ws.bSource; } );
+	arrInboundSources	= m_oWss.clients.filter( function( inbound_ws ) { return inbound_ws.bSource; } );
 	if ( arrInboundSources.length === 0 )
 	{
 		return handleInboundPeer( null );
@@ -434,20 +434,8 @@ function addOutboundPeers( multiplier )
 	//	don't stick to old peers with most accumulated good joints
 	//
 	order_by		= ( multiplier <= 4 ) ? "count_new_good_joints DESC" : _db.getRandom();
-	arrOutboundPeerUrls	= m_arrOutboundPeers.map
-	(
-		function( ws )
-		{
-			return ws.peer;
-		}
-	);
-	arrInboundHosts		= m_arrInboundPeers.map
-	(
-		function( ws )
-		{
-			return ws.host;
-		}
-	);
+	arrOutboundPeerUrls	= m_arrOutboundPeers.map( function( ws ) { return ws.peer; } );
+	arrInboundHosts		= m_oWss.clients.map( function( ws ) { return ws.host; } );
 
 	//	having too many connections being opened creates odd delays in _db functions
 	max_new_outbound_peers	= Math.min( _conf.MAX_OUTBOUND_CONNECTIONS - arrOutboundPeerUrls.length, 5 );
@@ -602,12 +590,12 @@ function getPeerWebSocket( peer )
 		}
 	}
 
-	for ( i = 0; i < m_arrInboundPeers.length; i ++ )
+	for ( i = 0; i < m_oWss.clients.length; i ++ )
 	{
-		if ( m_arrInboundPeers[ i ].peer === peer )
+		if ( m_oWss.clients[ i ].peer === peer )
 		{
 			//	...
-			return m_arrInboundPeers[ i ];
+			return m_oWss.clients[ i ];
 		}
 	}
 
@@ -814,6 +802,277 @@ function purgeDeadPeers()
 }
 
 
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	web socket server
+////////////////////////////////////////////////////////////////////////////////
+
+
+/**
+ *	initialize web socket server
+ */
+function initWebSocketServer()
+{
+	m_oWss	= { clients : [] };
+}
+
+/**
+ *	start web socket server
+ *
+ *	@param oOptions
+ *		.subscribe
+ *		.onMessage
+ *		.onClose
+ */
+function startWebSocketServer( oOptions )
+{
+	//
+	//	delete all ...
+	//
+	_db.query( "DELETE FROM watched_light_addresses" );
+	_db.query( "DELETE FROM watched_light_units" );
+
+	//
+	//	create a new web socket server
+	//
+	//	npm ws
+	//	https://github.com/websockets/ws
+	//
+	//	_db.query("DELETE FROM light_peer_witnesses");
+	//	listen for new connections
+	//
+	m_oWss	= new WebSocketServer
+	(
+		{
+			port	: _conf.port
+		}
+	);
+
+	//
+	//	Event 'connection'
+	//		Emitted when the handshake is complete.
+	//
+	//		- socket	{ WebSocket }
+	//		- request	{ http.IncomingMessage }
+	//
+	//		request is the http GET request sent by the client.
+	// 		Useful for parsing authority headers, cookie headers, and other information.
+	//
+	m_oWss.on
+	(
+		'connection',
+		function( ws )
+		{
+			//
+			//	ws
+			//	- the connected Web Socket handle of remote client
+			//
+			var sRemoteAddress;
+			var bStatsCheckUnderWay;
+
+			//	...
+			sRemoteAddress = ws.upgradeReq.connection.remoteAddress;
+			if ( ! sRemoteAddress )
+			{
+				console.log( "no ip/sRemoteAddress in accepted connection" );
+				ws.terminate();
+				return;
+			}
+			if ( ws.upgradeReq.headers[ 'x-real-ip' ] &&
+				( sRemoteAddress === '127.0.0.1' || sRemoteAddress.match( /^192\.168\./ ) ) )
+			{
+				//
+				//	TODO
+				//	check for resources IP addresses
+				//
+
+				//	we are behind a proxy
+				sRemoteAddress = ws.upgradeReq.headers[ 'x-real-ip' ];
+			}
+
+			//	...
+			ws.peer				= sRemoteAddress + ":" + ws.upgradeReq.connection.remotePort;
+			ws.host				= sRemoteAddress;
+			ws.assocPendingRequests		= {};
+			ws.assocInPreparingResponse	= {};
+			ws.bInbound			= true;
+			ws.last_ts			= Date.now();
+
+			console.log( 'got connection from ' + ws.peer + ", host " + ws.host );
+
+			if ( m_oWss.clients.length >= _conf.MAX_INBOUND_CONNECTIONS )
+			{
+				console.log( "inbound connections maxed out, rejecting new client " + sRemoteAddress );
+
+				//	1001 doesn't work in cordova
+				ws.close( 1000, "inbound connections maxed out" );
+				return;
+			}
+
+			//	...
+			bStatsCheckUnderWay	= true;
+
+			//
+			//	calculate the counts of elements in status invalid and new_good
+			//	from table [peer_events] by peer_host for a hour ago.
+			//
+			_db.query
+			(
+				"SELECT \
+					SUM( CASE WHEN event='invalid' THEN 1 ELSE 0 END ) AS count_invalid, \
+					SUM( CASE WHEN event='new_good' THEN 1 ELSE 0 END ) AS count_new_good \
+					FROM peer_events WHERE peer_host = ? AND event_date > " + _db.addTime( "-1 HOUR" ),
+				[
+					//	remote host/sRemoteAddress connected by this ws
+					ws.host
+				],
+				function( rows )
+				{
+					var oStats;
+
+					//	...
+					bStatsCheckUnderWay	= false;
+
+					//	...
+					oStats	= rows[ 0 ];
+					if ( oStats.count_invalid )
+					{
+						//
+						//	CONNECTION WAS REJECTED
+						//	this peer have invalid events before
+						//
+						console.log( "# rejecting new client " + ws.host + " because of bad stats" );
+						return ws.terminate();
+					}
+
+					//
+					//	WELCOME THE NEW PEER WITH THE LIST OF FREE JOINTS
+					//
+					//	if (!m_bCatchingUp)
+					//		sendFreeJoints(ws);
+					//
+					//	*
+					//	so, we response the version of this hub/witness
+					//
+					_network_message.sendVersion( ws );
+
+					//	I'm a hub, send challenge
+					if ( _conf.bServeAsHub )
+					{
+						ws.challenge	= _crypto.randomBytes( 30 ).toString( "base64" );
+
+						//
+						//	the new peer, I am a hub and I have ability to exchange data
+						//
+						_network_message.sendJustSaying( ws, 'hub/challenge', ws.challenge );
+					}
+					if ( ! _conf.bLight )
+					{
+						//
+						//	call
+						//	subscribe data from others
+						//	while a client connected to me
+						//
+						oOptions.subscribe( ws );
+					}
+
+					//
+					//	emit a event say there was a client connected
+					//
+					_event_bus.emit( 'connected', ws );
+				}
+			);
+
+			//
+			//	receive message
+			//
+			ws.on
+			(
+				'message',
+				function( message )
+				{
+					//	might come earlier than stats check completes
+					function tryHandleMessage()
+					{
+						if ( bStatsCheckUnderWay )
+						{
+							setTimeout
+							(
+								tryHandleMessage,
+								100
+							);
+						}
+						else
+						{
+							//
+							//	call while receiving message
+							//
+							oOptions.onMessage.call( ws, message );
+						}
+					}
+
+					//	...
+					tryHandleMessage();
+				}
+			);
+
+			//
+			//	on close
+			//
+			ws.on
+			(
+				'close',
+				function()
+				{
+					_db.query( "DELETE FROM watched_light_addresses WHERE peer = ?", [ ws.peer ] );
+					_db.query( "DELETE FROM watched_light_units WHERE peer = ?", [ ws.peer ] );
+					//_db.query( "DELETE FROM light_peer_witnesses WHERE peer = ?", [ ws.peer ] );
+					console.log( "client " + ws.peer + " disconnected" );
+
+					//
+					//	call while the connection was closed
+					//
+					oOptions.onClose( ws );
+				}
+			);
+
+			//
+			//	on error
+			//
+			ws.on
+			(
+				'error',
+				function( e )
+				{
+					console.log( "error on client " + ws.peer + ": " + e );
+
+					//	close
+					ws.close( 1000, "received error" );
+				}
+			);
+
+			//	...
+			addPeerHost( ws.host );
+		}
+	);
+
+	console.log( 'WSS running at port ' + _conf.port );
+}
+
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//	utils
+////////////////////////////////////////////////////////////////////////////////
+
+
+function getInboundClients()
+{
+	return m_oWss.clients;
+}
 function getOutboundPeers()
 {
 	return m_arrOutboundPeers;
@@ -830,8 +1089,65 @@ function getAssocConnectingOutboundWebSockets()
 
 
 
+
 /**
- *	exports
+ *	Adding support for browser
+ */
+if ( process.browser )
+{
+	//	browser
+	console.log( "defining .on() on ws" );
+
+	WebSocket.prototype.on = function( event, callback )
+	{
+		var self;
+
+		//	...
+		self = this;
+
+		if ( event === 'message' )
+		{
+			this[ 'on' + event ] = function( event )
+			{
+				callback.call( self, event.data );
+			};
+			return;
+		}
+		if ( event !== 'open' )
+		{
+			this[ 'on' + event ] = callback;
+			return;
+		}
+
+		//	allow several handlers for 'open' event
+		if ( ! this[ 'open_handlers' ] )
+		{
+			this[ 'open_handlers' ] = [];
+		}
+
+		this[ 'open_handlers' ].push( callback );
+		this[ 'on' + event ] = function()
+		{
+			self[ 'open_handlers' ].forEach
+			(
+				function( cb )
+				{
+					cb();
+				}
+			);
+		};
+	};
+
+	//	...
+	WebSocket.prototype.once		= WebSocket.prototype.on;
+	WebSocket.prototype.setMaxListeners	= function(){};
+}
+
+
+
+
+/**
+ *	outbound peers
  */
 exports.setAddressOnWebSocketMessage			= setAddressOnWebSocketMessage;
 exports.setAddressOnWebSocketClosed			= setAddressOnWebSocketClosed;
@@ -852,6 +1168,18 @@ exports.findOutboundPeerOrConnect			= findOutboundPeerOrConnect;
 exports.purgePeerEvents					= purgePeerEvents;
 exports.purgeDeadPeers					= purgeDeadPeers;
 
+
+/**
+ *	web socket server
+ */
+exports.initWebSocketServer				= initWebSocketServer;
+exports.startWebSocketServer				= startWebSocketServer;
+
+
+/**
+ *	utils
+ */
+exports.getInboundClients				= getInboundClients;
 exports.getOutboundPeers				= getOutboundPeers;
 exports.getAssocConnectingOutboundWebSockets		= getAssocConnectingOutboundWebSockets;
 
