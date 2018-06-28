@@ -33,6 +33,7 @@ var _mail			= process.browser ? null : require( './mail.js' + '' );
 
 var _network_consts		= require( './network_consts.js' );
 var _network_message		= require( './network_message.js' );
+var _network_request		= require( './network_request.js' );
 var _network_peer		= require( './network_peer.js' );
 
 
@@ -43,11 +44,11 @@ var m_bCatchingUp				= false;
 var m_bWaitingForCatchupChain			= false;
 var m_bWaitingTillIdle				= false;
 var m_nComingOnlineTime				= Date.now();
-var m_oAssocReroutedConnectionsByTag		= {};
 var m_arrWatchedAddresses			= [];		//	does not include my addresses, therefore always empty
 var m_nLastHearbeatWakeTs			= Date.now();
 var m_arrPeerEventsBuffer			= [];
 var m_exchangeRates				= {};
+
 
 
 
@@ -88,245 +89,6 @@ function sendAllInboundJustSaying( subject, body )
 
 
 
-/**
- *	if a 2nd identical request is issued before we receive a response to the 1st request, then:
- *	1. its pfnResponseHandler will be called too but no second request will be sent to the wire
- *	2. bReRoutable flag must be the same
- *
- *	@param ws
- *	@param command
- *	@param params
- *	@param bReRoutable
- *	@param pfnResponseHandler
- */
-function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
-{
-	//
-	//	params for 'catchup'
-	// 	{
-	// 		witnesses	: arrWitnesses,		//	12 addresses of witnesses
-	// 		last_stable_mci	: last_stable_mci,	//	stable last mci
-	// 		last_known_mci	: last_known_mci	//	known last mci
-	// 	};
-	//
-	var request;
-	var content;
-	var tag;
-	var pfnReroute;
-	var nRerouteTimer;
-	var nCancelTimer;
-
-	//	...
-	request = { command : command };
-
-	if ( params )
-	{
-		request.params = params;
-	}
-
-	//
-	//	tag like : w35dxwqyQ2CzqHkOG5q+gwagPtaPweD4LEwzC2RjQNo=
-	//
-	content	= _.clone( request );
-	tag	= _object_hash.getBase64Hash( request );
-
-	//
-	//	if (ws.assocPendingRequests[tag]) // ignore duplicate requests while still waiting for response from the same peer
-	//	return console.log("will not send identical "+command+" request");
-	//
-	if ( ws.assocPendingRequests[ tag ] )
-	{
-		//	...
-		ws.assocPendingRequests[ tag ].responseHandlers.push( pfnResponseHandler );
-
-		//	...
-		return console.log
-		(
-			'already sent a ' + command + ' request to ' + ws.peer + ', will add one more response handler rather than sending a duplicate request to the wire'
-		);
-	}
-
-
-	//
-	//	...
-	//
-	content.tag	= tag;
-
-	//
-	//	after _network_consts.STALLED_TIMEOUT, reroute the request to another peer
-	//	it'll work correctly even if the current peer is already disconnected when the timeout fires
-	//
-	//	THIS function will be called when the request is timeout
-	//
-	pfnReroute = bReRoutable ? function()
-	{
-		console.log( 'will try to reroute a ' + command + ' request stalled at ' + ws.peer );
-
-		if ( ! ws.assocPendingRequests[ tag ] )
-		{
-			return console.log( 'will not reroute - the request was already handled by another peer' );
-		}
-
-		//	...
-		ws.assocPendingRequests[ tag ].bRerouted	= true;
-		_network_peer.findNextPeer
-		(
-			ws,
-			function( next_ws )
-			{
-				//
-				//	the callback may be called much later if _network_peer.findNextPeer has to wait for connection
-				//
-				if ( ! ws.assocPendingRequests[ tag ] )
-				{
-					return console.log( 'will not reroute after findNextPeer - the request was already handled by another peer' );
-				}
-
-				if ( next_ws === ws ||
-					m_oAssocReroutedConnectionsByTag[ tag ] && m_oAssocReroutedConnectionsByTag[ tag ].indexOf( next_ws ) >= 0 )
-				{
-					console.log( 'will not reroute ' + command + ' to the same peer, will rather wait for a new connection' );
-					_event_bus.once
-					(
-						'connected_to_source',
-						function()
-						{
-							//	try again
-							console.log( 'got new connection, retrying reroute ' + command );
-							pfnReroute();
-						}
-					);
-					return;
-				}
-
-				//
-				//	SEND REQUEST AGAIN FOR EVERY responseHandlers
-				//
-				console.log( 'rerouting ' + command + ' from ' + ws.peer + ' to ' + next_ws.peer );
-				ws.assocPendingRequests[ tag ].responseHandlers.forEach
-				(
-					function( rh )
-					{
-						sendRequest( next_ws, command, params, bReRoutable, rh );
-					}
-				);
-
-				//
-				//	push to cache
-				//
-				if ( ! m_oAssocReroutedConnectionsByTag[ tag ] )
-				{
-					m_oAssocReroutedConnectionsByTag[ tag ] = [ ws ];
-				}
-				m_oAssocReroutedConnectionsByTag[ tag ].push( next_ws );
-			}
-		);
-	}
-	: null;
-
-	//
-	//	timeout
-	//	in sending request
-	//
-	nRerouteTimer	= bReRoutable
-		? setTimeout
-		(
-			//	callback handler while the request is TIMEOUT
-			function ()
-			{
-				console.log( '# network::sendRequest request ' + command + ', send to ' + ws.peer + ' was overtime.' );
-				pfnReroute.apply( this, arguments );
-			},
-			_network_consts.STALLED_TIMEOUT
-		)
-		: null;
-
-	//
-	//	timeout
-	//	in receiving response
-	//
-	nCancelTimer	= bReRoutable
-		? null
-		: setTimeout
-		(
-			function()
-			{
-				console.log( '# network::sendRequest request ' + command + ', response from ' + ws.peer + ' was overtime.' );
-
-				//
-				//	delete all overtime requests/connections in pending requests list
-				//
-				ws.assocPendingRequests[ tag ].responseHandlers.forEach
-				(
-					function( rh )
-					{
-						rh( ws, request, { error: "[internal] response timeout" } );
-					}
-				);
-				delete ws.assocPendingRequests[ tag ];
-			},
-			_network_consts.RESPONSE_TIMEOUT
-		);
-
-	//
-	//	build pending request list
-	//
-	ws.assocPendingRequests[ tag ] =
-	{
-		request			: request,
-		responseHandlers	: [ pfnResponseHandler ],
-		reroute			: pfnReroute,
-		reroute_timer		: nRerouteTimer,
-		cancel_timer		: nCancelTimer
-	};
-
-	//
-	//	...
-	//
-	_network_message.sendMessage( ws, 'request', content );
-}
-
-
-
-
-
-function onWebSocketClosed( ws )
-{
-	var tag;
-	var pendingRequest;
-
-	console.log( "websocket closed, will complete all outstanding requests" );
-
-	for ( tag in ws.assocPendingRequests )
-	{
-		//	...
-		pendingRequest	= ws.assocPendingRequests[ tag ];
-
-		//	...
-		clearTimeout( pendingRequest.reroute_timer );
-		clearTimeout( pendingRequest.cancel_timer );
-
-		//	reroute immediately, not waiting for _network_consts.STALLED_TIMEOUT
-		if ( pendingRequest.reroute )
-		{
-			if ( ! pendingRequest.bRerouted )
-			{
-				pendingRequest.reroute();
-			}
-			//	we still keep ws.assocPendingRequests[tag] because we'll need it when we find a peer to reroute to
-		}
-		else
-		{
-			pendingRequest.responseHandlers.forEach( function( rh )
-			{
-				rh( ws, pendingRequest.request, { error : "[internal] connection closed" } );
-			});
-
-			delete ws.assocPendingRequests[ tag ];
-			ws.assocPendingRequests[ tag ]	= null;
-		}
-	}
-}
 
 
 
@@ -417,7 +179,7 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
  */
 function requestPeers( ws )
 {
-	sendRequest( ws, 'get_peers', null, false, _handleNewPeers );
+	_network_request.sendRequest( ws, 'get_peers', null, false, _handleNewPeers );
 }
 function _handleNewPeers( ws, request, arrPeerUrls )
 {
@@ -520,7 +282,7 @@ function heartbeat()
 		if ( ! ws.last_sent_heartbeat_ts || bJustResumed )
 		{
 			ws.last_sent_heartbeat_ts	= Date.now();
-			return sendRequest( ws, 'heartbeat', null, false, _handleHeartbeatResponse );
+			return _network_request.sendRequest( ws, 'heartbeat', null, false, _handleHeartbeatResponse );
 		}
 
 		//	...
@@ -581,7 +343,7 @@ function requestFromLightVendor( command, params, pfnResponseHandler )
 			}
 
 			//	...
-			sendRequest
+			_network_request.sendRequest
 			(
 				ws,
 				command,
@@ -628,7 +390,7 @@ function subscribe( ws )
 			//
 			//	send subscribe request with subscription id and last mci
 			//
-			sendRequest
+			_network_request.sendRequest
 			(
 				ws,
 				'subscribe',
@@ -908,7 +670,7 @@ function requestJoints( ws, arrUnits )
 			//	*
 			//	send request for getting joints
 			//
-			sendRequest
+			_network_request.sendRequest
 			(
 				ws,
 				'get_joint',
@@ -2417,7 +2179,7 @@ function requestCatchup( ws )
 											last_stable_mci	: last_stable_mci,
 											last_known_mci	: last_known_mci
 										};
-										sendRequest( ws, 'catchup', params, true, handleCatchupChain );
+										_network_request.sendRequest( ws, 'catchup', params, true, handleCatchupChain );
 									},
 									'wait'
 								);
@@ -2528,7 +2290,7 @@ function requestNextHashTree( ws )
 			}
 
 			//	send request
-			sendRequest
+			_network_request.sendRequest
 			(
 				ws,
 				'get_hash_tree',
@@ -3352,7 +3114,7 @@ function initWitnessesIfNecessary( ws, onDone )
 			return onDone();
 		}
 
-		sendRequest
+		_network_request.sendRequest
 		(
 			ws,
 			'get_witnesses',
@@ -3544,7 +3306,8 @@ function _handleMessageJustSaying( ws, subject, body )
 			//	...
 			_db.query
 			(
-				"SELECT 1 FROM archived_joints WHERE unit=? AND reason='uncovered'",
+				"SELECT 1 FROM archived_joints \
+				WHERE unit=? AND reason='uncovered'",
 				[
 					objJoint.unit.unit
 				],
@@ -4940,25 +4703,11 @@ function _handleMessageResponse( ws, tag, response )
 	delete ws.assocPendingRequests[ tag ];
 
 	//
-	//	if the request was rerouted, cancel all other pending requests
+	//	...
 	//
-	if ( m_oAssocReroutedConnectionsByTag[ tag ] )
-	{
-		m_oAssocReroutedConnectionsByTag[ tag ].forEach
-		(
-			function( client )
-			{
-				if ( client.assocPendingRequests[ tag ] )
-				{
-					clearTimeout( client.assocPendingRequests[ tag ].reroute_timer );
-					clearTimeout( client.assocPendingRequests[ tag ].cancel_timer );
-					delete client.assocPendingRequests[ tag ];
-				}
-			}
-		);
-		delete m_oAssocReroutedConnectionsByTag[ tag ];
-	}
+	_network_request.clearRequest( tag );
 }
+
 
 
 
@@ -5015,7 +4764,43 @@ function onWebSocketMessage( message )
 	}
 }
 
+function onWebSocketClosed( ws )
+{
+	var tag;
+	var pendingRequest;
 
+	console.log( "websocket closed, will complete all outstanding requests" );
+
+	for ( tag in ws.assocPendingRequests )
+	{
+		//	...
+		pendingRequest	= ws.assocPendingRequests[ tag ];
+
+		//	...
+		clearTimeout( pendingRequest.reroute_timer );
+		clearTimeout( pendingRequest.cancel_timer );
+
+		//	reroute immediately, not waiting for _network_consts.STALLED_TIMEOUT
+		if ( pendingRequest.reroute )
+		{
+			if ( ! pendingRequest.bRerouted )
+			{
+				pendingRequest.reroute();
+			}
+			//	we still keep ws.assocPendingRequests[tag] because we'll need it when we find a peer to reroute to
+		}
+		else
+		{
+			pendingRequest.responseHandlers.forEach( function( rh )
+			{
+				rh( ws, pendingRequest.request, { error : "[internal] connection closed" } );
+			});
+
+			delete ws.assocPendingRequests[ tag ];
+			ws.assocPendingRequests[ tag ]	= null;
+		}
+	}
+}
 
 
 
@@ -5307,7 +5092,7 @@ exports.sendJustSaying					= _network_message.sendJustSaying;
 exports.sendError					= _network_message.sendError;
 exports.sendAllInboundJustSaying			= sendAllInboundJustSaying;
 
-exports.sendRequest					= sendRequest;
+exports.sendRequest					= _network_request.sendRequest;
 exports.findOutboundPeerOrConnect			= _network_peer.findOutboundPeerOrConnect;
 exports.handleOnlineJoint				= handleOnlineJoint;
 
