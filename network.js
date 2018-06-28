@@ -25,6 +25,7 @@ var _object_hash		= require( './object_hash.js' );
 var _ecdsa_sig			= require( './signature.js' );
 var _event_bus			= require( './event_bus.js' );
 var _light			= require( './light.js' );
+var _utils			= require( './utils.js' );
 var _breadcrumbs		= require( './breadcrumbs.js' );
 var _profilerex			= require( './profilerex.js' );
 
@@ -135,12 +136,14 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 	//
 	if ( ws.assocPendingRequests[ tag ] )
 	{
-		console.log
+		//	...
+		ws.assocPendingRequests[ tag ].responseHandlers.push( pfnResponseHandler );
+
+		//	...
+		return console.log
 		(
 			'already sent a ' + command + ' request to ' + ws.peer + ', will add one more response handler rather than sending a duplicate request to the wire'
 		);
-		ws.assocPendingRequests[ tag ].responseHandlers.push( pfnResponseHandler );
-		return;
 	}
 
 
@@ -284,63 +287,10 @@ function sendRequest( ws, command, params, bReRoutable, pfnResponseHandler )
 }
 
 
-function handleResponse( ws, tag, response )
-{
-	var pendingRequest;
 
-	//	...
-	pendingRequest	= ws.assocPendingRequests[ tag ];
 
-	//	was canceled due to timeout or rerouted and answered by another peer
-	if ( ! pendingRequest )
-	{
-		//	throw "no req by tag "+tag;
-		return console.log( "no req by tag " + tag );
-	}
 
-	//	...
-	pendingRequest.responseHandlers.forEach
-	(
-		function( pfnResponseHandler )
-		{
-			process.nextTick( function()
-			{
-				pfnResponseHandler( ws, pendingRequest.request, response );
-			});
-		}
-	);
-
-	//
-	//	clear timers for
-	//	- request reroute timer
-	//	- response timer
-	//
-	clearTimeout( pendingRequest.reroute_timer );
-	clearTimeout( pendingRequest.cancel_timer );
-	delete ws.assocPendingRequests[ tag ];
-
-	//
-	//	if the request was rerouted, cancel all other pending requests
-	//
-	if ( m_oAssocReroutedConnectionsByTag[ tag ] )
-	{
-		m_oAssocReroutedConnectionsByTag[ tag ].forEach
-		(
-			function( client )
-			{
-				if ( client.assocPendingRequests[ tag ] )
-				{
-					clearTimeout( client.assocPendingRequests[ tag ].reroute_timer );
-					clearTimeout( client.assocPendingRequests[ tag ].cancel_timer );
-					delete client.assocPendingRequests[ tag ];
-				}
-			}
-		);
-		delete m_oAssocReroutedConnectionsByTag[ tag ];
-	}
-}
-
-function cancelRequestsOnClosedConnection( ws )
+function onWebSocketClosed( ws )
 {
 	var tag;
 	var pendingRequest;
@@ -467,9 +417,9 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
  */
 function requestPeers( ws )
 {
-	sendRequest( ws, 'get_peers', null, false, handleNewPeers );
+	sendRequest( ws, 'get_peers', null, false, _handleNewPeers );
 }
-function handleNewPeers( ws, request, arrPeerUrls )
+function _handleNewPeers( ws, request, arrPeerUrls )
 {
 	var arrQueries;
 	var i;
@@ -570,7 +520,7 @@ function heartbeat()
 		if ( ! ws.last_sent_heartbeat_ts || bJustResumed )
 		{
 			ws.last_sent_heartbeat_ts	= Date.now();
-			return sendRequest( ws, 'heartbeat', null, false, handleHeartbeatResponse );
+			return sendRequest( ws, 'heartbeat', null, false, _handleHeartbeatResponse );
 		}
 
 		//	...
@@ -586,7 +536,7 @@ function heartbeat()
 	});
 }
 
-function handleHeartbeatResponse( ws, request, response )
+function _handleHeartbeatResponse( ws, request, response )
 {
 	delete ws.last_sent_heartbeat_ts;
 	ws.last_sent_heartbeat_ts = null;
@@ -3438,7 +3388,9 @@ function sendStoredDeviceMessages( ws, device_address )
 {
 	_db.query
 	(
-		"SELECT message_hash, message FROM device_messages WHERE device_address=? ORDER BY creation_date LIMIT 100",
+		"SELECT message_hash, message \
+		FROM device_messages \
+		WHERE device_address=? ORDER BY creation_date LIMIT 100",
 		[
 			device_address
 		],
@@ -3467,20 +3419,12 @@ function sendStoredDeviceMessages( ws, device_address )
 	);
 }
 
-function version2int( version )
-{
-	var arr;
-
-	//	...
-	arr = version.split( '.' );
-	return arr[ 0 ] * 10000 + arr[ 1 ] * 100 + arr[ 2 ] * 1;
-}
 
 
 /**
  * 	switch/case different message types
  */
-function handleJustsaying( ws, subject, body )
+function _handleMessageJustSaying( ws, subject, body )
 {
 	var echo_string;
 
@@ -3527,7 +3471,7 @@ function handleJustsaying( ws, subject, body )
 			//	...
 			ws.library_version	= body.library_version;
 			if ( typeof ws.library_version === 'string' &&
-				version2int( ws.library_version ) < version2int( _constants.minCoreVersion ) )
+				_utils.version2int( ws.library_version ) < _utils.version2int( _constants.minCoreVersion ) )
 			{
 				ws.old_core = true;
 			}
@@ -4178,7 +4122,7 @@ function handleJustsaying( ws, subject, body )
  *	@param	params
  *	@returns {*}
  */
-function handleRequest( ws, tag, command, params )
+function _handleMessageRequest( ws, tag, command, params )
 {
 	//
 	//	ignore repeated request while still preparing response to a previous identical request
@@ -4960,6 +4904,65 @@ function handleRequest( ws, tag, command, params )
 	}
 }
 
+function _handleMessageResponse( ws, tag, response )
+{
+	var pendingRequest;
+
+	//	...
+	pendingRequest	= ws.assocPendingRequests[ tag ];
+
+	//	was canceled due to timeout or rerouted and answered by another peer
+	if ( ! pendingRequest )
+	{
+		//	throw "no req by tag "+tag;
+		return console.log( "no req by tag " + tag );
+	}
+
+	//	...
+	pendingRequest.responseHandlers.forEach
+	(
+		function( pfnResponseHandler )
+		{
+			process.nextTick( function()
+			{
+				pfnResponseHandler( ws, pendingRequest.request, response );
+			});
+		}
+	);
+
+	//
+	//	clear timers for
+	//	- request reroute timer
+	//	- response timer
+	//
+	clearTimeout( pendingRequest.reroute_timer );
+	clearTimeout( pendingRequest.cancel_timer );
+	delete ws.assocPendingRequests[ tag ];
+
+	//
+	//	if the request was rerouted, cancel all other pending requests
+	//
+	if ( m_oAssocReroutedConnectionsByTag[ tag ] )
+	{
+		m_oAssocReroutedConnectionsByTag[ tag ].forEach
+		(
+			function( client )
+			{
+				if ( client.assocPendingRequests[ tag ] )
+				{
+					clearTimeout( client.assocPendingRequests[ tag ].reroute_timer );
+					clearTimeout( client.assocPendingRequests[ tag ].cancel_timer );
+					delete client.assocPendingRequests[ tag ];
+				}
+			}
+		);
+		delete m_oAssocReroutedConnectionsByTag[ tag ];
+	}
+}
+
+
+
+
 function onWebSocketMessage( message )
 {
 	var ws;
@@ -4998,19 +5001,24 @@ function onWebSocketMessage( message )
 	switch ( sMessageType )
 	{
 		case 'justsaying':
-			return handleJustsaying( ws, oContent.subject, oContent.body );
+			return _handleMessageJustSaying( ws, oContent.subject, oContent.body );
 
 		case 'request':
-			return handleRequest( ws, oContent.tag, oContent.command, oContent.params );
+			return _handleMessageRequest( ws, oContent.tag, oContent.command, oContent.params );
 
 		case 'response':
-			return handleResponse( ws, oContent.tag, oContent.response );
+			return _handleMessageResponse( ws, oContent.tag, oContent.response );
 
 		default: 
 			console.log( "unknown type: " + sMessageType );
 			//	throw Error("unknown type: " + sMessageType);
 	}
 }
+
+
+
+
+
 
 
 
@@ -5038,7 +5046,7 @@ function startRelay()
 		({
 			subscribe	: subscribe,
 			onMessage	: onWebSocketMessage,
-			onClose		: cancelRequestsOnClosedConnection
+			onClose		: onWebSocketClosed
 		});
 	}
 
@@ -5244,7 +5252,7 @@ function isCatchingUp()
  *	initalize
  */
 _network_peer.setAddressOnWebSocketMessage( onWebSocketMessage );
-_network_peer.setAddressOnWebSocketClosed( cancelRequestsOnClosedConnection );
+_network_peer.setAddressOnWebSocketClosed( onWebSocketClosed );
 _network_peer.setAddressSubscribe( subscribe );
 
 
