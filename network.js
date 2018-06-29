@@ -1,10 +1,6 @@
 /*jslint node: true */
 "use strict";
 
-var WebSocket			= process.browser ? global.WebSocket : require( 'ws' );
-var socks			= process.browser ? null : require( 'socks' + '' );
-var WebSocketServer		= WebSocket.Server;
-
 var _				= require( 'lodash' );
 var _crypto			= require( 'crypto' );
 var _async			= require( 'async' );
@@ -35,6 +31,7 @@ var _network_consts		= require( './network_consts.js' );
 var _network_message		= require( './network_message.js' );
 var _network_request		= require( './network_request.js' );
 var _network_peer		= require( './network_peer.js' );
+var _network_heartbeat		= require( './network_heartbeat.js' );
 
 
 
@@ -45,7 +42,6 @@ var m_bWaitingForCatchupChain			= false;
 var m_bWaitingTillIdle				= false;
 var m_nComingOnlineTime				= Date.now();
 var m_arrWatchedAddresses			= [];		//	does not include my addresses, therefore always empty
-var m_nLastHearbeatWakeTs			= Date.now();
 var m_arrPeerEventsBuffer			= [];
 var m_exchangeRates				= {};
 
@@ -240,93 +236,6 @@ function requestPeers( ws )
 
 
 
-/**
- *	*
- *	heartbeat
- *	about every 3 seconds
- */
-function heartbeat()
-{
-	var bJustResumed;
-
-	//	just resumed after sleeping
-	bJustResumed		= ( typeof window !== 'undefined' &&
-					window &&
-					window.cordova &&
-					Date.now() - m_nLastHearbeatWakeTs > 2 * _network_consts.HEARTBEAT_TIMEOUT );
-	m_nLastHearbeatWakeTs	= Date.now();
-
-	//
-	//	The concat() method is used to merge two or more arrays.
-	//	This method does not change the existing arrays, but instead returns a new array.
-	//
-	_network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() ).forEach( function( ws )
-	{
-		var nElapsedSinceLastReceived;
-		var elapsed_since_last_sent_heartbeat;
-
-		if ( ! ws.bSleeping &&
-			ws.readyState === ws.OPEN )
-		{
-			//	...
-			nElapsedSinceLastReceived	= Date.now() - ws.last_ts;
-			if ( nElapsedSinceLastReceived >= _network_consts.HEARTBEAT_TIMEOUT )
-			{
-				//	>= 10 seconds
-				if ( ws.last_sent_heartbeat_ts && ! bJustResumed )
-				{
-					elapsed_since_last_sent_heartbeat	= Date.now() - ws.last_sent_heartbeat_ts;
-					if ( elapsed_since_last_sent_heartbeat >= _network_consts.HEARTBEAT_RESPONSE_TIMEOUT )
-					{
-						//	>= 60 seconds
-						console.log( 'will disconnect peer ' + ws.peer + ' who was silent for ' + nElapsedSinceLastReceived + 'ms' );
-						ws.close( 1000, 'lost connection' );
-					}
-				}
-				else
-				{
-					ws.last_sent_heartbeat_ts	= Date.now();
-					_network_request.sendRequest
-					(
-						ws,
-						'heartbeat',
-						null,
-						false,
-						function( ws, request, response )
-						{
-							delete ws.last_sent_heartbeat_ts;
-							ws.last_sent_heartbeat_ts = null;
-
-							if ( 'sleep' === response )
-							{
-								//
-								//	the peer doesn't want to be bothered with heartbeats any more,
-								//	but still wants to keep the connection open
-								//
-								ws.bSleeping = true;
-							}
-
-							//
-							//	as soon as the peer sends a heartbeat himself,
-							//	we'll think he's woken up and resume our heartbeats too
-							//
-						}
-					);
-				}
-			}
-		}
-		else
-		{
-			//	web socket is not ready
-		}
-	});
-}
-
-
-
-
-
-
 function requestFromLightVendor( command, params, pfnResponseHandler )
 {
 	if ( ! exports.light_vendor_url )
@@ -380,7 +289,7 @@ function printConnectionStatus()
 
 
 /**
- *	subcribe data from others
+ *	subscribe data from others
  */
 function subscribe( ws )
 {
@@ -790,7 +699,7 @@ function havePendingRequest( command )
 	var tag;
 
 	//	...
-	arrPeers = _network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() );
+	arrPeers = _network_peer.getAllInboundClientsAndOutboundPeers();
 
 	for ( i = 0; i < arrPeers.length; i++ )
 	{
@@ -816,7 +725,7 @@ function havePendingJointRequest( unit )
 	var request;
 
 	//	...
-	arrPeers	= _network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() );
+	arrPeers	= _network_peer.getAllInboundClientsAndOutboundPeers();
 
 	for ( i = 0; i < arrPeers.length; i ++ )
 	{
@@ -919,7 +828,7 @@ function purgeDependenciesAndNotifyPeers( unit, error, onDone )
 
 function forwardJoint( ws, objJoint )
 {
-	_network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() ).forEach
+	_network_peer.getAllInboundClientsAndOutboundPeers().forEach
 	(
 		function( client )
 		{
@@ -1589,7 +1498,9 @@ function notifyWatchers( objJoint, source_ws )
 	//
 	_db.query
 	(
-		"SELECT peer FROM watched_light_addresses WHERE address IN( ? )",
+		"SELECT peer \
+		FROM watched_light_addresses \
+		WHERE address IN( ? )",
 		[
 			arrAddresses
 		],
@@ -2027,7 +1938,7 @@ function broadcastJoint( objJoint )
 	}
 
 	//	...
-	_network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() ).forEach
+	_network_peer.getAllInboundClientsAndOutboundPeers().forEach
 	(
 		function( client )
 		{
@@ -2090,7 +2001,7 @@ function checkCatchupLeftovers()
  */
 function requestCatchup( ws )
 {
-	console.log("will request catchup from "+ws.peer);
+	console.log( "will request catchup from " + ws.peer );
 
 	_event_bus.emit( 'catching_up_started' );
 
@@ -3911,32 +3822,11 @@ function _handleMessageRequest( ws, tag, command, params )
 	switch ( command )
 	{
 		case 'heartbeat':
-			var bPaused;
-
-			//	the peer is sending heartbeats, therefore he is awake
-			ws.bSleeping = false;
 
 			//
-			//	true if our timers were paused
-			//	Happens only on android, which suspends timers when the app becomes paused but still keeps network connections
-			//	Handling 'pause' event would've been more straightforward but with preference KeepRunning=false,
-			// 	the event is delayed till resume
+			//	we received a message with command of 'heartbeat'
 			//
-			bPaused = (
-				typeof window !== 'undefined' &&
-				window
-				&&
-				window.cordova &&
-				Date.now() - m_nLastHearbeatWakeTs > _network_consts.PAUSE_TIMEOUT
-			);
-			if ( bPaused )
-			{
-				//	opt out of receiving heartbeats and move the connection into a sleeping state
-				return _network_message.sendResponse( ws, tag, 'sleep' );
-			}
-
-			//	...
-			_network_message.sendResponse( ws, tag );
+			_network_heartbeat.heartbeatAcceptor( ws, tag );
 			break;
 
 		case 'subscribe':
@@ -3962,8 +3852,8 @@ function _handleMessageRequest( ws, tag, command, params )
 			//	*
 			//	make sure we don't subscribe to ourself.
 			//
-			if ( _network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() ).some(
-				function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
+			if ( _network_peer.getAllInboundClientsAndOutboundPeers()
+				.some( function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
 			{
 				if ( ws.bOutbound )
 				{
@@ -5011,7 +4901,7 @@ function start()
 	//
 	setInterval
 	(
-		heartbeat,
+		_network_heartbeat.heartbeatEmitter,
 		3 * 1000 + _network_peer.getRandomInt( 0, 1000 )
 	);
 }

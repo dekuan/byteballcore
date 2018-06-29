@@ -1073,10 +1073,17 @@ function getInboundClients()
 {
 	return m_oWss.clients;
 }
+
 function getOutboundPeers()
 {
 	return m_arrOutboundPeers;
 }
+
+function getAllInboundClientsAndOutboundPeers()
+{
+	return m_oWss.clients.concat( m_arrOutboundPeers );
+}
+
 
 function getAssocConnectingOutboundWebSockets()
 {
@@ -1181,5 +1188,6 @@ exports.startWebSocketServer				= startWebSocketServer;
  */
 exports.getInboundClients				= getInboundClients;
 exports.getOutboundPeers				= getOutboundPeers;
+exports.getAllInboundClientsAndOutboundPeers		= getAllInboundClientsAndOutboundPeers;
 exports.getAssocConnectingOutboundWebSockets		= getAssocConnectingOutboundWebSockets;
 
