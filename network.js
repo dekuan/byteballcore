@@ -90,12 +90,6 @@ function sendAllInboundJustSaying( subject, body )
 
 
 
-
-
-
-
-
-
 //////////////////////////////////////////////////////////////////////
 //	peers
 //////////////////////////////////////////////////////////////////////
@@ -179,63 +173,68 @@ function checkIfHaveEnoughOutboundPeersAndAdd()
  */
 function requestPeers( ws )
 {
-	_network_request.sendRequest( ws, 'get_peers', null, false, _handleNewPeers );
-}
-function _handleNewPeers( ws, request, arrPeerUrls )
-{
-	var arrQueries;
-	var i;
-	var url;
-	var regexp;
-	var host;
-
-	if ( arrPeerUrls.error )
-	{
-		return console.log( 'get_peers failed: ' + arrPeerUrls.error );
-	}
-	if ( ! Array.isArray( arrPeerUrls ) )
-	{
-		return _network_message.sendError( ws, "peer urls is not an array" );
-	}
-
-	//	...
-	arrQueries = [];
-	for ( i = 0; i < arrPeerUrls.length; i++ )
-	{
-		url	= arrPeerUrls[ i ];
-
-		if ( _conf.myUrl && _conf.myUrl.toLowerCase() === url.toLowerCase() )
+	_network_request.sendRequest
+	(
+		ws,
+		'get_peers',
+		null,
+		false,
+		function( ws, request, arrPeerUrls )
 		{
-			continue;
+			var arrQueries;
+			var i;
+			var url;
+			var regexp;
+			var host;
+
+			if ( arrPeerUrls.error )
+			{
+				return console.log( 'get_peers failed: ' + arrPeerUrls.error );
+			}
+			if ( ! Array.isArray( arrPeerUrls ) )
+			{
+				return _network_message.sendError( ws, "peer urls is not an array" );
+			}
+
+			//	...
+			arrQueries = [];
+			for ( i = 0; i < arrPeerUrls.length; i++ )
+			{
+				url	= arrPeerUrls[ i ];
+
+				if ( _conf.myUrl && _conf.myUrl.toLowerCase() === url.toLowerCase() )
+				{
+					continue;
+				}
+
+				//	...
+				regexp	= ( _conf.WS_PROTOCOL === 'wss://' ) ? /^wss:\/\// : /^wss?:\/\//;
+				if ( ! url.match( regexp ) )
+				{
+					console.log( 'ignoring new peer ' + url + ' because of incompatible ws protocol' );
+					continue;
+				}
+
+				host	= _network_peer.getHostByPeer( url );
+				_db.addQuery
+				(
+					arrQueries,
+					"INSERT " + _db.getIgnore() + " INTO peer_hosts (peer_host) VALUES (?)",
+					[ host ]
+				);
+				_db.addQuery
+				(
+					arrQueries,
+					"INSERT " + _db.getIgnore() + " INTO peers (peer_host, peer, learnt_from_peer_host) VALUES(?,?,?)",
+					[ host, url, ws.host ]
+				);
+			}
+
+			//	...
+			_async.series( arrQueries );
 		}
-
-		//	...
-		regexp	= ( _conf.WS_PROTOCOL === 'wss://' ) ? /^wss:\/\// : /^wss?:\/\//;
-		if ( ! url.match( regexp ) )
-		{
-			console.log( 'ignoring new peer ' + url + ' because of incompatible ws protocol' );
-			continue;
-		}
-
-		host	= _network_peer.getHostByPeer( url );
-		_db.addQuery
-		(
-			arrQueries,
-			"INSERT " + _db.getIgnore() + " INTO peer_hosts (peer_host) VALUES (?)",
-			[ host ]
-		);
-		_db.addQuery
-		(
-			arrQueries,
-			"INSERT " + _db.getIgnore() + " INTO peers (peer_host, peer, learnt_from_peer_host) VALUES(?,?,?)",
-			[ host, url, ws.host ]
-		);
-	}
-
-	//	...
-	_async.series( arrQueries );
+	);
 }
-
 
 
 
@@ -263,53 +262,64 @@ function heartbeat()
 	//
 	_network_peer.getInboundClients().concat( _network_peer.getOutboundPeers() ).forEach( function( ws )
 	{
-		var elapsed_since_last_received;
+		var nElapsedSinceLastReceived;
 		var elapsed_since_last_sent_heartbeat;
 
-		if ( ws.bSleeping || ws.readyState !== ws.OPEN )
+		if ( ! ws.bSleeping &&
+			ws.readyState === ws.OPEN )
+		{
+			//	...
+			nElapsedSinceLastReceived	= Date.now() - ws.last_ts;
+			if ( nElapsedSinceLastReceived >= _network_consts.HEARTBEAT_TIMEOUT )
+			{
+				//	>= 10 seconds
+				if ( ws.last_sent_heartbeat_ts && ! bJustResumed )
+				{
+					elapsed_since_last_sent_heartbeat	= Date.now() - ws.last_sent_heartbeat_ts;
+					if ( elapsed_since_last_sent_heartbeat >= _network_consts.HEARTBEAT_RESPONSE_TIMEOUT )
+					{
+						//	>= 60 seconds
+						console.log( 'will disconnect peer ' + ws.peer + ' who was silent for ' + nElapsedSinceLastReceived + 'ms' );
+						ws.close( 1000, 'lost connection' );
+					}
+				}
+				else
+				{
+					ws.last_sent_heartbeat_ts	= Date.now();
+					_network_request.sendRequest
+					(
+						ws,
+						'heartbeat',
+						null,
+						false,
+						function( ws, request, response )
+						{
+							delete ws.last_sent_heartbeat_ts;
+							ws.last_sent_heartbeat_ts = null;
+
+							if ( 'sleep' === response )
+							{
+								//
+								//	the peer doesn't want to be bothered with heartbeats any more,
+								//	but still wants to keep the connection open
+								//
+								ws.bSleeping = true;
+							}
+
+							//
+							//	as soon as the peer sends a heartbeat himself,
+							//	we'll think he's woken up and resume our heartbeats too
+							//
+						}
+					);
+				}
+			}
+		}
+		else
 		{
 			//	web socket is not ready
-			return;
 		}
-
-		//	...
-		elapsed_since_last_received	= Date.now() - ws.last_ts;
-		if ( elapsed_since_last_received < _network_consts.HEARTBEAT_TIMEOUT )
-		{
-			return;
-		}
-
-		if ( ! ws.last_sent_heartbeat_ts || bJustResumed )
-		{
-			ws.last_sent_heartbeat_ts	= Date.now();
-			return _network_request.sendRequest( ws, 'heartbeat', null, false, _handleHeartbeatResponse );
-		}
-
-		//	...
-		elapsed_since_last_sent_heartbeat	= Date.now() - ws.last_sent_heartbeat_ts;
-		if ( elapsed_since_last_sent_heartbeat < _network_consts.HEARTBEAT_RESPONSE_TIMEOUT )
-		{
-			return;
-		}
-
-		//	...
-		console.log( 'will disconnect peer ' + ws.peer + ' who was silent for ' + elapsed_since_last_received + 'ms' );
-		ws.close( 1000, "lost connection" );
 	});
-}
-
-function _handleHeartbeatResponse( ws, request, response )
-{
-	delete ws.last_sent_heartbeat_ts;
-	ws.last_sent_heartbeat_ts = null;
-
-	if ( response === 'sleep' )
-	{
-		//	the peer doesn't want to be bothered with heartbeats any more, but still wants to keep the connection open
-		ws.bSleeping = true;
-	}
-
-	//	as soon as the peer sends a heartbeat himself, we'll think he's woken up and resume our heartbeats too
 }
 
 
@@ -3879,6 +3889,7 @@ function _handleMessageJustSaying( ws, subject, body )
 
 /**
  *	receive a message with type of 'request'
+ *
  *	@param	ws
  *	@param	tag
  *	@param	command
