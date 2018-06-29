@@ -2100,7 +2100,14 @@ function requestCatchup( ws )
 											last_stable_mci	: last_stable_mci,
 											last_known_mci	: last_known_mci
 										};
-										_network_request.sendRequest( ws, 'catchup', params, true, handleCatchupChain );
+										_network_request.sendRequest
+										(
+											ws,
+											'catchup',
+											params,
+											true,
+											_handleCatchupChain
+										);
 									},
 									'wait'
 								);
@@ -2112,9 +2119,7 @@ function requestCatchup( ws )
 		);
 	} );
 }
-
-
-function handleCatchupChain( ws, request, response )
+function _handleCatchupChain( ws, request, response )
 {
 	var catchupChain;
 
@@ -3970,7 +3975,7 @@ function _handleMessageRequest( ws, tag, command, params )
 
 			if ( ! ws.bSubscribed )
 			{
-				return _network_message.sendErrorResponse(ws, tag, "not subscribed, will not serve catchup");
+				return _network_message.sendErrorResponse( ws, tag, "not subscribed, will not serve catchup" );
 			}
 
 			//	...
