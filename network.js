@@ -65,19 +65,16 @@ exports.light_vendor_url = null;
 
 function setMyDeviceProps( device_address, objTempPubkey )
 {
-	m_sMyDeviceAddress	= device_address;
+	m_sMyDeviceAddress		= device_address;
 	m_objMyTempPubkeyPackage	= objTempPubkey;
 }
 
 function sendAllInboundJustSaying( subject, body )
 {
-	_network_peer.getInboundClients().forEach
-	(
-		function( ws )
-		{
-			_network_message.sendMessage( ws, 'justsaying', { subject: subject, body: body } );
-		}
-	);
+	_network_peer.getInboundClients().forEach( function( ws )
+	{
+		_network_message.sendMessage( ws, 'justsaying', { subject: subject, body: body } );
+	});
 }
 
 
@@ -94,9 +91,14 @@ function sendAllInboundJustSaying( subject, body )
 
 
 
-
-
-
+/**
+ *	@public
+ *
+ *	@param command
+ *	@param params
+ *	@param pfnResponseHandler
+ *	@returns {number}
+ */
 function requestFromLightVendor( command, params, pfnResponseHandler )
 {
 	if ( ! exports.light_vendor_url )
@@ -112,6 +114,7 @@ function requestFromLightVendor( command, params, pfnResponseHandler )
 		);
 	}
 
+	//	...
 	_network_peer.findOutboundPeerOrConnect
 	(
 		exports.light_vendor_url,

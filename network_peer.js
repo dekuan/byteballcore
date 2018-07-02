@@ -340,12 +340,20 @@ function findRandomInboundPeer( handleInboundPeer )
 }
 
 
+/**
+ *	@public
+ *
+ *	@param url
+ *	@param onOpen
+ */
 function connectToPeer( url, onOpen )
 {
 	var options;
 	var ws;
 
+	//
 	//	...
+	//
 	addPeer( url );
 
 	//	...
@@ -355,7 +363,7 @@ function connectToPeer( url, onOpen )
 		options.agent	= new socks.Agent
 		(
 			{
-				proxy		:
+				proxy :
 				{
 					ipaddress	: _conf.socksHost,
 					port		: _conf.socksPort,
@@ -364,6 +372,8 @@ function connectToPeer( url, onOpen )
 			},
 			/^wss/i.test( url )
 		);
+
+		//	...
 		console.log( 'Using proxy: ' + _conf.socksHost + ':' + _conf.socksPort );
 	}
 
@@ -371,6 +381,9 @@ function connectToPeer( url, onOpen )
 	ws = options.agent ? new WebSocket( url, options ) : new WebSocket( url );
 	m_oAssocConnectingOutboundWebSockets[ url ] = ws;
 
+	//
+	//	delete from m_oAssocConnectingOutboundWebSockets after 5 seconds
+	//
 	setTimeout
 	(
 		function()
@@ -393,7 +406,9 @@ function connectToPeer( url, onOpen )
 		5000
 	);
 
+	//
 	//	avoid warning
+	//
 	ws.setMaxListeners( 20 );
 	ws.once
 	(
@@ -442,16 +457,27 @@ function connectToPeer( url, onOpen )
 			}
 
 			//	...
-			ws.peer		= url;
-			ws.host		= getHostByPeer( ws.peer );
-			ws.bOutbound	= true;
-			ws.last_ts	= Date.now();
+			ws.peer		= url;				//	peer
+			ws.host		= getHostByPeer( ws.peer );	//	host
+			ws.bOutbound	= true;				//	identify this connection as outbound connection
+			ws.last_ts	= Date.now();			//	record the last timestamp while we connected to this peer
 
 			console.log( 'connected to ' + url + ", host " + ws.host );
+
+			//
+			//	*
+			//	save new peer connection to m_arrOutboundPeers
+			//
 			m_arrOutboundPeers.push( ws );
+
+			//
+			//	send our version information to outbound peer
+			//
 			_network_message.sendVersion( ws );
 
+			//
 			//	I can listen too, this is my url to connect to
+			//
 			if ( _conf.myUrl )
 			{
 				_network_message.sendJustSaying( ws, 'my_url', _conf.myUrl );
@@ -465,12 +491,17 @@ function connectToPeer( url, onOpen )
 				}
 			}
 
+			//
+			//	callback by function onOpen
+			//
 			if ( onOpen )
 			{
 				onOpen( null, ws );
 			}
 
-			//	...
+			//
+			//	broadcast the news that we have connected to the peer.
+			//
 			_event_bus.emit( 'connected', ws );
 			_event_bus.emit( 'open-' + url );
 		}
@@ -522,28 +553,31 @@ function connectToPeer( url, onOpen )
 			err	= e.toString();
 			//	! ws.bOutbound means not connected yet. This is to distinguish connection errors from later errors that occur on open connection
 
-			if ( ! ws.bOutbound && onOpen )
-			{
-				onOpen( err );
-			}
-
+			//
+			//	this is not an outbound connection
+			//
 			if ( ! ws.bOutbound )
 			{
-				_event_bus.emit( 'open-' + url, err );
+				if ( onOpen )
+				{
+					//	execute callback by error
+					onOpen( err );
+				}
+				else
+				{
+					//	broadcast this error
+					_event_bus.emit( 'open-' + url, err );
+				}
 			}
 		}
 	);
 
 	//
-	//	...
+	//	set callback for receiving messages from this peer
 	//
 	if ( 'function' === typeof m_pfnOnWebSocketMessage )
 	{
-		ws.on
-		(
-			'message',
-			m_pfnOnWebSocketMessage
-		);
+		ws.on( 'message', m_pfnOnWebSocketMessage );
 	}
 
 	//	...
@@ -667,12 +701,20 @@ function addPeerHost( host, onDone )
 	);
 }
 
+
+/**
+ *	@public
+ *	save peer and it's host to database
+ *
+ *	@param peer
+ */
 function addPeer( peer )
 {
 	var host;
 
 	if ( m_oAssocKnownPeers[ peer ] )
 	{
+		//	already added before
 		return;
 	}
 
@@ -680,7 +722,10 @@ function addPeer( peer )
 	m_oAssocKnownPeers[ peer ] = true;
 	host = getHostByPeer( peer );
 
-	//	...
+	//
+	//	1, Add host to [peer_hosts]
+	//	2, Add host and peer to [peers]
+	//
 	addPeerHost
 	(
 		host,
@@ -743,6 +788,13 @@ function getPeerWebSocket( peer )
 	return null;
 }
 
+
+/**
+ *
+ *	@param url
+ *	@param onOpen
+ *	@returns {*}
+ */
 function findOutboundPeerOrConnect( url, onOpen )
 {
 	var ws;
@@ -764,7 +816,11 @@ function findOutboundPeerOrConnect( url, onOpen )
 		return onOpen( null, ws );
 	}
 
-	//	check if we are already connecting to the peer
+	//
+	//	check if we are already connecting to the peer before
+	//	use m_oAssocConnectingOutboundWebSockets to avoid duplicated connections
+	//	while we sent the connection request to one outbound peer and were waiting for response.
+	//
 	ws = m_oAssocConnectingOutboundWebSockets[ url ];
 	if ( ws )
 	{
@@ -775,7 +831,7 @@ function findOutboundPeerOrConnect( url, onOpen )
 			'open-' + url,
 			function secondOnOpen( err )
 			{
-				console.log('second open '+url+", err="+err);
+				console.log( 'second open ' + url + ', err=' + err );
 
 				if ( err )
 				{

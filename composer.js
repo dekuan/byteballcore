@@ -911,13 +911,7 @@ function composeJoint( params )
 				//	lock
 				_mutex.lock
 				(
-					arrFromAddresses.map
-					(
-						function( from_address )
-						{
-							return 'c-' + from_address;
-						}
-					),
+					arrFromAddresses.map( function( from_address ) { return 'c-' + from_address; } ),
 					function( unlock )
 					{
 						unlock_callback = unlock;
@@ -929,7 +923,9 @@ function composeJoint( params )
 			{
 				//	lightProps
 				if ( ! _conf.bLight )
+				{
 					return cb();
+				}
 
 				//	...
 				var network	= require( './network.js' );
