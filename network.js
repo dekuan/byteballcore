@@ -233,6 +233,7 @@ function _sendJoint( ws, objJoint, tag )
 }
 
 /**
+ * 	@public
  *	sent by light clients to their vendors
  */
 function postJointToLightVendor( objJoint, pfnHandleResponse )
@@ -1827,7 +1828,9 @@ function _waitTillIdle( onIdle )
  */
 function broadcastJoint( objJoint )
 {
+	//
 	//	the joint was already posted to light vendor before saving
+	//
 	if ( _conf.bLight )
 	{
 		return;
@@ -1861,9 +1864,9 @@ function _checkCatchupLeftovers()
 {
 	_db.query
 	(
-		"SELECT 1 FROM hash_tree_balls \n\
-		UNION \n\
-		SELECT 1 FROM catchup_chain_balls \n\
+		"SELECT 1 FROM hash_tree_balls \
+		UNION \
+		SELECT 1 FROM catchup_chain_balls \
 		LIMIT 1",
 		function( rows )
 		{
@@ -2067,7 +2070,14 @@ function _handleCatchupChain( ws, request, response )
 
 function _requestNextHashTree( ws )
 {
+	//
+	//	...
+	//
 	_event_bus.emit( 'catchup_next_hash_tree' );
+
+	//
+	//	...
+	//
 	_db.query
 	(
 		"SELECT ball FROM catchup_chain_balls ORDER BY member_index LIMIT 2",
@@ -2200,6 +2210,7 @@ function _waitTillHashTreeFullyProcessedAndRequestNext( ws )
 
 	}, 1000 );
 }
+
 
 
 
@@ -2677,6 +2688,8 @@ function requestUnfinishedPastUnitsOfPrivateChains( arrChains, onDone )
 }
 
 
+
+
 /**
  *	@public
  *
@@ -2745,6 +2758,7 @@ function requestHistoryFor( arrUnits, arrAddresses, onDone )
 	);
 }
 
+
 /**
  *	@public
  *
@@ -2765,12 +2779,16 @@ function requestProofsOfJointsIfNewOrUnstable( arrUnits, onDone )
 		function( arrNewOrUnstableUnits )
 		{
 			if ( arrNewOrUnstableUnits.length === 0 )
+			{
 				return onDone();
+			}
 
+			//	...
 			requestHistoryFor( arrUnits, [], onDone );
 		}
 	);
 }
+
 
 /**
  *	* light only
@@ -2796,21 +2814,21 @@ function _requestUnfinishedPastUnitsOfSavedPrivateElements()
 						return unlock();
 					}
 
+					//	...
 					_breadcrumbs.add( rows.length + " unhandled private payments" );
 					arrChains	= [];
 
-					rows.forEach
-					(
-						function( row )
-						{
-							var arrPrivateElements;
+					//	...
+					rows.forEach( function( row )
+					{
+						var arrPrivateElements;
 
-							//	...
-							arrPrivateElements = JSON.parse( row.json );
-							arrChains.push( arrPrivateElements );
-						}
-					);
+						//	...
+						arrPrivateElements = JSON.parse( row.json );
+						arrChains.push( arrPrivateElements );
+					});
 
+					//	...
 					requestUnfinishedPastUnitsOfPrivateChains
 					(
 						arrChains,
@@ -2830,6 +2848,7 @@ function _requestUnfinishedPastUnitsOfSavedPrivateElements()
 		}
 	);
 }
+
 
 /**
  *	* light only
@@ -2901,6 +2920,7 @@ function _checkThatEachChainElementIncludesThePrevious( arrPrivateElements, hand
 		}
 	);
 }
+
 
 /**
  *	* light only
@@ -3013,21 +3033,18 @@ function _sendStoredDeviceMessages( ws, device_address )
 		],
 		function( rows )
 		{
-			rows.forEach
-			(
-				function( row )
-				{
-					_network_message.sendJustSaying
-					(
-						ws,
-						'hub/message',
-						{
-							message_hash	: row.message_hash,
-							message		: JSON.parse( row.message )
-						}
-					);
-				}
-			);
+			rows.forEach( function( row )
+			{
+				_network_message.sendJustSaying
+				(
+					ws,
+					'hub/message',
+					{
+						message_hash	: row.message_hash,
+						message		: JSON.parse( row.message )
+					}
+				);
+			});
 
 			//	...
 			_network_message.sendInfo( ws, rows.length + " messages sent" );
@@ -3098,7 +3115,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'new_version':
+			//
 			//	a new version is available
+			//
 			if ( ! body )
 			{
 				return;
@@ -3162,7 +3181,7 @@ function _handleMessageJustSaying( ws, subject, body )
 			_db.query
 			(
 				"SELECT 1 FROM archived_joints \
-				WHERE unit=? AND reason='uncovered'",
+				WHERE unit = ? AND reason = 'uncovered'",
 				[
 					objJoint.unit.unit
 				],
@@ -3427,7 +3446,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'hub/login':
-			// I'm a hub, the peer wants to authenticate
+			//
+			//	I'm a hub, the peer wants to authenticate
+			//
 			var objLogin;
 			var finishLogin;
 
@@ -3481,7 +3502,7 @@ function _handleMessageJustSaying( ws, subject, body )
 
 			_db.query
 			(
-				"SELECT 1 FROM devices WHERE device_address=?",
+				"SELECT 1 FROM devices WHERE device_address = ?",
 				[
 					ws.device_address
 				],
@@ -3539,7 +3560,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'hub/refresh':
+			//
 			//	I'm a hub, the peer wants to download new messages
+			//
 			if ( ! _conf.bServeAsHub )
 			{
 				return _network_message.sendError( ws, "I'm not a hub" );
@@ -3554,7 +3577,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'hub/delete':
+			//
 			//	I'm a hub, the peer wants to remove a message that he's just handled
+			//
 			var message_hash;
 
 			if ( ! _conf.bServeAsHub )
@@ -3603,7 +3628,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			_event_bus.emit( "message_from_hub", ws, subject, body );
 			break;
 
+		//
 		//	I'm light client
+		//
 		case 'light/have_updates':
 			if ( ! _conf.bLight )
 			{
@@ -3618,7 +3645,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			_event_bus.emit( "message_for_light", ws, subject, body );
 			break;
 
+		//
 		//	I'm light vendor
+		//
 		case 'light/new_address_to_watch':
 			var address;
 
@@ -3649,12 +3678,14 @@ function _handleMessageJustSaying( ws, subject, body )
 				{
 					_network_message.sendInfo( ws, "now watching " + address );
 
+					//
 					//	check if we already have something on this address
+					//
 					_db.query
 					(
-						"SELECT unit, is_stable FROM unit_authors JOIN units USING(unit) WHERE address=? \n\
-						UNION \n\
-						SELECT unit, is_stable FROM outputs JOIN units USING(unit) WHERE address=? \n\
+						"SELECT unit, is_stable FROM unit_authors JOIN units USING(unit) WHERE address=? \
+						UNION \
+						SELECT unit, is_stable FROM outputs JOIN units USING(unit) WHERE address=? \
 						ORDER BY is_stable LIMIT 10",
 						[
 							address,
@@ -3709,7 +3740,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			if ( ! ws.bLoggingIn &&
 				! ws.bLoggedIn )
 			{
+				//
 				//	accept from hub only
+				//
 				return;
 			}
 
@@ -3722,7 +3755,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			if ( ! ws.bLoggingIn &&
 				! ws.bLoggedIn )
 			{
+				//
 				//	accept from hub only
+				//
 				return;
 			}
 
