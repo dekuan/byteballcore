@@ -91,146 +91,7 @@ function sendAllInboundJustSaying( subject, body )
 //////////////////////////////////////////////////////////////////////
 
 
-/**
- *	check and add peers
- */
-function checkIfHaveEnoughOutboundPeersAndAdd()
-{
-	var arrOutboundPeerUrls;
 
-	//	...
-	arrOutboundPeerUrls = _network_peer.getOutboundPeers().map( function( ws ) { return ws.peer; } );
-
-	//
-	//	select peers good_joints > 0 and ...
-	//
-	_db.query
-	(
-		"SELECT peer FROM peers JOIN peer_hosts USING( peer_host ) \
-		WHERE count_new_good_joints > 0 \
-			AND count_invalid_joints / count_new_good_joints < ? \
-			AND peer IN( ? )",
-		[
-			_conf.MAX_TOLERATED_INVALID_RATIO,
-			( arrOutboundPeerUrls.length > 0 ) ? arrOutboundPeerUrls : null
-		],
-		function( rows )
-		{
-			var count_good_peers;
-			var arrGoodPeerUrls;
-			var i;
-			var ws;
-
-			//	...
-			count_good_peers = rows.length;
-			if ( count_good_peers >= _conf.MIN_COUNT_GOOD_PEERS )
-			{
-				//	larger then limitation
-				return;
-			}
-			if ( count_good_peers === 0 )
-			{
-				//	nobody trusted enough to ask for new peers, can't do anything
-				return;
-			}
-
-			//
-			//	good peers
-			//
-			arrGoodPeerUrls	= rows.map
-			(
-				function( row )
-				{
-					return row.peer;
-				}
-			);
-
-			for ( i = 0; i < _network_peer.getOutboundPeers().length; i++ )
-			{
-				ws = _network_peer.getOutboundPeers()[ i ];
-				if ( arrGoodPeerUrls.indexOf( ws.peer ) !== -1 )
-				{
-					//
-					//	peer was not found in _network_peer.getOutboundPeers()
-					//
-					//	* try to send request to get peers
-					//
-					console.log( "****** peer was not found in _network_peer.getOutboundPeers(), * try to send request to get peers" );
-					requestPeers( ws );
-				}
-			}
-		}
-	);
-}
-
-
-/**
- *	send request for getting peers
- */
-function requestPeers( ws )
-{
-	_network_request.sendRequest
-	(
-		ws,
-		'get_peers',
-		null,
-		false,
-		function( ws, request, arrPeerUrls )
-		{
-			var arrQueries;
-			var i;
-			var url;
-			var regexp;
-			var host;
-
-			if ( arrPeerUrls.error )
-			{
-				return console.log( 'get_peers failed: ' + arrPeerUrls.error );
-			}
-			if ( ! Array.isArray( arrPeerUrls ) )
-			{
-				return _network_message.sendError( ws, "peer urls is not an array" );
-			}
-
-			//	...
-			arrQueries = [];
-			for ( i = 0; i < arrPeerUrls.length; i++ )
-			{
-				url	= arrPeerUrls[ i ];
-
-				if ( _conf.myUrl && _conf.myUrl.toLowerCase() === url.toLowerCase() )
-				{
-					continue;
-				}
-
-				//	...
-				regexp	= ( _conf.WS_PROTOCOL === 'wss://' ) ? /^wss:\/\// : /^wss?:\/\//;
-				if ( ! url.match( regexp ) )
-				{
-					console.log( 'ignoring new peer ' + url + ' because of incompatible ws protocol' );
-					continue;
-				}
-
-				host	= _network_peer.getHostByPeer( url );
-				_db.addQuery
-				(
-					arrQueries,
-					"INSERT " + _db.getIgnore() + " INTO peer_hosts (peer_host) VALUES (?)",
-					[ host ]
-				);
-				_db.addQuery
-				(
-					arrQueries,
-					"INSERT " + _db.getIgnore() + " INTO peers (peer_host, peer, learnt_from_peer_host) VALUES(?,?,?)",
-					[ host, url, ws.host ]
-				);
-			}
-
-			//	...
-			_async.series( arrQueries );
-		}
-	);
-}
 
 
 
@@ -275,7 +136,7 @@ function requestFromLightVendor( command, params, pfnResponseHandler )
 }
 
 
-function printConnectionStatus()
+function _printConnectionStatus()
 {
 	console.log
 	(
@@ -291,7 +152,7 @@ function printConnectionStatus()
 /**
  *	subscribe data from others
  */
-function subscribe( ws )
+function _subscribe( ws )
 {
 	//
 	//	this is to detect self-connect
@@ -325,7 +186,7 @@ function subscribe( ws )
 
 					if ( response.error )
 					{
-						console.log( "network::subscribe, occurred a error: ", response.error );
+						console.log( "network::_subscribe, occurred a error: ", response.error );
 						return;
 					}
 
@@ -359,7 +220,7 @@ function subscribe( ws )
 /**
  *	sent as justsaying or as response to a request
  */
-function sendJoint( ws, objJoint, tag )
+function _sendJoint( ws, objJoint, tag )
 {
 	console.log( 'sending joint identified by unit ' + objJoint.unit.unit + ' to', ws.peer );
 
@@ -388,13 +249,13 @@ function postJointToLightVendor( objJoint, pfnHandleResponse )
 	);
 }
 
-function sendFreeJoints( ws )
+function _sendFreeJoints( ws )
 {
 	_storage.readFreeJoints
 	(
 		function( objJoint )
 		{
-			sendJoint( ws, objJoint );
+			_sendJoint( ws, objJoint );
 		},
 		function()
 		{
@@ -403,14 +264,14 @@ function sendFreeJoints( ws )
 	);
 }
 
-function sendJointsSinceMci( ws, mci )
+function _sendJointsSinceMci( ws, mci )
 {
 	_joint_storage.readJointsSinceMci
 	(
 		mci,
 		function( objJoint )
 		{
-			sendJoint( ws, objJoint );
+			_sendJoint( ws, objJoint );
 		},
 		function()
 		{
@@ -419,7 +280,7 @@ function sendJointsSinceMci( ws, mci )
 	);
 }
 
-function requestFreeJointsFromAllOutboundPeers()
+function _requestFreeJointsFromAllOutboundPeers()
 {
 	var i;
 
@@ -429,7 +290,7 @@ function requestFreeJointsFromAllOutboundPeers()
 	}
 }
 
-function requestNewJoints( ws )
+function _requestNewJoints( ws )
 {
 	_storage.readLastMainChainIndex
 	(
@@ -440,14 +301,17 @@ function requestNewJoints( ws )
 	);
 }
 
-function rerequestLostJoints()
+function _reRequestLostJoints()
 {
-	//	console.log("rerequestLostJoints");
+	//	console.log("_reRequestLostJoints");
 	if ( m_bCatchingUp )
 	{
 		return;
 	}
 
+	//
+	//	select * from depends_on_unit, unhandled_joints ...
+	//
 	_joint_storage.findLostJoints
 	(
 		function( arrUnits )
@@ -465,14 +329,14 @@ function rerequestLostJoints()
 
 					//	...
 					console.log( "found next peer " + ws.peer );
-					requestJoints
+					_requestJoints
 					(
 						ws,
 						arrUnits.filter
 						(
 							function( unit )
 							{
-								return ( ! m_oAssocUnitsInWork[ unit ] && ! havePendingJointRequest( unit ) );
+								return ( ! m_oAssocUnitsInWork[ unit ] && ! _havePendingJointRequest( unit ) );
 							}
 						)
 					);
@@ -482,7 +346,7 @@ function rerequestLostJoints()
 	);
 }
 
-function requestNewMissingJoints( ws, arrUnits )
+function _requestNewMissingJoints( ws, arrUnits )
 {
 	var arrNewUnits;
 
@@ -497,7 +361,7 @@ function requestNewMissingJoints( ws, arrUnits )
 			{
 				return cb();
 			}
-			if ( havePendingJointRequest( unit ) )
+			if ( _havePendingJointRequest( unit ) )
 			{
 				console.log( "unit " + unit + " was already requested" );
 				return cb();
@@ -541,19 +405,19 @@ function requestNewMissingJoints( ws, arrUnits )
 			(
 				function( unit )
 				{
-					return ( ! m_oAssocUnitsInWork[ unit ] && ! havePendingJointRequest( unit ) );
+					return ( ! m_oAssocUnitsInWork[ unit ] && ! _havePendingJointRequest( unit ) );
 				}
 			);
 
 			if ( arrNewUnits.length > 0 )
 			{
-				requestJoints( ws, arrNewUnits );
+				_requestJoints( ws, arrNewUnits );
 			}
 		}
 	);
 }
 
-function requestJoints( ws, arrUnits )
+function _requestJoints( ws, arrUnits )
 {
 	if ( arrUnits.length === 0 )
 	{
@@ -595,13 +459,12 @@ function requestJoints( ws, arrUnits )
 				'get_joint',
 				unit,
 				true,
-				handleResponseToJointRequest
+				_handleResponseToJointRequest
 			);
 		}
 	);
 }
-
-function handleResponseToJointRequest( ws, request, response )
+function _handleResponseToJointRequest( ws, request, response )
 {
 	var unit;
 	var objJoint;
@@ -630,7 +493,7 @@ function handleResponseToJointRequest( ws, request, response )
 			{
 				return console.log( "unit " + unit + " does not exist" );
 			}
-			//	return purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist");
+			//	return _purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist");
 
 			_db.query
 			(
@@ -641,7 +504,7 @@ function handleResponseToJointRequest( ws, request, response )
 					if ( rows.length === 0 )
 					{
 						return console.log("unit "+unit+" does not exist (catching up)");
-						//	return purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist (catching up)");
+						//	return _purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist (catching up)");
 					}
 
 					_network_peer.findNextPeer
@@ -650,7 +513,7 @@ function handleResponseToJointRequest( ws, request, response )
 						function( next_ws )
 						{
 							_breadcrumbs.add( "found next peer to reroute joint_not_found " + unit + ": " + next_ws.peer );
-							requestJoints( next_ws, [ unit ] );
+							_requestJoints( next_ws, [ unit ] );
 						}
 					);
 				}
@@ -688,10 +551,10 @@ function handleResponseToJointRequest( ws, request, response )
 		delete objJoint.skiplist_units;
 	}
 
-	_conf.bLight ? handleLightOnlineJoint( ws, objJoint ) : handleOnlineJoint( ws, objJoint );
+	_conf.bLight ? _handleLightOnlineJoint( ws, objJoint ) : handleOnlineJoint( ws, objJoint );
 }
 
-function havePendingRequest( command )
+function _havePendingRequest( command )
 {
 	var arrPeers;
 	var i;
@@ -716,7 +579,7 @@ function havePendingRequest( command )
 	return false;
 }
 
-function havePendingJointRequest( unit )
+function _havePendingJointRequest( unit )
 {
 	var arrPeers;
 	var i;
@@ -746,7 +609,7 @@ function havePendingJointRequest( unit )
 /**
  *	We may receive a reference to a nonexisting unit in parents. We are not going to keep the referencing joint forever.
  */
-function purgeJunkUnhandledJoints()
+function _purgeJunkUnhandledJoints()
 {
 	if ( m_bCatchingUp || Date.now() - m_nComingOnlineTime < 3600*1000 )
 	{
@@ -766,7 +629,7 @@ function purgeJunkUnhandledJoints()
 	);
 }
 
-function purgeJointAndDependenciesAndNotifyPeers( objJoint, error, onDone )
+function _purgeJointAndDependenciesAndNotifyPeers( objJoint, error, onDone )
 {
 	if ( error.indexOf( 'is not stable in view of your parents' ) >= 0 )
 	{
@@ -795,14 +658,19 @@ function purgeJointAndDependenciesAndNotifyPeers( objJoint, error, onDone )
 			ws = _network_peer.getPeerWebSocket( peer );
 			if ( ws )
 			{
-				_network_message.sendErrorResult( ws, purged_unit, "error on (indirect) parent unit " + objJoint.unit.unit + ": " + error );
+				_network_message.sendErrorResult
+				(
+					ws,
+					purged_unit,
+					"error on (indirect) parent unit " + objJoint.unit.unit + ": " + error
+				);
 			}
 		},
 		onDone
 	);
 }
 
-function purgeDependenciesAndNotifyPeers( unit, error, onDone )
+function _purgeDependenciesAndNotifyPeers( unit, error, onDone )
 {
 	_joint_storage.purgeDependencies
 	(
@@ -826,7 +694,7 @@ function purgeDependenciesAndNotifyPeers( unit, error, onDone )
 	);
 }
 
-function forwardJoint( ws, objJoint )
+function _forwardJoint( ws, objJoint )
 {
 	_network_peer.getAllInboundClientsAndOutboundPeers().forEach
 	(
@@ -834,13 +702,13 @@ function forwardJoint( ws, objJoint )
 		{
 			if ( client !== ws && client.bSubscribed )
 			{
-				sendJoint( client, objJoint );
+				_sendJoint( client, objJoint );
 			}
 		}
 	);
 }
 
-function handleJoint( ws, objJoint, bSaved, callbacks )
+function _handleJoint( ws, objJoint, bSaved, callbacks )
 {
 	var unit;
 	var validate;
@@ -867,7 +735,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 					callbacks.ifUnitError( error );
 					//	throw Error(error);
 
-					purgeJointAndDependenciesAndNotifyPeers
+					_purgeJointAndDependenciesAndNotifyPeers
 					(
 						objJoint,
 						error,
@@ -879,7 +747,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 
 					if ( ws && error !== 'authentifier verification failed' && ! error.match( /bad merkle proof at path/ ) )
 					{
-						writeEvent('invalid', ws.host);
+						_writeEvent('invalid', ws.host);
 					}
 
 					if ( objJoint.unsigned )
@@ -907,7 +775,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 
 					if ( ws )
 					{
-						writeEvent( 'invalid', ws.host );
+						_writeEvent( 'invalid', ws.host );
 					}
 					if ( objJoint.unsigned )
 					{
@@ -920,8 +788,8 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 					//	TODO
 					//	memory lack ?
 					//
-					throw Error( error );
 					console.log( "############################## transient error " + error );
+					throw Error( error );
 					delete m_oAssocUnitsInWork[ unit ];
 				},
 				ifNeedHashTree : function()
@@ -947,9 +815,10 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 						throw Error( "ifOk() unsigned" );
 					}
 
-					//	...
+					//
+					//	###
+					//
 					_profilerex.begin( "#saveJoint" );
-
 					_writer.saveJoint
 					(
 						objJoint,
@@ -966,7 +835,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 
 							if ( ws )
 							{
-								writeEvent
+								_writeEvent
 								(
 									( objValidationState.sequence !== 'good' ) ? 'nonserial' : 'new_good',
 									ws.host
@@ -977,7 +846,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 							//	notify all watchers
 							//	....
 							//
-							notifyWatchers( objJoint, ws );
+							_notifyWatchers( objJoint, ws );
 
 							//
 							//
@@ -1038,7 +907,7 @@ function handleJoint( ws, objJoint, bSaved, callbacks )
 /**
  *	handle joint posted to me by a light client
  */
-function handlePostedJoint( ws, objJoint, onDone )
+function _handlePostedJoint( ws, objJoint, onDone )
 {
 	var unit;
 
@@ -1052,7 +921,7 @@ function handlePostedJoint( ws, objJoint, onDone )
 	delete objJoint.unit.main_chain_index;
 
 	//	...
-	handleJoint
+	_handleJoint
 	(
 		ws,
 		objJoint,
@@ -1088,7 +957,7 @@ function handlePostedJoint( ws, objJoint, onDone )
 					//
 					//	@@@@@ JOINT
 					//
-					forwardJoint( ws, objJoint );
+					_forwardJoint( ws, objJoint );
 				}
 
 				delete m_oAssocUnitsInWork[ unit ];
@@ -1107,12 +976,12 @@ function handlePostedJoint( ws, objJoint, onDone )
 
 				//	...
 				onDone( "known" );
-				writeEvent( 'known_good', ws.host );
+				_writeEvent( 'known_good', ws.host );
 			},
 			ifKnownBad : function()
 			{
 				onDone( "known bad" );
-				writeEvent( 'known_bad', ws.host );
+				_writeEvent( 'known_bad', ws.host );
 			},
 			ifKnownUnverified : function()
 			{
@@ -1124,6 +993,13 @@ function handlePostedJoint( ws, objJoint, onDone )
 	);
 }
 
+/**
+ *	@public
+ *
+ *	@param ws
+ *	@param objJoint
+ *	@param onDone
+ */
 function handleOnlineJoint( ws, objJoint, onDone )
 {
 	var unit;
@@ -1138,7 +1014,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 	delete objJoint.unit.main_chain_index;
 
 	//	...
-	handleJoint
+	_handleJoint
 	(
 		ws,
 		objJoint,
@@ -1159,11 +1035,11 @@ function handleOnlineJoint( ws, objJoint, onDone )
 			{
 				if ( ! m_bCatchingUp && ! m_bWaitingForCatchupChain )
 				{
-					requestCatchup( ws );
+					_requestCatchup( ws );
 				}
 
 				//
-				//	we are not saving the joint so that in case requestCatchup() fails,
+				//	we are not saving the joint so that in case _requestCatchup() fails,
 				//	the joint will be requested again via findLostJoints,
 				//	which will trigger another attempt to request catchup
 				//
@@ -1176,7 +1052,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 				{
 					delete m_oAssocUnitsInWork[unit];
 				});
-				requestNewMissingJoints( ws, arrMissingUnits );
+				_requestNewMissingJoints( ws, arrMissingUnits );
 				onDone();
 			},
 			ifOk : function()
@@ -1189,14 +1065,14 @@ function handleOnlineJoint( ws, objJoint, onDone )
 					//
 					//	@@@@@ JOINT
 					//
-					forwardJoint( ws, objJoint );
+					_forwardJoint( ws, objJoint );
 				}
 
 				//	...
 				delete m_oAssocUnitsInWork[ unit ];
 
 				//	wake up other joints that depend on me
-				findAndHandleJointsThatAreReady( unit );
+				_findAndHandleJointsThatAreReady( unit );
 				onDone();
 			},
 			ifOkUnsigned : function()
@@ -1213,13 +1089,13 @@ function handleOnlineJoint( ws, objJoint, onDone )
 
 				//	...
 				_network_message.sendResult( ws, { unit: unit, result: 'known' } );
-				writeEvent( 'known_good', ws.host );
+				_writeEvent( 'known_good', ws.host );
 				onDone();
 			},
 			ifKnownBad : function()
 			{
 				_network_message.sendResult( ws, { unit : unit, result : 'known_bad' } );
-				writeEvent( 'known_bad', ws.host );
+				_writeEvent( 'known_bad', ws.host );
 				if ( objJoint.unsigned )
 				{
 					_event_bus.emit( "validated-" + unit, false );
@@ -1238,7 +1114,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 	);
 }
 
-function handleSavedJoint( objJoint, creation_ts, peer )
+function _handleSavedJoint( objJoint, creation_ts, peer )
 {
 	var unit	= objJoint.unit.unit;
 	var ws		= _network_peer.getPeerWebSocket( peer );
@@ -1249,7 +1125,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 	}
 
 	//	...
-	handleJoint
+	_handleJoint
 	(
 		ws,
 		objJoint,
@@ -1296,7 +1172,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 						);
 						if ( ws )
 						{
-							requestNewMissingJoints( ws, arrMissingUnits );
+							_requestNewMissingJoints( ws, arrMissingUnits );
 						}
 						else
 						{
@@ -1305,7 +1181,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 								null,
 								function( next_ws )
 								{
-									requestNewMissingJoints( next_ws, arrMissingUnits );
+									_requestNewMissingJoints( next_ws, arrMissingUnits );
 								}
 							);
 						}
@@ -1330,7 +1206,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 					//
 					//	@@@@@ JOINT
 					//
-					forwardJoint( ws, objJoint );
+					_forwardJoint( ws, objJoint );
 				}
 
 				_joint_storage.removeUnhandledJointAndDependencies
@@ -1341,7 +1217,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 						delete m_oAssocUnitsInWork[ unit ];
 
 						//	wake up other saved joints that depend on me
-						findAndHandleJointsThatAreReady( unit );
+						_findAndHandleJointsThatAreReady( unit );
 					}
 				);
 			},
@@ -1358,7 +1234,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 		ifKnownBad : function(){},
 		ifNew : function()
 		{
-			//	that's ok: may be simultaneously selected by readDependentJointsThatAreReady and deleted by purgeJunkUnhandledJoints when we wake up after sleep
+			//	that's ok: may be simultaneously selected by readDependentJointsThatAreReady and deleted by _purgeJunkUnhandledJoints when we wake up after sleep
 			delete m_oAssocUnitsInWork[unit];
 			console.log("new in handleSavedJoint: "+unit);
 			//	throw Error("new in handleSavedJoint: "+unit);
@@ -1366,7 +1242,7 @@ function handleSavedJoint( objJoint, creation_ts, peer )
 	});
 }
 
-function handleLightOnlineJoint( ws, objJoint )
+function _handleLightOnlineJoint( ws, objJoint )
 {
 	//	the lock ensures that we do not overlap with history processing which might also write new joints
 	_mutex.lock
@@ -1374,14 +1250,14 @@ function handleLightOnlineJoint( ws, objJoint )
 		[ "light_joints" ],
 		function( unlock )
 		{
-			_breadcrumbs.add( 'got light_joints for handleLightOnlineJoint ' + objJoint.unit.unit );
+			_breadcrumbs.add( 'got light_joints for _handleLightOnlineJoint ' + objJoint.unit.unit );
 			handleOnlineJoint
 			(
 				ws,
 				objJoint,
 				function()
 				{
-					_breadcrumbs.add('handleLightOnlineJoint done');
+					_breadcrumbs.add('_handleLightOnlineJoint done');
 					unlock();
 				}
 			);
@@ -1389,11 +1265,23 @@ function handleLightOnlineJoint( ws, objJoint )
 	);
 }
 
+
+/**
+ *	@public
+ *
+ *	@param _arrWatchedAddresses
+ */
 function setWatchedAddresses( _arrWatchedAddresses )
 {
 	m_arrWatchedAddresses = _arrWatchedAddresses;
 }
 
+
+/**
+ *	@public
+ *
+ *	@param address
+ */
 function addWatchedAddress( address )
 {
 	m_arrWatchedAddresses.push( address );
@@ -1401,9 +1289,11 @@ function addWatchedAddress( address )
 
 
 /**
- *	if any of the watched addresses are affected, notifies:  1. own UI  2. light clients
+ *	if any of the watched addresses are affected, notifies:
+ *	1. own UI
+ *	2. light clients
  */
-function notifyWatchers( objJoint, source_ws )
+function _notifyWatchers( objJoint, source_ws )
 {
 	var objUnit;
 	var arrAddresses;
@@ -1415,10 +1305,7 @@ function notifyWatchers( objJoint, source_ws )
 
 	//	...
 	objUnit		= objJoint.unit;
-	arrAddresses	= objUnit.authors.map( function( author )
-				{
-					return author.address;
-				});
+	arrAddresses	= objUnit.authors.map( function( author ) { return author.address; } );
 
 	if ( ! objUnit.messages )
 	{
@@ -1523,7 +1410,7 @@ function notifyWatchers( objJoint, source_ws )
 					ws = _network_peer.getPeerWebSocket( row.peer );
 					if ( ws && ws.readyState === ws.OPEN && ws !== source_ws )
 					{
-						sendJoint( ws, objJoint );
+						_sendJoint( ws, objJoint );
 					}
 				}
 			);
@@ -1532,7 +1419,7 @@ function notifyWatchers( objJoint, source_ws )
 }
 
 
-function notifyWatchersAboutStableJoints( mci )
+function _notifyWatchersAboutStableJoints( mci )
 {
 	//
 	//	the event was emitted from inside mysql transaction, make sure it completes so that the changes are visible
@@ -1551,8 +1438,8 @@ function notifyWatchersAboutStableJoints( mci )
 			unlock();
 
 			//	...
-			notifyLocalWatchedAddressesAboutStableJoints( mci );
-			console.log( "notifyWatchersAboutStableJoints " + mci );
+			_notifyLocalWatchedAddressesAboutStableJoints( mci );
+			console.log( "_notifyWatchersAboutStableJoints " + mci );
 
 			if ( mci <= 1 )
 			{
@@ -1580,7 +1467,7 @@ function notifyWatchersAboutStableJoints( mci )
 							}
 
 							//	...
-							notifyLightClientsAboutStableJoints( prev_last_ball_mci, last_ball_mci );
+							_notifyLightClientsAboutStableJoints( prev_last_ball_mci, last_ball_mci );
 						}
 					);
 				}
@@ -1595,7 +1482,7 @@ function notifyWatchersAboutStableJoints( mci )
  *	@param	from_mci
  *	@param	to_mci
  */
-function notifyLightClientsAboutStableJoints( from_mci, to_mci )
+function _notifyLightClientsAboutStableJoints( from_mci, to_mci )
 {
 	//
 	//	watched_light_addresses
@@ -1646,7 +1533,7 @@ function notifyLightClientsAboutStableJoints( from_mci, to_mci )
 }
 
 
-function notifyLocalWatchedAddressesAboutStableJoints( mci )
+function _notifyLocalWatchedAddressesAboutStableJoints( mci )
 {
 	function handleRows( rows )
 	{
@@ -1668,7 +1555,7 @@ function notifyLocalWatchedAddressesAboutStableJoints( mci )
 				function( row )
 				{
 					_event_bus.emit( 'my_stable-' + row.unit );
-					console.log( "notifyLocalWatchedAddressesAboutStableJoints, handleRows, emit event: my_stable-" + row.unit );
+					console.log( "_notifyLocalWatchedAddressesAboutStableJoints, handleRows, emit event: my_stable-" + row.unit );
 				}
 			);
 		}
@@ -1715,6 +1602,10 @@ function notifyLocalWatchedAddressesAboutStableJoints( mci )
 }
 
 
+/**
+ *	@public
+ *	@param address
+ */
 function addLightWatchedAddress( address )
 {
 	if ( ! _conf.bLight || ! exports.light_vendor_url)
@@ -1744,7 +1635,7 @@ function addLightWatchedAddress( address )
  *
  *	@param forceFlushing
  */
-function flushEvents( forceFlushing )
+function _flushEvents( forceFlushing )
 {
 	var arrQueryParams;
 	var objUpdatedHosts;
@@ -1826,7 +1717,7 @@ function flushEvents( forceFlushing )
 }
 
 
-function writeEvent( event, host )
+function _writeEvent( event, host )
 {
 	var column;
 	var event_date;
@@ -1859,30 +1750,33 @@ function writeEvent( event, host )
 	m_arrPeerEventsBuffer.push( { host : host, event : event, event_date : event_date } );
 
 	//	...
-	flushEvents();
+	_flushEvents();
 }
 
 
-function findAndHandleJointsThatAreReady( unit )
+
+function _findAndHandleJointsThatAreReady( unit )
 {
-	_joint_storage.readDependentJointsThatAreReady( unit, handleSavedJoint );
-	handleSavedPrivatePayments( unit );
+	_joint_storage.readDependentJointsThatAreReady( unit, _handleSavedJoint );
+	_handleSavedPrivatePayments( unit );
 }
 
 
-function comeOnline()
+function _comeOnline()
 {
 	m_bCatchingUp		= false;
 	m_nComingOnlineTime	= Date.now();
 
-	waitTillIdle
+	_waitTillIdle
 	(
 		function()
 		{
-			requestFreeJointsFromAllOutboundPeers();
+			_requestFreeJointsFromAllOutboundPeers();
+
+			//	...
 			setTimeout
 			(
-				cleanBadSavedPrivatePayments,
+				_cleanBadSavedPrivatePayments,
 				300 * 1000
 			);
 		}
@@ -1891,7 +1785,7 @@ function comeOnline()
 }
 
 
-function isIdle()
+function _isIdle()
 {
 	//	console.log(_db._freeConnections.length +"/"+ _db._allConnections.length+" connections are free, "+_mutex.getCountOfQueuedJobs()+" jobs queued, "+_mutex.getCountOfLocks()+" locks held, "+Object.keys(m_oAssocUnitsInWork).length+" units in work");
 	return (
@@ -1903,9 +1797,9 @@ function isIdle()
 }
 
 
-function waitTillIdle( onIdle )
+function _waitTillIdle( onIdle )
 {
-	if ( isIdle() )
+	if ( _isIdle() )
 	{
 		m_bWaitingTillIdle	= false;
 		onIdle();
@@ -1917,7 +1811,7 @@ function waitTillIdle( onIdle )
 		(
 			function()
 			{
-				waitTillIdle( onIdle );
+				_waitTillIdle( onIdle );
 			},
 			100
 		);
@@ -1926,6 +1820,8 @@ function waitTillIdle( onIdle )
 
 
 /**
+ *	@public
+ *
  *	* NOT FOR LIGHT
  *	@param	objJoint
  */
@@ -1944,13 +1840,13 @@ function broadcastJoint( objJoint )
 		{
 			if ( client.bSubscribed )
 			{
-				sendJoint( client, objJoint );
+				_sendJoint( client, objJoint );
 			}
 		}
 	);
 
 	//	...
-	notifyWatchers( objJoint );
+	_notifyWatchers( objJoint );
 }
 
 
@@ -1961,7 +1857,7 @@ function broadcastJoint( objJoint )
 //	catchup
 //////////////////////////////////////////////////////////////////////
 
-function checkCatchupLeftovers()
+function _checkCatchupLeftovers()
 {
 	_db.query
 	(
@@ -1986,7 +1882,7 @@ function checkCatchupLeftovers()
 					console.log( 'will request leftovers from ' + ws.peer );
 					if ( ! m_bCatchingUp && ! m_bWaitingForCatchupChain )
 					{
-						requestCatchup( ws );
+						_requestCatchup( ws );
 					}
 				}
 			);
@@ -1999,7 +1895,7 @@ function checkCatchupLeftovers()
  *	request catchup
  *	@param ws
  */
-function requestCatchup( ws )
+function _requestCatchup( ws )
 {
 	console.log( "will request catchup from " + ws.peer );
 
@@ -2033,14 +1929,14 @@ function requestCatchup( ws )
 					console.log( "will request balls found in hash tree" );
 
 					//	...
-					requestNewMissingJoints
+					_requestNewMissingJoints
 					(
 						ws,
 						tree_rows.map( function( tree_row ) { return tree_row.unit; } )
 					);
 
 					//	...
-					waitTillHashTreeFullyProcessedAndRequestNext( ws );
+					_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 
 					//	...
 					return;
@@ -2058,7 +1954,7 @@ function requestCatchup( ws )
 						if ( chain_rows.length > 0 )
 						{
 							m_bCatchingUp = true;
-							requestNextHashTree( ws );
+							_requestNextHashTree( ws );
 							return;
 						}
 
@@ -2147,7 +2043,7 @@ function _handleCatchupChain( ws, request, response )
 			{
 				m_bWaitingForCatchupChain = false;
 				m_bCatchingUp = true;
-				requestNextHashTree( ws );
+				_requestNextHashTree( ws );
 			},
 			ifCurrent : function()
 			{
@@ -2169,7 +2065,7 @@ function _handleCatchupChain( ws, request, response )
 //////////////////////////////////////////////////////////////////////
 
 
-function requestNextHashTree( ws )
+function _requestNextHashTree( ws )
 {
 	_event_bus.emit( 'catchup_next_hash_tree' );
 	_db.query
@@ -2183,7 +2079,7 @@ function requestNextHashTree( ws )
 
 			if ( rows.length === 0 )
 			{
-				return comeOnline();
+				return _comeOnline();
 			}
 			if ( rows.length === 1 )
 			{
@@ -2195,7 +2091,7 @@ function requestNextHashTree( ws )
 					],
 					function()
 					{
-						comeOnline();
+						_comeOnline();
 					}
 				);
 				return;
@@ -2225,21 +2121,21 @@ function requestNextHashTree( ws )
 					to_ball		: to_ball
 				},
 				true,
-				handleHashTree
+				_handleHashTree
 			);
 		}
 	);
 }
 
 
-function handleHashTree( ws, request, response )
+function _handleHashTree( ws, request, response )
 {
 	var hashTree;
 
 	if ( response.error )
 	{
 		console.log( 'get_hash_tree got error response: ' + response.error );
-		waitTillHashTreeFullyProcessedAndRequestNext( ws );
+		_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 		//	after 1 sec, it'll request the same hash tree, likely from another peer
 		return;
 	}
@@ -2253,12 +2149,12 @@ function handleHashTree( ws, request, response )
 			ifError : function( error )
 			{
 				_network_message.sendError( ws, error );
-				waitTillHashTreeFullyProcessedAndRequestNext( ws );
+				_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 				//	after 1 sec, it'll request the same hash tree, likely from another peer
 			},
 			ifOk : function()
 			{
-				requestNewMissingJoints
+				_requestNewMissingJoints
 				(
 					ws,
 					hashTree.balls.map
@@ -2269,13 +2165,13 @@ function handleHashTree( ws, request, response )
 						}
 					)
 				);
-				waitTillHashTreeFullyProcessedAndRequestNext( ws );
+				_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 			}
 		}
 	);
 }
 
-function waitTillHashTreeFullyProcessedAndRequestNext( ws )
+function _waitTillHashTreeFullyProcessedAndRequestNext( ws )
 {
 	setTimeout( function()
 	{
@@ -2291,13 +2187,13 @@ function waitTillHashTreeFullyProcessedAndRequestNext( ws )
 						ws,
 						function( next_ws )
 						{
-							requestNextHashTree( next_ws );
+							_requestNextHashTree( next_ws );
 						}
 					);
 				}
 				else
 				{
-					waitTillHashTreeFullyProcessedAndRequestNext( ws );
+					_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 				}
 			}
 		);
@@ -2315,7 +2211,7 @@ function waitTillHashTreeFullyProcessedAndRequestNext( ws )
 //	private payments
 //////////////////////////////////////////////////////////////////////
 
-function sendPrivatePaymentToWs( ws, arrChains )
+function _sendPrivatePaymentToWs( ws, arrChains )
 {
 	//	each chain is sent as separate ws message
 	arrChains.forEach( function( arrPrivateElements )
@@ -2325,7 +2221,11 @@ function sendPrivatePaymentToWs( ws, arrChains )
 }
 
 /**
+ *	@public
  *	sends multiple private payloads and their corresponding chains
+ *
+ *	@param peer
+ *	@param arrChains
  */
 function sendPrivatePayment( peer, arrChains )
 {
@@ -2335,7 +2235,7 @@ function sendPrivatePayment( peer, arrChains )
 	ws = _network_peer.getPeerWebSocket( peer );
 	if ( ws )
 	{
-		return sendPrivatePaymentToWs(ws, arrChains);
+		return _sendPrivatePaymentToWs(ws, arrChains);
 	}
 
 	//	...
@@ -2343,13 +2243,21 @@ function sendPrivatePayment( peer, arrChains )
 	{
 		if ( ! err )
 		{
-			sendPrivatePaymentToWs( ws, arrChains );
+			_sendPrivatePaymentToWs( ws, arrChains );
 		}
 	});
 }
 
+
 /**
- * 	handles one private payload and its chain
+ * 	@public
+ *	handles one private payload and its chain
+ *
+ *	@param ws
+ *	@param arrPrivateElements
+ *	@param bViaHub
+ *	@param callbacks
+ *	@returns {*}
  */
 function handleOnlinePrivatePayment( ws, arrPrivateElements, bViaHub, callbacks )
 {
@@ -2404,10 +2312,10 @@ function handleOnlinePrivatePayment( ws, arrPrivateElements, bViaHub, callbacks 
 	{
 		savePrivatePayment( function()
 		{
-			updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index, output_index );
+			_updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index, output_index );
 
 			//	will request the head element
-			rerequestLostJointsOfPrivatePayments();
+			_reRequestLostJointsOfPrivatePayments();
 		});
 		return;
 	}
@@ -2450,7 +2358,7 @@ function handleOnlinePrivatePayment( ws, arrPrivateElements, bViaHub, callbacks 
 				// 		thus telling the hub that this unit contains a private payment for me.
 				//	It would be better to request missing joints from somebody else
 				//
-				requestNewMissingJoints( ws, [ unit ] );
+				_requestNewMissingJoints( ws, [ unit ] );
 			},
 			ifKnownUnverified : savePrivatePayment,
 			ifKnownBad : function()
@@ -2464,7 +2372,7 @@ function handleOnlinePrivatePayment( ws, arrPrivateElements, bViaHub, callbacks 
 /**
  *	if unit is undefined, find units that are ready
  */
-function handleSavedPrivatePayments( unit )
+function _handleSavedPrivatePayments( unit )
 {
 	//	if (unit && m_oAssocUnitsInWork[unit])
 	//		return;
@@ -2548,7 +2456,7 @@ function handleSavedPrivatePayments( unit )
 
 											//	...
 											assocNewUnits[ row.unit ]	= true;
-											deleteHandledPrivateChain
+											_deleteHandledPrivateChain
 											(
 												row.unit,
 												row.message_index,
@@ -2577,7 +2485,7 @@ function handleSavedPrivatePayments( unit )
 											}
 
 											//	...
-											deleteHandledPrivateChain
+											_deleteHandledPrivateChain
 											(
 												row.unit,
 												row.message_index,
@@ -2598,7 +2506,7 @@ function handleSavedPrivatePayments( unit )
 					
 							if ( _conf.bLight && arrPrivateElements.length > 1 && !row.linked )
 							{
-								updateLinkProofsOfPrivateChain
+								_updateLinkProofsOfPrivateChain
 								(
 									arrPrivateElements,
 									row.unit,
@@ -2635,7 +2543,7 @@ function handleSavedPrivatePayments( unit )
 	);
 }
 
-function deleteHandledPrivateChain( unit, message_index, output_index, cb )
+function _deleteHandledPrivateChain( unit, message_index, output_index, cb )
 {
 	_db.query
 	(
@@ -2655,7 +2563,7 @@ function deleteHandledPrivateChain( unit, message_index, output_index, cb )
 /**
  *	* full only
  */
-function cleanBadSavedPrivatePayments()
+function _cleanBadSavedPrivatePayments()
 {
 	if ( _conf.bLight || m_bCatchingUp )
 	{
@@ -2686,7 +2594,7 @@ function cleanBadSavedPrivatePayments()
 /**
  *	* light only
  */
-function rerequestLostJointsOfPrivatePayments()
+function _reRequestLostJointsOfPrivatePayments()
 {
 	if ( ! _conf.bLight || ! exports.light_vendor_url )
 	{
@@ -2727,15 +2635,20 @@ function rerequestLostJointsOfPrivatePayments()
 						return;
 					}
 
-					requestNewMissingJoints( ws, arrUnits );
+					_requestNewMissingJoints( ws, arrUnits );
 				}
 			);
 		}
 	);
 }
 
+
 /**
+ *	@public
  *	* light only
+ *
+ *	@param arrChains
+ *	@param onDone
  */
 function requestUnfinishedPastUnitsOfPrivateChains( arrChains, onDone )
 {
@@ -2763,6 +2676,14 @@ function requestUnfinishedPastUnitsOfPrivateChains( arrChains, onDone )
 	);
 }
 
+
+/**
+ *	@public
+ *
+ *	@param arrUnits
+ *	@param arrAddresses
+ *	@param onDone
+ */
 function requestHistoryFor( arrUnits, arrAddresses, onDone )
 {
 	if ( ! onDone )
@@ -2824,6 +2745,12 @@ function requestHistoryFor( arrUnits, arrAddresses, onDone )
 	);
 }
 
+/**
+ *	@public
+ *
+ *	@param arrUnits
+ *	@param onDone
+ */
 function requestProofsOfJointsIfNewOrUnstable( arrUnits, onDone )
 {
 	if ( ! onDone )
@@ -2848,7 +2775,7 @@ function requestProofsOfJointsIfNewOrUnstable( arrUnits, onDone )
 /**
  *	* light only
  */
-function requestUnfinishedPastUnitsOfSavedPrivateElements()
+function _requestUnfinishedPastUnitsOfSavedPrivateElements()
 {
 	_mutex.lock
 	(
@@ -2894,7 +2821,7 @@ function requestUnfinishedPastUnitsOfSavedPrivateElements()
 								return unlock();
 							}
 
-							handleSavedPrivatePayments();
+							_handleSavedPrivatePayments();
 							setTimeout( unlock, 2000 );
 						}
 					);
@@ -2910,7 +2837,7 @@ function requestUnfinishedPastUnitsOfSavedPrivateElements()
  *	Note that we are leaking to light vendor information about the full chain.
  *	If the light vendor was a party to any previous transaction in this chain, he'll know how much we received.
  */
-function checkThatEachChainElementIncludesThePrevious( arrPrivateElements, handleResult )
+function _checkThatEachChainElementIncludesThePrevious( arrPrivateElements, handleResult )
 {
 	var arrUnits;
 
@@ -2978,11 +2905,11 @@ function checkThatEachChainElementIncludesThePrevious( arrPrivateElements, handl
 /**
  *	* light only
  */
-function updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index, output_index, onFailure, onSuccess )
+function _updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index, output_index, onFailure, onSuccess )
 {
 	if ( ! _conf.bLight )
 	{
-		throw Error( "not light but updateLinkProofsOfPrivateChain" );
+		throw Error( "not light but _updateLinkProofsOfPrivateChain" );
 	}
 	if ( ! onFailure )
 	{
@@ -2994,7 +2921,7 @@ function updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index
 	}
 
 	//	...
-	checkThatEachChainElementIncludesThePrevious
+	_checkThatEachChainElementIncludesThePrevious
 	(
 		arrPrivateElements,
 		function( bLinked )
@@ -3005,7 +2932,7 @@ function updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index
 			}
 			if ( ! bLinked )
 			{
-				return deleteHandledPrivateChain( unit, message_index, output_index, onFailure );
+				return _deleteHandledPrivateChain( unit, message_index, output_index, onFailure );
 			}
 
 			//	the result cannot depend on output_index
@@ -3027,6 +2954,8 @@ function updateLinkProofsOfPrivateChain( arrPrivateElements, unit, message_index
 
 
 /**
+ * 	@public
+ *
  *	initialize witnesses
  */
 function initWitnessesIfNecessary( ws, onDone )
@@ -3072,7 +3001,7 @@ function initWitnessesIfNecessary( ws, onDone )
 //////////////////////////////////////////////////////////////////////
 
 
-function sendStoredDeviceMessages( ws, device_address )
+function _sendStoredDeviceMessages( ws, device_address )
 {
 	_db.query
 	(
@@ -3130,11 +3059,11 @@ function _handleMessageJustSaying( ws, subject, body )
 			mci = body;
 			if ( _validation_utils.isNonnegativeInteger( mci ) )
 			{
-				return sendJointsSinceMci( ws, mci );
+				return _sendJointsSinceMci( ws, mci );
 			}
 			else
 			{
-				return sendFreeJoints( ws );
+				return _sendFreeJoints( ws );
 			}
 
 		case 'version':
@@ -3247,7 +3176,7 @@ function _handleMessageJustSaying( ws, subject, body )
 
 					//	light clients accept the joint without proof, it'll be saved as unconfirmed (non-stable)
 					return _conf.bLight
-						? handleLightOnlineJoint( ws, objJoint )
+						? _handleLightOnlineJoint( ws, objJoint )
 						: handleOnlineJoint( ws, objJoint );
 				}
 			);
@@ -3576,7 +3505,7 @@ function _handleMessageJustSaying( ws, subject, body )
 					}
 					else
 					{
-						sendStoredDeviceMessages( ws, ws.device_address );
+						_sendStoredDeviceMessages( ws, ws.device_address );
 						finishLogin();
 					}
 				}
@@ -3621,7 +3550,7 @@ function _handleMessageJustSaying( ws, subject, body )
 			}
 
 			//	...
-			sendStoredDeviceMessages( ws, ws.device_address );
+			_sendStoredDeviceMessages( ws, ws.device_address );
 			break;
 
 		case 'hub/delete':
@@ -3760,7 +3689,7 @@ function _handleMessageJustSaying( ws, subject, body )
 										{
 											ifFound : function( objJoint )
 											{
-												sendJoint( ws, objJoint );
+												_sendJoint( ws, objJoint );
 											},
 											ifNotFound : function()
 											{
@@ -3879,7 +3808,7 @@ function _handleMessageRequest( ws, tag, command, params )
 			if ( _conf.bLight )
 			{
 				//	if (ws.peer === exports.light_vendor_url)
-				//		sendFreeJoints(ws);
+				//		_sendFreeJoints(ws);
 				return _network_message.sendErrorResponse( ws, tag, "I'm light, cannot subscribe you to updates" );
 			}
 			if ( ws.old_core )
@@ -3901,11 +3830,11 @@ function _handleMessageRequest( ws, tag, command, params )
 
 			if ( _validation_utils.isNonnegativeInteger( params.last_mci ) )
 			{
-				sendJointsSinceMci( ws, params.last_mci );
+				_sendJointsSinceMci( ws, params.last_mci );
 			}
 			else
 			{
-				sendFreeJoints( ws );
+				_sendFreeJoints( ws );
 			}
 
 			break;
@@ -3935,7 +3864,7 @@ function _handleMessageRequest( ws, tag, command, params )
 				{
 					ifFound : function( objJoint )
 					{
-						sendJoint( ws, objJoint, tag );
+						_sendJoint( ws, objJoint, tag );
 					},
 					ifNotFound : function()
 					{
@@ -3954,7 +3883,7 @@ function _handleMessageRequest( ws, tag, command, params )
 
 			//	...
 			objJoint = params;
-			handlePostedJoint
+			_handlePostedJoint
 			(
 				ws,
 				objJoint,
@@ -4618,7 +4547,7 @@ function _handleMessageResponse( ws, tag, response )
 
 
 
-function onWebSocketMessage( message )
+function _onWebSocketMessage( message )
 {
 	var ws;
 	var arrMessage;
@@ -4670,7 +4599,7 @@ function onWebSocketMessage( message )
 	}
 }
 
-function onWebSocketClosed( ws )
+function _onWebSocketClosed( ws )
 {
 	var tag;
 	var pendingRequest;
@@ -4717,7 +4646,7 @@ function onWebSocketClosed( ws )
 /**
  *	start relay(hub)
  */
-function startRelay()
+function _startRelay()
 {
 	if ( process.browser || ! _conf.port )
 	{
@@ -4735,14 +4664,14 @@ function startRelay()
 		//
 		_network_peer.startWebSocketServer
 		({
-			subscribe	: subscribe,
-			onMessage	: onWebSocketMessage,
-			onClose		: onWebSocketClosed
+			subscribe	: _subscribe,
+			onMessage	: _onWebSocketMessage,
+			onClose		: _onWebSocketClosed
 		});
 	}
 
 	//	...
-	checkCatchupLeftovers();
+	_checkCatchupLeftovers();
 
 
 	//
@@ -4750,7 +4679,7 @@ function startRelay()
 	//
 	if ( _conf.bWantNewPeers )
 	{
-		console.log( "network::startRelay, _conf.bWantNewPeers = true" );
+		console.log( "network::_startRelay, _conf.bWantNewPeers = true" );
 
 		//
 		//	add outbound connections
@@ -4770,7 +4699,7 @@ function startRelay()
 		//
 		setTimeout
 		(
-			checkIfHaveEnoughOutboundPeersAndAdd,
+			_network_peer.checkIfHaveEnoughOutboundPeersAndAdd,
 			30 * 1000
 		);
 
@@ -4800,10 +4729,10 @@ function startRelay()
 	//	request needed joints that were not received during the previous session
 	//	every 8 seconds
 	//
-	rerequestLostJoints();
+	_reRequestLostJoints();
 	setInterval
 	(
-		rerequestLostJoints,
+		_reRequestLostJoints,
 		8 * 1000
 	);
 
@@ -4813,7 +4742,7 @@ function startRelay()
 	//
 	setInterval
 	(
-		purgeJunkUnhandledJoints,
+		_purgeJunkUnhandledJoints,
 		30 * 60 * 1000
 	);
 
@@ -4833,15 +4762,16 @@ function startRelay()
 	//
 	setInterval
 	(
-		findAndHandleJointsThatAreReady,
+		_findAndHandleJointsThatAreReady,
 		5 * 1000
 	);
 }
 
+
 /**
  *	start light client
  */
-function startLightClient()
+function _startLightClient()
 {
 	//
 	//	initialize web socket server
@@ -4852,10 +4782,10 @@ function startLightClient()
 	//
 	//	re-request lost joints of private payment
 	//
-	rerequestLostJointsOfPrivatePayments();
+	_reRequestLostJointsOfPrivatePayments();
 	setInterval
 	(
-		rerequestLostJointsOfPrivatePayments,
+		_reRequestLostJointsOfPrivatePayments,
 		5 * 1000
 	);
 
@@ -4865,7 +4795,7 @@ function startLightClient()
 	//
 	setInterval
 	(
-		handleSavedPrivatePayments,
+		_handleSavedPrivatePayments,
 		5 * 1000
 	);
 
@@ -4875,13 +4805,16 @@ function startLightClient()
 	//
 	setInterval
 	(
-		requestUnfinishedPastUnitsOfSavedPrivateElements,
+		_requestUnfinishedPastUnitsOfSavedPrivateElements,
 		12 * 1000
 	);
 }
 
 
+
 /**
+ *	@public
+ *
  *	network start
  */
 function start()
@@ -4891,12 +4824,12 @@ function start()
 	console.log( "############################################################" );
 
 	//	...
-	_conf.bLight ? startLightClient() : startRelay();
+	_conf.bLight ? _startLightClient() : _startRelay();
 
 	//	...
 	setInterval
 	(
-		printConnectionStatus,
+		_printConnectionStatus,
 		6 * 1000
 	);
 
@@ -4911,6 +4844,10 @@ function start()
 	);
 }
 
+
+/**
+ *	@public
+ */
 function closeAllWsConnections()
 {
 	_network_peer.getOutboundPeers().forEach( function( ws )
@@ -4919,11 +4856,19 @@ function closeAllWsConnections()
 	});
 }
 
+/**
+ *	@public
+ *	@returns {*}
+ */
 function isConnected()
 {
 	return ( _network_peer.getOutboundPeers().length + _network_peer.getInboundClients().length );
 }
 
+/**
+ *	@public
+ *	@returns {boolean}
+ */
 function isCatchingUp()
 {
 	return m_bCatchingUp;
@@ -4940,11 +4885,11 @@ function isCatchingUp()
 
 
 /**
- *	initalize
+ *	initialize
  */
-_network_peer.setAddressOnWebSocketMessage( onWebSocketMessage );
-_network_peer.setAddressOnWebSocketClosed( onWebSocketClosed );
-_network_peer.setAddressSubscribe( subscribe );
+_network_peer.setAddressOnWebSocketMessage( _onWebSocketMessage );
+_network_peer.setAddressOnWebSocketClosed( _onWebSocketClosed );
+_network_peer.setAddressSubscribe( _subscribe );
 
 
 
@@ -4958,7 +4903,7 @@ if ( ! _conf.bLight )
 	(
 		function()
 		{
-			flushEvents( true );
+			_flushEvents( true );
 		},
 		1000 * 60
 	);
@@ -4972,7 +4917,7 @@ if ( ! _conf.bLight )
 _event_bus.on
 (
 	'mci_became_stable',
-	notifyWatchersAboutStableJoints
+	_notifyWatchersAboutStableJoints
 );
 
 

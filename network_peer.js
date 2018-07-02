@@ -12,6 +12,7 @@ var _event_bus			= require( './event_bus.js' );
 var _breadcrumbs		= require( './breadcrumbs.js' );
 
 var _network_message		= require( './network_message.js' );
+var _network_request		= require( './network_request.js' );
 
 
 var m_oWss;
@@ -47,6 +48,146 @@ function setAddressSubscribe( pfnAddress )
 {
 	m_pfnSubscribe = pfnAddress;
 }
+
+
+
+
+/**
+ *	check and add peers
+ */
+function checkIfHaveEnoughOutboundPeersAndAdd()
+{
+	var arrOutboundPeerUrls;
+
+	//	...
+	arrOutboundPeerUrls = m_arrOutboundPeers.map( function( ws ) { return ws.peer; } );
+
+	//
+	//	select peers good_joints > 0 and ...
+	//
+	_db.query
+	(
+		"SELECT peer FROM peers JOIN peer_hosts USING( peer_host ) \
+		WHERE count_new_good_joints > 0 \
+			AND count_invalid_joints / count_new_good_joints < ? \
+			AND peer IN( ? )",
+		[
+			_conf.MAX_TOLERATED_INVALID_RATIO,
+			( arrOutboundPeerUrls.length > 0 ) ? arrOutboundPeerUrls : null
+		],
+		function( rows )
+		{
+			var count_good_peers;
+			var arrGoodPeerUrls;
+			var i;
+			var ws;
+
+			//	...
+			count_good_peers = rows.length;
+			if ( count_good_peers >= _conf.MIN_COUNT_GOOD_PEERS )
+			{
+				//	larger then limitation
+				return;
+			}
+			if ( count_good_peers === 0 )
+			{
+				//	nobody trusted enough to ask for new peers, can't do anything
+				return;
+			}
+
+			//
+			//	good peers
+			//
+			arrGoodPeerUrls	= rows.map( function( row ) { return row.peer; } );
+
+			for ( i = 0; i < m_arrOutboundPeers.length; i++ )
+			{
+				ws = m_arrOutboundPeers[ i ];
+				if ( arrGoodPeerUrls.indexOf( ws.peer ) !== -1 )
+				{
+					//
+					//	peer was not found in m_arrOutboundPeers
+					//
+					//	* try to send request to get peers
+					//
+					console.log( "****** peer was not found in m_arrOutboundPeers, * try to send request to get peers" );
+					_requestPeers( ws );
+				}
+			}
+		}
+	);
+}
+
+
+/**
+ *	send request for getting peers
+ */
+function _requestPeers( ws )
+{
+	_network_request.sendRequest
+	(
+		ws,
+		'get_peers',
+		null,
+		false,
+		function( ws, request, arrPeerUrls )
+		{
+			var arrQueries;
+			var i;
+			var url;
+			var regexp;
+			var host;
+
+			if ( arrPeerUrls.error )
+			{
+				return console.log( 'get_peers failed: ' + arrPeerUrls.error );
+			}
+			if ( ! Array.isArray( arrPeerUrls ) )
+			{
+				return _network_message.sendError( ws, "peer urls is not an array" );
+			}
+
+			//	...
+			arrQueries = [];
+			for ( i = 0; i < arrPeerUrls.length; i++ )
+			{
+				url	= arrPeerUrls[ i ];
+
+				if ( _conf.myUrl && _conf.myUrl.toLowerCase() === url.toLowerCase() )
+				{
+					continue;
+				}
+
+				//	...
+				regexp	= ( _conf.WS_PROTOCOL === 'wss://' ) ? /^wss:\/\// : /^wss?:\/\//;
+				if ( ! url.match( regexp ) )
+				{
+					console.log( 'ignoring new peer ' + url + ' because of incompatible ws protocol' );
+					continue;
+				}
+
+				host	= getHostByPeer( url );
+				_db.addQuery
+				(
+					arrQueries,
+					"INSERT " + _db.getIgnore() + " INTO peer_hosts (peer_host) VALUES (?)",
+					[ host ]
+				);
+				_db.addQuery
+				(
+					arrQueries,
+					"INSERT " + _db.getIgnore() + " INTO peers (peer_host, peer, learnt_from_peer_host) VALUES(?,?,?)",
+					[ host, url, ws.host ]
+				);
+			}
+
+			//	...
+			_async.series( arrQueries );
+		}
+	);
+}
+
+
 
 
 function findNextPeer( ws, handleNextPeer )
@@ -950,7 +1091,7 @@ function startWebSocketServer( oOptions )
 					//	WELCOME THE NEW PEER WITH THE LIST OF FREE JOINTS
 					//
 					//	if (!m_bCatchingUp)
-					//		sendFreeJoints(ws);
+					//		_sendFreeJoints(ws);
 					//
 					//	*
 					//	so, we response the version of this hub/witness
@@ -1160,6 +1301,7 @@ exports.setAddressOnWebSocketMessage			= setAddressOnWebSocketMessage;
 exports.setAddressOnWebSocketClosed			= setAddressOnWebSocketClosed;
 exports.setAddressSubscribe				= setAddressSubscribe;
 
+exports.checkIfHaveEnoughOutboundPeersAndAdd		= checkIfHaveEnoughOutboundPeersAndAdd;
 exports.findNextPeer					= findNextPeer;
 exports.tryFindNextPeer					= tryFindNextPeer;
 exports.getRandomInt					= getRandomInt;

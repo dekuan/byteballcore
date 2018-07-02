@@ -14,22 +14,55 @@ var _breadcrumbs	= require( './breadcrumbs.js' );
 
 
 
-function checkIfNewUnit(unit, callbacks) {
-	if (_storage.isKnownUnit(unit))
+function checkIfNewUnit( unit, callbacks )
+{
+	if ( _storage.isKnownUnit( unit ) )
+	{
 		return callbacks.ifKnown();
-	_db.query("SELECT 1 FROM units WHERE unit=?", [unit], function(rows){
-		if (rows.length > 0){
-			_storage.setUnitIsKnown(unit);
-			return callbacks.ifKnown();
+	}
+
+	_db.query
+	(
+		"SELECT 1 FROM units WHERE unit = ?",
+		[
+			unit
+		],
+		function( rows )
+		{
+			if ( rows.length > 0 )
+			{
+				_storage.setUnitIsKnown( unit );
+				return callbacks.ifKnown();
+			}
+
+			_db.query
+			(
+				"SELECT 1 FROM unhandled_joints WHERE unit = ?",
+				[
+					unit
+				],
+				function( unhandled_rows )
+				{
+					if ( unhandled_rows.length > 0 )
+						return callbacks.ifKnownUnverified();
+
+					_db.query
+					(
+						"SELECT error FROM known_bad_joints WHERE unit = ?",
+						[
+							unit
+						],
+						function( bad_rows )
+						{
+							( bad_rows.length === 0 )
+								? callbacks.ifNew()
+								: callbacks.ifKnownBad( bad_rows[ 0 ].error );
+						}
+					);
+				}
+			);
 		}
-		_db.query("SELECT 1 FROM unhandled_joints WHERE unit=?", [unit], function(unhandled_rows){
-			if (unhandled_rows.length > 0)
-				return callbacks.ifKnownUnverified();
-			_db.query("SELECT error FROM known_bad_joints WHERE unit=?", [unit], function(bad_rows){
-				(bad_rows.length === 0) ? callbacks.ifNew() : callbacks.ifKnownBad(bad_rows[0].error);
-			});
-		});
-	});
+	);
 }
 
 function checkIfNewJoint(objJoint, callbacks) {
