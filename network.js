@@ -1063,7 +1063,9 @@ function handleOnlineJoint( ws, objJoint, onDone )
 			{
 				_network_message.sendResult( ws, { unit: unit, result: 'accepted' } );
 
-				//	forward to other peers
+				//
+				//	forward received joint to other peers which subscribed from me
+				//
 				if ( ! m_bCatchingUp && ! _conf.bLight )
 				{
 					//
@@ -1075,8 +1077,15 @@ function handleOnlineJoint( ws, objJoint, onDone )
 				//	...
 				delete m_oAssocUnitsInWork[ unit ];
 
+				//
+				//	***
 				//	wake up other joints that depend on me
+				//
 				_findAndHandleJointsThatAreReady( unit );
+
+				//
+				//	callback
+				//
 				onDone();
 			},
 			ifOkUnsigned : function()
@@ -1923,8 +1932,8 @@ function _requestCatchup( ws )
 		//
 		_db.query
 		(
-			"SELECT hash_tree_balls.unit \n\
-			FROM hash_tree_balls LEFT JOIN units USING(unit) \n\
+			"SELECT hash_tree_balls.unit \
+			FROM hash_tree_balls LEFT JOIN units USING(unit) \
 			WHERE units.unit IS NULL ORDER BY ball_index",
 			function( tree_rows )
 			{
@@ -3158,6 +3167,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'joint':
+			//
+			//	receive a joint
+			//
 			var objJoint;
 
 			//	...
@@ -3180,7 +3192,9 @@ function _handleMessageJustSaying( ws, subject, body )
 				return _network_message.sendError( ws, "I'm a light client and you are not my vendor" );
 			}
 
-			//	...
+			//
+			//	check received joint to avoid an 'uncovered' joint ...
+			//
 			_db.query
 			(
 				"SELECT 1 FROM archived_joints \
@@ -3196,7 +3210,9 @@ function _handleMessageJustSaying( ws, subject, body )
 						return _network_message.sendError( ws, "this unit is already known and archived" );
 					}
 
-					//	light clients accept the joint without proof, it'll be saved as unconfirmed (non-stable)
+					//
+					//	light clients accept the joint without proof,
+					//	it'll be saved as unconfirmed (non-stable)
 					return _conf.bLight
 						? _handleLightOnlineJoint( ws, objJoint )
 						: handleOnlineJoint( ws, objJoint );
@@ -3827,6 +3843,9 @@ function _handleMessageRequest( ws, tag, command, params )
 			if ( _network_peer.getAllInboundClientsAndOutboundPeers()
 				.some( function( other_ws ){ return ( other_ws.subscription_id === subscription_id ); } ) )
 			{
+				//
+				//	ws.bOutbound tell us this is an outbound connection
+				//
 				if ( ws.bOutbound )
 				{
 					_db.query
@@ -3845,8 +3864,10 @@ function _handleMessageRequest( ws, tag, command, params )
 
 			if ( _conf.bLight )
 			{
-				//	if (ws.peer === exports.light_vendor_url)
-				//		_sendFreeJoints(ws);
+				//
+				//	if ( ws.peer === exports.light_vendor_url )
+				//		_sendFreeJoints( ws );
+				//
 				return _network_message.sendErrorResponse( ws, tag, "I'm light, cannot subscribe you to updates" );
 			}
 			if ( ws.old_core )
@@ -3857,10 +3878,18 @@ function _handleMessageRequest( ws, tag, command, params )
 			}
 
 			//
-			//	...
+			//	mark as 'subscribed' on the socket connection
 			//
 			ws.bSubscribed = true;
+
+			//
+			//	send response to tell the peer that you have already subscribed successfully.
+			//
 			_network_message.sendResponse( ws, tag, 'subscribed' );
+
+			//
+			//	if we already catch up ...
+			//
 			if ( m_bCatchingUp )
 			{
 				return;
@@ -4220,10 +4249,13 @@ function _handleMessageRequest( ws, tag, command, params )
 			var fnUpdate;
 
 			if ( ! _conf.bServeAsHub )
+			{
 				return _network_message.sendErrorResponse( ws, tag, "I'm not a hub" );
-
+			}
 			if ( ! ws.device_address )
+			{
 				return _network_message.sendErrorResponse( ws, tag, "please log in first" );
+			}
 
 			//	...
 			objTempPubkey = params;
@@ -4250,7 +4282,7 @@ function _handleMessageRequest( ws, tag, command, params )
 			{
 				_db.query
 				(
-					"UPDATE devices SET temp_pubkey_package=? WHERE device_address=?",
+					"UPDATE devices SET temp_pubkey_package = ? WHERE device_address = ?",
 					[
 						JSON.stringify( objTempPubkey ),
 						ws.device_address

@@ -214,7 +214,7 @@ function findNextPeer( ws, handleNextPeer )
 				'connected_to_source',
 				function( new_ws )
 				{
-					console.log( 'got new connection, retrying findNextPeer after ' + peer );
+					console.log( 'got new connection, findNextPeer retrying findNextPeer after ' + peer );
 					findNextPeer( ws, handleNextPeer );
 				}
 			);
