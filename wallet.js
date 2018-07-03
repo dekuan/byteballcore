@@ -40,7 +40,7 @@ function handleJustsaying( ws, subject, body )
 		//	I'm connected to a hub, received challenge
 		case 'hub/challenge':
 			var challenge = body;
-			device.handleChallenge(ws, challenge);
+			device.handleChallenge( ws, challenge );
 			break;
 
 		// I'm connected to a hub, received a message through the hub

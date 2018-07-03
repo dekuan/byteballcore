@@ -166,49 +166,49 @@ function _subscribe( ws )
 	//	obtain the value of the last main chain index
 	//	from database
 	//
-	_storage.readLastMainChainIndex
-	(
-		function( last_mci )
-		{
-			//
-			//	send subscribe request with subscription id and last mci
-			//
-			_network_request.sendRequest
-			(
-				ws,
-				'subscribe',
-				{
-					subscription_id	: ws.subscription_id,
-					last_mci	: last_mci
-				},
-				false,
-				function( ws, request, response )
-				{
-					delete ws.subscription_id;
-					ws.subscription_id = null;
+	_storage.readLastMainChainIndex( function( last_mci )
+	{
+		//
+		//	send subscribe request with subscription id and last mci
+		//
+		_network_request.sendRequest
+		(
+			ws,
+			'subscribe',
+			{
+				subscription_id	: ws.subscription_id,
+				last_mci	: last_mci
+			},
+			false,
+			function( ws, request, response )
+			{
+				delete ws.subscription_id;
+				ws.subscription_id = null;
 
-					if ( response.error )
-					{
-						console.log( "network::_subscribe, occurred a error: ", response.error );
-						return;
-					}
-
-					//
-					//	emit event connected_to_source to tell all listeners that:
-					//	we have connected to source successfully
-					//	and, now start to do what you should do.
-					//
-					ws.bSource	= true;
-					_event_bus.emit
-					(
-						'connected_to_source',
-						ws
-					);
+				if ( response.error )
+				{
+					console.log( "network::_subscribe, occurred a error: ", response.error );
+					return;
 				}
-			);
-		}
-	);
+
+				//
+				//	emit event connected_to_source to tell all listeners that:
+				//	we have connected to source successfully
+				//	and, now start to do what you should do.
+				//
+				ws.bSource	= true;
+				_event_bus.emit
+				(
+					'connected_to_source',
+					ws
+				);
+			}
+		);
+	});
 }
+
+
+
 
 
 
@@ -270,7 +270,7 @@ function _sendFreeJoints( ws )
 
 function _sendJointsSinceMci( ws, mci )
 {
-	_joint_storage.readJointsSinceMci
+	_joint_storage.readFreeJointsSinceMci
 	(
 		mci,
 		function( objJoint )
@@ -290,7 +290,15 @@ function _requestFreeJointsFromAllOutboundPeers()
 
 	for ( i = 0; i < _network_peer.getOutboundPeers().length; i ++ )
 	{
-		_network_message.sendJustSaying( _network_peer.getOutboundPeers()[ i ], 'refresh', null );
+		//
+		//	send 'refresh' command
+		//
+		_network_message.sendJustSaying
+		(
+			_network_peer.getOutboundPeers()[ i ],
+			'refresh',
+			null
+		);
 	}
 }
 
@@ -300,7 +308,15 @@ function _requestNewJoints( ws )
 	(
 		function( last_mci )
 		{
-			_network_message.sendJustSaying( ws, 'refresh', last_mci );
+			//
+			//	send 'refresh' command
+			//
+			_network_message.sendJustSaying
+			(
+				ws,
+				'refresh',
+				last_mci
+			);
 		}
 	);
 }
@@ -439,8 +455,11 @@ function _requestJoints( ws, arrUnits )
 			{
 				diff	= Date.now() - m_oAssocRequestedUnits[ unit ];
 
-				//	since response handlers are called in nextTick(), there is a period when the pending request is already cleared but the response
+				//
+				//	since response handlers are called in nextTick(),
+				//	there is a period when the pending request is already cleared but the response
 				//	handler is not yet called, hence m_oAssocRequestedUnits[unit] not yet cleared
+				//
 				if ( diff <= _network_consts.STALLED_TIMEOUT )
 				{
 					return console.log( "unit " + unit + " already requested " + diff + " ms ago, m_oAssocUnitsInWork=" + m_oAssocUnitsInWork[ unit ] );
@@ -482,17 +501,21 @@ function _handleResponseToJointRequest( ws, request, response )
 		unit	= request.params;
 		if ( response.joint_not_found === unit )
 		{
+			//
 			//	we trust the light vendor that if it doesn't know about the unit after 1 day, it doesn't exist
+			//
 			if ( _conf.bLight )
 			{
 				_db.query
 				(
-					"DELETE FROM unhandled_private_payments WHERE unit=? AND creation_date<" + _db.addTime('-1 DAY'),
+					"DELETE FROM unhandled_private_payments WHERE unit = ? AND creation_date < " + _db.addTime( '-1 DAY' ),
 					[ unit ]
 				);
 			}
 
+			//
 			//	if it is in unhandled_joints, it'll be deleted in 1 hour
+			//
 			if ( ! m_bCatchingUp )
 			{
 				return console.log( "unit " + unit + " does not exist" );
@@ -501,13 +524,13 @@ function _handleResponseToJointRequest( ws, request, response )
 
 			_db.query
 			(
-				"SELECT 1 FROM hash_tree_balls WHERE unit=?",
+				"SELECT 1 FROM hash_tree_balls WHERE unit = ?",
 				[ unit ],
 				function( rows )
 				{
 					if ( rows.length === 0 )
 					{
-						return console.log("unit "+unit+" does not exist (catching up)");
+						return console.log( "unit " + unit + " does not exist (catching up)" );
 						//	return _purgeDependenciesAndNotifyPeers(unit, "unit "+unit+" does not exist (catching up)");
 					}
 
@@ -538,7 +561,7 @@ function _handleResponseToJointRequest( ws, request, response )
 	objJoint	= response.joint;
 	if ( ! objJoint.unit || ! objJoint.unit.unit )
 	{
-		return _network_message.sendError(ws, 'no unit');
+		return _network_message.sendError( ws, 'no unit' );
 	}
 
 	//	...
@@ -555,7 +578,9 @@ function _handleResponseToJointRequest( ws, request, response )
 		delete objJoint.skiplist_units;
 	}
 
-	_conf.bLight ? _handleLightOnlineJoint( ws, objJoint ) : handleOnlineJoint( ws, objJoint );
+	_conf.bLight
+		? _handleLightOnlineJoint( ws, objJoint )
+		: handleOnlineJoint( ws, objJoint );
 }
 
 function _havePendingRequest( command )
@@ -933,7 +958,7 @@ function _handlePostedJoint( ws, objJoint, onDone )
 		{
 			ifUnitInWork : function()
 			{
-				onDone("already handling this unit");
+				onDone( "already handling this unit" );
 			},
 			ifUnitError : function( error )
 			{
@@ -945,17 +970,19 @@ function _handlePostedJoint( ws, objJoint, onDone )
 			},
 			ifNeedHashTree : function()
 			{
-				onDone("need hash tree");
+				onDone( "need hash tree" );
 			},
 			ifNeedParentUnits : function( arrMissingUnits )
 			{
-				onDone("unknown parents");
+				onDone( "unknown parents" );
 			},
 			ifOk : function()
 			{
 				onDone();
 
+				//
 				//	forward to other peers
+				//
 				if ( ! m_bCatchingUp && ! _conf.bLight )
 				{
 					//
@@ -1008,7 +1035,7 @@ function handleOnlineJoint( ws, objJoint, onDone )
 {
 	var unit;
 
-	if ( ! onDone)
+	if ( ! onDone )
 	{
 		onDone = function(){};
 	}
@@ -1503,13 +1530,13 @@ function _notifyLightClientsAboutStableJoints( from_mci, to_mci )
 	//
 	_db.query
 	(
-		"SELECT peer FROM units JOIN unit_authors USING(unit) JOIN watched_light_addresses USING(address) \n\
-		WHERE main_chain_index>? AND main_chain_index<=? \n\
-		UNION \n\
-		SELECT peer FROM units JOIN outputs USING(unit) JOIN watched_light_addresses USING(address) \n\
-		WHERE main_chain_index>? AND main_chain_index<=? \n\
-		UNION \n\
-		SELECT peer FROM units JOIN watched_light_units USING(unit) \n\
+		"SELECT peer FROM units JOIN unit_authors USING(unit) JOIN watched_light_addresses USING(address) \
+		WHERE main_chain_index>? AND main_chain_index<=? \
+		UNION \
+		SELECT peer FROM units JOIN outputs USING(unit) JOIN watched_light_addresses USING(address) \
+		WHERE main_chain_index>? AND main_chain_index<=? \
+		UNION \
+		SELECT peer FROM units JOIN watched_light_units USING(unit) \
 		WHERE main_chain_index>? AND main_chain_index<=?",
 		[
 			from_mci, to_mci,
@@ -2107,7 +2134,7 @@ function _requestNextHashTree( ws )
 			{
 				_db.query
 				(
-					"DELETE FROM catchup_chain_balls WHERE ball=?",
+					"DELETE FROM catchup_chain_balls WHERE ball = ?",
 					[
 						rows[ 0 ].ball
 					],
@@ -2128,12 +2155,14 @@ function _requestNextHashTree( ws )
 			{
 				if ( ws.assocPendingRequests[ tag ].request.command === 'get_hash_tree' )
 				{
-					console.log("already requested hash tree from this peer");
+					console.log( "already requested hash tree from this peer" );
 					return;
 				}
 			}
 
+			//
 			//	send request
+			//
 			_network_request.sendRequest
 			(
 				ws,
@@ -2148,8 +2177,6 @@ function _requestNextHashTree( ws )
 		}
 	);
 }
-
-
 function _handleHashTree( ws, request, response )
 {
 	var hashTree;
@@ -2170,12 +2197,22 @@ function _handleHashTree( ws, request, response )
 		{
 			ifError : function( error )
 			{
+				//
+				//	...
+				//
 				_network_message.sendError( ws, error );
+
+				//
+				//	...
+				//
 				_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 				//	after 1 sec, it'll request the same hash tree, likely from another peer
 			},
 			ifOk : function()
 			{
+				//
+				//	...
+				//
 				_requestNewMissingJoints
 				(
 					ws,
@@ -2187,6 +2224,10 @@ function _handleHashTree( ws, request, response )
 						}
 					)
 				);
+
+				//
+				//	...
+				//
 				_waitTillHashTreeFullyProcessedAndRequestNext( ws );
 			}
 		}
@@ -2199,7 +2240,9 @@ function _waitTillHashTreeFullyProcessedAndRequestNext( ws )
 	{
 		_db.query
 		(
-			"SELECT 1 FROM hash_tree_balls LEFT JOIN units USING(unit) WHERE units.unit IS NULL LIMIT 1",
+			"SELECT 1 \
+			FROM hash_tree_balls LEFT JOIN units USING(unit) \
+			WHERE units.unit IS NULL LIMIT 1",
 			function( rows )
 			{
 				if ( rows.length === 0 )
@@ -2595,8 +2638,9 @@ function _cleanBadSavedPrivatePayments()
 
 	_db.query
 	(
-		"SELECT DISTINCT unhandled_private_payments.unit FROM unhandled_private_payments LEFT JOIN units USING( unit ) \n\
-		WHERE units.unit IS NULL AND unhandled_private_payments.creation_date<" + _db.addTime( '-1 DAY' ),
+		"SELECT DISTINCT unhandled_private_payments.unit \
+		FROM unhandled_private_payments LEFT JOIN units USING( unit ) \n\
+		WHERE units.unit IS NULL AND unhandled_private_payments.creation_date < " + _db.addTime( '-1 DAY' ),
 		function( rows )
 		{
 			rows.forEach( function( row )
@@ -2627,9 +2671,9 @@ function _reRequestLostJointsOfPrivatePayments()
 	//	...
 	_db.query
 	(
-		"SELECT DISTINCT unhandled_private_payments.unit " +
-		"FROM unhandled_private_payments LEFT JOIN units USING(unit) " +
-		"WHERE units.unit IS NULL",
+		"SELECT DISTINCT unhandled_private_payments.unit \
+		FROM unhandled_private_payments LEFT JOIN units USING(unit) \
+		WHERE units.unit IS NULL",
 		function( rows )
 		{
 			var arrUnits;
@@ -2640,14 +2684,9 @@ function _reRequestLostJointsOfPrivatePayments()
 			}
 
 			//	...
-			arrUnits = rows.map
-			(
-				function( row )
-				{
-					return row.unit;
-				}
-			);
+			arrUnits = rows.map( function( row ) { return row.unit; } );
 
+			//	...
 			_network_peer.findOutboundPeerOrConnect
 			(
 				exports.light_vendor_url,
@@ -3001,6 +3040,7 @@ function initWitnessesIfNecessary( ws, onDone )
 			return onDone();
 		}
 
+		//	...
 		_network_request.sendRequest
 		(
 			ws,
@@ -3039,7 +3079,8 @@ function _sendStoredDeviceMessages( ws, device_address )
 	(
 		"SELECT message_hash, message \
 		FROM device_messages \
-		WHERE device_address=? ORDER BY creation_date LIMIT 100",
+		WHERE device_address = ? \
+		ORDER BY creation_date LIMIT 100",
 		[
 			device_address
 		],
@@ -3067,6 +3108,15 @@ function _sendStoredDeviceMessages( ws, device_address )
 
 
 
+
+
+
+//////////////////////////////////////////////////////////////////////
+//	main process
+//////////////////////////////////////////////////////////////////////
+
+
+
 /**
  * 	switch/case different message types
  */
@@ -3077,6 +3127,10 @@ function _handleMessageJustSaying( ws, subject, body )
 	switch ( subject )
 	{
 		case 'refresh':
+			//
+			//	receive a 'refresh' subject
+			//	we will response free/young joint
+			//
 			var mci;
 
 			if ( m_bCatchingUp )
@@ -3096,6 +3150,10 @@ function _handleMessageJustSaying( ws, subject, body )
 			}
 
 		case 'version':
+			//
+			//	receive a 'version' subject
+			//	we will check it
+			//
 			if ( ! body )
 			{
 				return;
@@ -3119,6 +3177,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			if ( typeof ws.library_version === 'string' &&
 				_utils.version2int( ws.library_version ) < _utils.version2int( _constants.minCoreVersion ) )
 			{
+				//
+				//	the core version of remote peer was old
+				//
 				ws.old_core = true;
 			}
 
@@ -3128,6 +3189,7 @@ function _handleMessageJustSaying( ws, subject, body )
 
 		case 'new_version':
 			//
+			//	receive a 'new_version' subject
 			//	a new version is available
 			//
 			if ( ! body )
@@ -3213,6 +3275,7 @@ function _handleMessageJustSaying( ws, subject, body )
 					//
 					//	light clients accept the joint without proof,
 					//	it'll be saved as unconfirmed (non-stable)
+					//
 					return _conf.bLight
 						? _handleLightOnlineJoint( ws, objJoint )
 						: handleOnlineJoint( ws, objJoint );
@@ -3278,6 +3341,19 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'my_url':
+			//
+			//	receive 'my_url' subject
+			//	sent by Web Socket Server for inviting his connected clients reconnect
+			//
+			//	CLIENT			SERVER
+			//
+			//
+			//
+			//
+			//
+			//
+			//
+			//
 			var url;
 
 			if ( ! body )
@@ -3314,7 +3390,7 @@ function _handleMessageJustSaying( ws, subject, body )
 			(
 				"SELECT creation_date AS latest_url_change_date, url \
 				FROM peer_host_urls \
-				WHERE peer_host=? \
+				WHERE peer_host = ? \
 				ORDER BY creation_date DESC \
 				LIMIT 1",
 				[
@@ -3351,6 +3427,9 @@ function _handleMessageJustSaying( ws, subject, body )
 						{
 							if ( ! err )
 							{
+								//
+								//	respond 'want_echo' subject
+								//
 								_network_message.sendJustSaying
 								(
 									reverse_ws,
@@ -3371,11 +3450,16 @@ function _handleMessageJustSaying( ws, subject, body )
 			echo_string	= body;
 			if ( ws.bOutbound || ! echo_string )
 			{
-				// ignore
+				//	ignore
 				break;
 			}
 
+			//
+			//	TODO
 			//	inbound only
+			//
+			//	?
+			//
 			if ( ! ws.claimed_url )
 			{
 				break;
@@ -3394,7 +3478,9 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'your_echo':
+			//
 			//	comes on the same ws as my_url, claimed_url is already set
+			//
 			var outbound_host;
 			var arrQueries;
 
@@ -3466,10 +3552,13 @@ function _handleMessageJustSaying( ws, subject, body )
 
 		case 'hub/login':
 			//
-			//	I'm a hub, the peer wants to authenticate
+			//	receive a 'hub/login' subject from remote peer
+			//
+			//	I'm a hub,
+			//	the remote peer wants to authenticate
 			//
 			var objLogin;
-			var finishLogin;
+			var pfnFinishLogin;
 
 			if ( ! body )
 			{
@@ -3480,7 +3569,14 @@ function _handleMessageJustSaying( ws, subject, body )
 				return _network_message.sendError( ws, "I'm not a hub" );
 			}
 
-			//	...
+			//
+			//	objLogin
+			//	{
+			//		challenge	: '',
+			//		pubkey		: '',
+			//		signature	: ''
+			//	}
+			//
 			objLogin = body;
 
 			if ( objLogin.challenge !== ws.challenge )
@@ -3509,7 +3605,7 @@ function _handleMessageJustSaying( ws, subject, body )
 			ws.device_address	= _object_hash.getDeviceAddress( objLogin.pubkey );
 
 			//	after this point the device is authenticated and can send further commands
-			finishLogin = function()
+			pfnFinishLogin = function()
 			{
 				ws.bLoginComplete	= true;
 				if ( ws.onLoginComplete )
@@ -3539,14 +3635,14 @@ function _handleMessageJustSaying( ws, subject, body )
 							function()
 							{
 								_network_message.sendInfo( ws, "address created" );
-								finishLogin();
+								pfnFinishLogin();
 							}
 						);
 					}
 					else
 					{
 						_sendStoredDeviceMessages( ws, ws.device_address );
-						finishLogin();
+						pfnFinishLogin();
 					}
 				}
 			);

@@ -359,16 +359,29 @@ function purgeUncoveredNonserialJoints(bByExistenceOfChildren, onDone){
 
 /**
  *	handleJoint is called for every joint younger than mci
+ *
  *	@param	mci
  *	@param	handleJoint
  *	@param	onDone
+ *
+ * 	update history:
+ * 	liuqixing @20180703	rename from readJointsSinceMci to readFreeJointsSinceMci
  */
-function readJointsSinceMci( mci, handleJoint, onDone )
+function readFreeJointsSinceMci( mci, handleJoint, onDone )
 {
 	_db.query
 	(
-		"SELECT units.unit FROM units LEFT JOIN archived_joints USING(unit) \n\
-		WHERE (is_stable=0 AND main_chain_index>=? OR main_chain_index IS NULL OR is_free=1) AND archived_joints.unit IS NULL \n\
+		"SELECT units.unit \
+		FROM units LEFT JOIN archived_joints USING(unit) \
+		WHERE\
+			( \
+				is_stable = 0 AND main_chain_index >= ? \
+				OR \
+				main_chain_index IS NULL \
+				OR \
+				is_free = 1\
+			) \
+			AND archived_joints.unit IS NULL \
 		ORDER BY +level", 
 		[
 			mci
@@ -388,7 +401,7 @@ function readJointsSinceMci( mci, handleJoint, onDone )
 							ifNotFound : function()
 							{
 								//	throw Error("unit "+row.unit+" not found");
-								_breadcrumbs.add("unit "+row.unit+" not found");
+								_breadcrumbs.add( "unit " + row.unit + " not found" );
 								cb();
 							},
 							ifFound : function( objJoint )
@@ -408,17 +421,18 @@ function readJointsSinceMci( mci, handleJoint, onDone )
 
 
 
+
 /**
  *	exports
  */
-exports.checkIfNewUnit = checkIfNewUnit;
-exports.checkIfNewJoint = checkIfNewJoint;
+exports.checkIfNewUnit					= checkIfNewUnit;
+exports.checkIfNewJoint					= checkIfNewJoint;
 
-exports.saveUnhandledJointAndDependencies = saveUnhandledJointAndDependencies;
-exports.removeUnhandledJointAndDependencies = removeUnhandledJointAndDependencies;
-exports.readDependentJointsThatAreReady = readDependentJointsThatAreReady;
-exports.findLostJoints = findLostJoints;
-exports.purgeJointAndDependencies = purgeJointAndDependencies;
-exports.purgeDependencies = purgeDependencies;
-exports.purgeUncoveredNonserialJointsUnderLock = purgeUncoveredNonserialJointsUnderLock;
-exports.readJointsSinceMci = readJointsSinceMci;
+exports.saveUnhandledJointAndDependencies		= saveUnhandledJointAndDependencies;
+exports.removeUnhandledJointAndDependencies		= removeUnhandledJointAndDependencies;
+exports.readDependentJointsThatAreReady			= readDependentJointsThatAreReady;
+exports.findLostJoints					= findLostJoints;
+exports.purgeJointAndDependencies			= purgeJointAndDependencies;
+exports.purgeDependencies				= purgeDependencies;
+exports.purgeUncoveredNonserialJointsUnderLock		= purgeUncoveredNonserialJointsUnderLock;
+exports.readFreeJointsSinceMci				= readFreeJointsSinceMci;
