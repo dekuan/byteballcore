@@ -3342,11 +3342,14 @@ function _handleMessageJustSaying( ws, subject, body )
 
 		case 'my_url':
 			//
+			//	THIS MIGHT BE A HUB/SERVER
 			//	receive 'my_url' subject
-			//	sent by Web Socket Server for inviting his connected clients reconnect
+			//
+			//	the sender say:
+			//	I can listen too, this is my url which you can connect to me by
 			//
 			//	CLIENT			SERVER
-			//
+			//	send 'my_url'		receive 'my_url'
 			//
 			//
 			//
@@ -3444,21 +3447,26 @@ function _handleMessageJustSaying( ws, subject, body )
 			break;
 
 		case 'want_echo':
+			//
+			//	THIS MIGHT BE A CLIENT
+			//
+			//
 			var reverse_ws;
 
 			//	...
 			echo_string	= body;
 			if ( ws.bOutbound || ! echo_string )
 			{
+				//
 				//	ignore
+				//	1, inbound only, if this is an outbound connection
+				//	2, if no echo_string received
+				//
 				break;
 			}
 
 			//
-			//	TODO
-			//	inbound only
-			//
-			//	?
+			//	self ?
 			//
 			if ( ! ws.claimed_url )
 			{

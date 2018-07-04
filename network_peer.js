@@ -476,7 +476,7 @@ function connectToPeer( url, onOpen )
 			_network_message.sendVersion( ws );
 
 			//
-			//	I can listen too, this is my url to connect to
+			//	I can listen too, this is my url to connect to me
 			//
 			if ( _conf.myUrl )
 			{
