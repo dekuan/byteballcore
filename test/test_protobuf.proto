@@ -1,0 +1,12 @@
+package trust_note_p2p_saying_package;
+syntax = "proto3";
+
+//import "test_protobuf_base.proto"
+
+
+message TrustNoteP2pSaying
+{
+	string type		= 1 [default = "saying" ];
+	string subject	= 2 [default = "" ];
+	string body		= 3 [default = "" ];
+}
