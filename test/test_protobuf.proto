@@ -6,7 +6,15 @@ syntax = "proto3";
 
 message TrustNoteP2pSaying
 {
-	string type		= 1 [default = "saying" ];
-	string subject	= 2 [default = "" ];
-	string body		= 3 [default = "" ];
+
+	optional string type		= 1 [ default = "saying" ];
+	required string subject		= 2 [ default = "" ];
+	required string body		= 3 [ default = "" ];
+
+}
+
+message TrustNoteP2pHeartbeat
+{
+	string type		= 1 [ default = "saying" ];
+	string body		= 3 [ default = "" ];
 }

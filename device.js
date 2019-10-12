@@ -59,16 +59,17 @@ function getMyDeviceAddress()
 	return m_my_device_address;
 }
 
-function setDevicePrivateKey( priv_key )
+
+function setDevicePrivateKey( sPrivateKey )
 {
 	_breadcrumbs.add( "setDevicePrivateKey" );
 
-	var bChanged = (!m_objMyPermanentDeviceKey || priv_key !== m_objMyPermanentDeviceKey.priv);
+	var bChanged = ( ! m_objMyPermanentDeviceKey || sPrivateKey !== m_objMyPermanentDeviceKey.priv );
 
 	m_objMyPermanentDeviceKey =
 	{
-		priv	: priv_key,
-		pub_b64	: _ecdsa.publicKeyCreate(priv_key, true).toString('base64')
+		priv	: sPrivateKey,
+		pub_b64	: _ecdsa.publicKeyCreate(sPrivateKey, true).toString('base64')
 	};
 
 	var new_my_device_address = _object_hash.getDeviceAddress( m_objMyPermanentDeviceKey.pub_b64 );
@@ -116,21 +117,22 @@ function checkDeviceAddress()
 	}
 }
 
-function setTempKeys( temp_priv_key, prev_temp_priv_key, fnSaveTempKeys )
+function setTempKeys( sTempPrivateKey, sPrevTempPrivateKey, fnSaveTempKeys )
 {
 //	_log.consoleLog("setTempKeys", temp_priv_key, prev_temp_priv_key);
 	m_objMyTempDeviceKey =
 	{
 		use_count	: null, // unknown
-		priv		: temp_priv_key,
-		pub_b64		: _ecdsa.publicKeyCreate( temp_priv_key, true ).toString( 'base64' )
+		priv		: sTempPrivateKey,
+		pub_b64		: _ecdsa.publicKeyCreate( sTempPrivateKey, true ).toString( 'base64' )
 	};
-	if ( prev_temp_priv_key )
+	if ( sPrevTempPrivateKey )
 	{
 		//	prev_temp_priv_key may be null
-		m_objMyPrevTempDeviceKey = {
-			priv: prev_temp_priv_key,
-			pub_b64: _ecdsa.publicKeyCreate(prev_temp_priv_key, true).toString('base64')
+		m_objMyPrevTempDeviceKey =
+		{
+			priv	: sPrevTempPrivateKey,
+			pub_b64	: _ecdsa.publicKeyCreate( sPrevTempPrivateKey, true ).toString( 'base64' )
 		};
 	}
 
@@ -143,48 +145,48 @@ function setTempKeys( temp_priv_key, prev_temp_priv_key, fnSaveTempKeys )
 	loginToHub();
 }
 
-function setDeviceAddress( device_address )
+function setDeviceAddress( sDeviceAddress )
 {
-	_breadcrumbs.add( "setDeviceAddress: " + device_address );
+	_breadcrumbs.add( "setDeviceAddress: " + sDeviceAddress );
 
-	if ( m_my_device_address && m_my_device_address !== device_address )
+	if ( m_my_device_address && m_my_device_address !== sDeviceAddress )
 	{
 		throw Error('different device address');
 	}
 
 	//	...
-	m_my_device_address = device_address;
+	m_my_device_address = sDeviceAddress;
 }
 
-function setNewDeviceAddress( device_address )
+function setNewDeviceAddress( sDeviceAddress )
 {
-	_breadcrumbs.add( "setNewDeviceAddress: " + device_address );
-	m_my_device_address = device_address;
+	_breadcrumbs.add( "setNewDeviceAddress: " + sDeviceAddress );
+	m_my_device_address = sDeviceAddress;
 }
 
-function setDeviceName( device_name )
+function setDeviceName( sDeviceName )
 {
-	_log.consoleLog( "setDeviceName", device_name );
-	m_my_device_name = device_name;
+	_log.consoleLog( "setDeviceName", sDeviceName );
+	m_my_device_name = sDeviceName;
 }
 
-function setDeviceHub( device_hub )
+function setDeviceHub( sDeviceHub )
 {
-	_log.consoleLog( "setDeviceHub", device_hub );
+	_log.consoleLog( "setDeviceHub", sDeviceHub );
 
-	var bChanged	= ( device_hub !== m_my_device_hub );
-	m_my_device_hub	= device_hub;
+	var bChanged	= ( sDeviceHub !== m_my_device_hub );
+	m_my_device_hub	= sDeviceHub;
 
 	if ( bChanged )
 	{
-		_network.addPeer( _conf.WS_PROTOCOL + device_hub );
+		_network.addPeer( _conf.WS_PROTOCOL + sDeviceHub );
 		loginToHub();
 	}
 }
 
-function isValidPubKey( b64_pubkey )
+function isValidPubKey( sBase64PublicKey )
 {
-	return _ecdsa.publicKeyVerify( new Buffer( b64_pubkey, 'base64' ) );
+	return _ecdsa.publicKeyVerify( new Buffer( sBase64PublicKey, 'base64' ) );
 }
 
 
@@ -193,18 +195,18 @@ function isValidPubKey( b64_pubkey )
 // -------------------------
 // logging in to hub
 
-function handleChallenge( ws, challenge )
+function handleChallenge( ws, sChallenge )
 {
 	_log.consoleLog( 'handleChallenge' );
 
 	if ( ws.bLoggingIn )
 	{
-		sendLoginCommand( ws, challenge );
+		sendLoginCommand( ws, sChallenge );
 	}
 	else
 	{
 		//	save for future login
-		ws.received_challenge = challenge;
+		ws.received_challenge = sChallenge;
 	}
 }
 
@@ -278,13 +280,13 @@ function loginToHub()
 /**
  *	login
  *	@param ws
- *	@param challenge
+ *	@param sChallenge
  */
-function sendLoginCommand( ws, challenge )
+function sendLoginCommand( ws, sChallenge )
 {
 	var objLogin		=
 	{
-		challenge	: challenge,
+		challenge	: sChallenge,
 		pubkey		: m_objMyPermanentDeviceKey.pub_b64
 	};
 	objLogin.signature	= _ecdsa_sig.sign
@@ -319,11 +321,11 @@ function sendLoginCommand( ws, challenge )
 }
 
 
-function sendTempPubkey( ws, temp_pubkey, callbacks )
+function sendTempPubkey( ws, sTempPublicKey, pfnCallbacks )
 {
-	if ( ! callbacks )
+	if ( ! pfnCallbacks )
 	{
-		callbacks = { ifOk: function(){}, ifError: function(){} };
+		pfnCallbacks = { ifOk: function(){}, ifError: function(){} };
 	}
 
 	//	...
@@ -331,25 +333,27 @@ function sendTempPubkey( ws, temp_pubkey, callbacks )
 	(
 		ws,
 		'hub/temp_pubkey',
-		createTempPubkeyPackage( temp_pubkey ),
+		createTempPubkeyPackage( sTempPublicKey ),
 		false,
-		function( ws, request, response )
+		function( ws, request, sResponse )
 		{
-			if ( response === 'updated' )
-				return callbacks.ifOk();
+			if ( sResponse === 'updated' )
+			{
+				return pfnCallbacks.ifOk();
+			}
 
-			var error = response.error || ( "unrecognized response: " + JSON.stringify( response ) );
-			callbacks.ifError( error );
+			var error = sResponse.error || ( "unrecognized response: " + JSON.stringify( sResponse ) );
+			pfnCallbacks.ifError( error );
 		}
 	);
 }
 
 
-function createTempPubkeyPackage( temp_pubkey )
+function createTempPubkeyPackage( sTempPublicKey )
 {
 	var objTempPubkey =
 	{
-		temp_pubkey	: temp_pubkey,
+		temp_pubkey	: sTempPublicKey,
 		pubkey		: m_objMyPermanentDeviceKey.pub_b64
 	};
 
@@ -368,14 +372,14 @@ function createTempPubkeyPackage( temp_pubkey )
 
 function genPrivKey()
 {
-	var privKey;
+	var sPrivateKey;
 	do
 	{
 		_log.consoleLog( "generating new priv key" );
-		privKey = _crypto.randomBytes( 32 );
+		sPrivateKey = _crypto.randomBytes( 32 );
 	}
-	while ( ! _ecdsa.privateKeyVerify( privKey ) );
-	return privKey;
+	while ( ! _ecdsa.privateKeyVerify( sPrivateKey ) );
+	return sPrivateKey;
 }
 
 
@@ -384,15 +388,19 @@ function genPrivKey()
 
 function rotateTempDeviceKeyIfCouldBeAlreadyUsed()
 {
-	var actual_interval	= Date.now() - m_last_rotate_wake_ts;
+	var nActualInterval	= Date.now() - m_last_rotate_wake_ts;
 	m_last_rotate_wake_ts	= Date.now();
 
-	if ( actual_interval > TEMP_DEVICE_KEY_ROTATION_PERIOD + 1000 )
-		return _log.consoleLog("woke up after sleep or high load, will skip rotation");
+	if ( nActualInterval > TEMP_DEVICE_KEY_ROTATION_PERIOD + 1000 )
+	{
+		return _log.consoleLog( "woke up after sleep or high load, will skip rotation" );
+	}
 
 	//	new key that was never used yet
 	if ( m_objMyTempDeviceKey.use_count === 0 )
-		return _log.consoleLog("the current temp key was not used yet, will not rotate");
+	{
+		return _log.consoleLog( "the current temp key was not used yet, will not rotate" );
+	}
 
 	//	if use_count === null, the key was set at start up, it could've been used before
 	rotateTempDeviceKey();
@@ -401,7 +409,9 @@ function rotateTempDeviceKeyIfCouldBeAlreadyUsed()
 function rotateTempDeviceKey()
 {
 	if ( ! m_saveTempKeys )
-		return _log.consoleLog("no saving function");
+	{
+		return _log.consoleLog( "no saving function" );
+	}
 
 	_log.consoleLog("will rotate temp device key");
 
@@ -448,9 +458,12 @@ function rotateTempDeviceKey()
 
 function scheduleTempDeviceKeyRotation()
 {
-	if (m_bScheduledTempDeviceKeyRotation)
+	if ( m_bScheduledTempDeviceKeyRotation )
+	{
 		return;
+	}
 
+	//	...
 	m_bScheduledTempDeviceKeyRotation = true;
 	_log.consoleLog('will schedule rotation in 1 minute');
 
@@ -462,7 +475,7 @@ function scheduleTempDeviceKeyRotation()
 			_mutex.lock
 			(
 				[ "from_hub" ],
-				function( unlock )
+				function( pfnUnlock )
 				{
 					_log.consoleLog( "will schedule rotation" );
 					rotateTempDeviceKeyIfCouldBeAlreadyUsed();
@@ -474,7 +487,8 @@ function scheduleTempDeviceKeyRotation()
 						rotateTempDeviceKeyIfCouldBeAlreadyUsed,
 						TEMP_DEVICE_KEY_ROTATION_PERIOD
 					);
-					unlock();
+
+					pfnUnlock();
 				}
 			);
 		},
@@ -488,31 +502,34 @@ function scheduleTempDeviceKeyRotation()
 // ---------------------------
 // sending/receiving messages
 
-function deriveSharedSecret( ecdh, peer_b64_pubkey )
+function deriveSharedSecret( oECDH, sPeerBase64PublicKey )
 {
-	var shared_secret_src = ecdh.computeSecret(peer_b64_pubkey, "base64");
-	var shared_secret = _crypto.createHash("sha256").update(shared_secret_src).digest().slice(0, 16);
-	return shared_secret;
+	var sSharedSecretSrc	= oECDH.computeSecret( sPeerBase64PublicKey, "base64" );
+	return _crypto.createHash( "sha256" ).update( sSharedSecretSrc ).digest().slice( 0, 16 );
 }
 
 function decryptPackage( objEncryptedPackage )
 {
-	var priv_key;
+	var sPrivateKey;
 
 	if ( objEncryptedPackage.dh.recipient_ephemeral_pubkey === m_objMyTempDeviceKey.pub_b64 )
 	{
-		priv_key = m_objMyTempDeviceKey.priv;
+		sPrivateKey = m_objMyTempDeviceKey.priv;
 		if ( m_objMyTempDeviceKey.use_count )
+		{
 			m_objMyTempDeviceKey.use_count ++;
+		}
 		else
+		{
 			m_objMyTempDeviceKey.use_count = 1;
+		}
 
 		//	...
 		_log.consoleLog( "message encrypted to temp key" );
 	}
 	else if ( m_objMyPrevTempDeviceKey && objEncryptedPackage.dh.recipient_ephemeral_pubkey === m_objMyPrevTempDeviceKey.pub_b64 )
 	{
-		priv_key = m_objMyPrevTempDeviceKey.priv;
+		sPrivateKey = m_objMyPrevTempDeviceKey.priv;
 		_log.consoleLog("message encrypted to prev temp key");
 		//_log.consoleLog("m_objMyPrevTempDeviceKey: "+JSON.stringify(m_objMyPrevTempDeviceKey));
 		//_log.consoleLog("prev temp private key buf: ", priv_key);
@@ -520,7 +537,7 @@ function decryptPackage( objEncryptedPackage )
 	}
 	else if ( objEncryptedPackage.dh.recipient_ephemeral_pubkey === m_objMyPermanentDeviceKey.pub_b64 )
 	{
-		priv_key = m_objMyPermanentDeviceKey.priv;
+		sPrivateKey = m_objMyPermanentDeviceKey.priv;
 		_log.consoleLog("message encrypted to permanent key");
 	}
 	else
@@ -555,7 +572,7 @@ function decryptPackage( objEncryptedPackage )
 	}
 
 	//	...
-	ecdh.setPrivateKey( priv_key );
+	ecdh.setPrivateKey( sPrivateKey );
 	var shared_secret	= deriveSharedSecret(ecdh, objEncryptedPackage.dh.sender_ephemeral_pubkey);
 	var iv			= new Buffer(objEncryptedPackage.iv, 'base64');
 	var decipher		= _crypto.createDecipheriv('aes-128-gcm', shared_secret, iv);
@@ -642,7 +659,9 @@ function resendStalledMessages( delay )
 	_log.consoleLog("resending stalled messages delayed by "+delay+" minute");
 
 	if ( ! m_objMyPermanentDeviceKey )
+	{
 		return _log.consoleLog( "m_objMyPermanentDeviceKey not set yet, can't resend stalled messages" );
+	}
 
 	_mutex.lockOrSkip
 	(
@@ -987,13 +1006,24 @@ function sendMessageToHub(ws, recipient_device_pubkey, subject, body, callbacks,
 	});
 }
 
-function sendMessageToDevice(device_address, subject, body, callbacks, conn){
+function sendMessageToDevice( device_address, subject, body, callbacks, conn )
+{
 	conn = conn || _db;
-	conn.query("SELECT hub, pubkey FROM correspondent_devices WHERE device_address=?", [device_address], function(rows){
-		if (rows.length !== 1)
-			throw Error("correspondent not found");
-		sendMessageToHub(rows[0].hub, rows[0].pubkey, subject, body, callbacks, conn);
-	});
+	conn.query
+	(
+		"SELECT hub, pubkey FROM correspondent_devices WHERE device_address=?",
+		[ device_address ],
+		function( rows )
+		{
+			if ( rows.length !== 1 )
+			{
+				throw Error( "correspondent not found" );
+			}
+
+			//	...
+			sendMessageToHub( rows[0].hub, rows[0].pubkey, subject, body, callbacks, conn );
+		}
+	);
 }
 
 

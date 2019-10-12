@@ -83,8 +83,7 @@ function prepareCatchupChain( catchupRequest, callbacks )
 						//	check if the peer really needs hash trees
 						db.query
 						(
-							"SELECT is_stable \
-							FROM units \
+							"SELECT is_stable FROM units \
 							WHERE is_on_main_chain = 1 AND main_chain_index = ?",
 							[
 								last_known_mci
@@ -107,6 +106,9 @@ function prepareCatchupChain( catchupRequest, callbacks )
 					},
 					function( cb )
 					{
+						//
+						//	get last_ball_unit
+						//
 						witnessProof.prepareWitnessProof
 						(
 							arrWitnesses,

@@ -1,6 +1,7 @@
 var _protobuf = require( "protobufjs" );
 
 
+
 _protobuf.load
 (
 	"test_protobuf.proto",
@@ -58,10 +59,13 @@ _protobuf.load
 		var oDecodeMessageWithOmitting	= TrustNoteP2pSaying.decode( oEncodedBufferWithOmitting );
 		//	... do something with message
 
+		var sTypeWithOmitting		= oDecodeMessageWithOmitting.type;
+
+
 		//	If the application uses length-delimited buffers, there is also encodeDelimited and decodeDelimited.
 
 		//
-		//	Maybe convert the message back to a plain object / Javascript object
+		//	Convert the message back to a plain object / Javascript object
 		//
 		var oPlainObject = TrustNoteP2pSaying.toObject( oDecodeMessage, {
 			longs: String,

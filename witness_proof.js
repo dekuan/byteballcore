@@ -27,6 +27,9 @@ function prepareWitnessProof( arrWitnesses, last_stable_mci, handleResult )
 		[
 			function( cb )
 			{
+				//
+				//	callback will get a boolean value
+				//
 				_storage.determineIfWitnessAddressDefinitionsHaveReferences
 				(
 					_db,

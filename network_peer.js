@@ -629,8 +629,7 @@ function addOutboundPeers( multiplier )
 	//
 	_db.query
 	(
-		"SELECT peer \
-		FROM peers \
+		"SELECT peer FROM peers \
 		JOIN peer_hosts USING(peer_host) \
 		LEFT JOIN peer_host_urls ON peer=url AND is_active=1 \
 		WHERE ( \
